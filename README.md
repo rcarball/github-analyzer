@@ -11,4 +11,4 @@ Tiene dos ficheros de configuración:
   - repositories.file=_resources/repositories.txt_   # Lista de repositorios GitHub que se analizarán
   - stats.file=_resources/stats.dat_                 # Fichero binario con la información obtenida en la última descarga
 
-**- resources/repositories.txt** (fichero con el listado de repositorios que se analiarán)
+**- resources/repositories.txt** (fichero con el listado de repositorios que se analizarán)
