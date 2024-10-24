@@ -7,6 +7,7 @@ import java.awt.Cursor;
 import java.awt.Desktop;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Image;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.net.URI;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Vector;
 
+import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -68,6 +70,7 @@ public class MainWindow extends JFrame {
 
 		// Crear el JTree con los nodos que contienen objetos RepoStats
 		JTree jTreeRepos = new JTree(repoRootNode);
+		jTreeRepos.setRowHeight(22);
 
 		// Asignar un renderizador personalizado como clase anónima
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
@@ -79,31 +82,41 @@ public class MainWindow extends JFrame {
 				Component component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row,
 						hasFocus);
 
+				String iconName = "resources/images/";
+				
 				// Obtener el nodo y su valor asociado
 				DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
-				Object userObject = node.getUserObject();
+				Object userObject = node.getUserObject();				
 
 				// Verificar si el userObject es de tipo RepoStats
 				if (userObject instanceof RepoStats) {
 					RepoStats repoStats = (RepoStats) userObject;
 
+					iconName += repoStats.isPublic() ? "public.png" : "private.png";
+					
 					// Si el repositorio está vacío, cambiar el color a rojo
 					if (repoStats.getCommits() == 0) {
-						component.setForeground(Color.RED);
+						component.setForeground(new Color(245, 143, 41));
 						setText(repoStats.getName()+ " (empty)");
-					} else {						
+					} else {
+						component.setForeground(new Color(54, 130, 127));						
 						setText(repoStats.getName());
 					}
 				} else {
-					// Si es el nodo raíz (que no es de tipo RepoStats), usamos el color por defecto
+					iconName += "github.png";
 					component.setForeground(Color.BLACK);
-
-					if (selected || hasFocus) {
-						component.setForeground(Color.WHITE);
-						component.setBackground(Color.BLUE);
-					}
-
 				}
+
+				if (selected || hasFocus) {
+					component.setForeground(Color.WHITE);
+					component.setBackground(Color.BLUE);
+				}
+				
+				ImageIcon scaledIcon = new ImageIcon(iconName);
+				//Se escala la imagen a 20x20 píxeles
+				scaledIcon = new ImageIcon(scaledIcon.getImage().getScaledInstance(20, 20, Image.SCALE_DEFAULT));
+				//Se establece la imagen al nodo
+				this.setIcon(scaledIcon);
 
 				return component;
 			}
@@ -182,7 +195,7 @@ public class MainWindow extends JFrame {
 		JScrollPane usersJScrollPane = new JScrollPane(jTableUserStats);
 		usersJScrollPane.setBorder(new TitledBorder("Collaborators"));
 
-		jTreeFileType = new JTree(new DefaultMutableTreeNode(""));
+		jTreeFileType = new JTree(new DefaultMutableTreeNode(""));		
 		JScrollPane fileTypeJScrollPane = new JScrollPane(jTreeFileType);
 		fileTypeJScrollPane.setBorder(new TitledBorder("File types"));
 
@@ -192,12 +205,38 @@ public class MainWindow extends JFrame {
 		centralPanel.add(usersJScrollPane);
 		centralPanel.add(fileTypeJScrollPane);
 
+		JLabel lblFooter = new JLabel("<html><a href=\"\">Icons created by Pixel perfect - Flaticon</a><html>");
+		lblFooter.setForeground(Color.BLUE);
+		lblFooter.setHorizontalAlignment(JLabel.RIGHT);
+		
+		lblFooter.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                try {
+                	Desktop.getDesktop().browse(new URI("https://www.flaticon.com/authors/pixel-perfect"));
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {
+            	lblFooter.setCursor(new Cursor(Cursor.HAND_CURSOR));  // Cambiar a cursor de mano
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+            	lblFooter.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));  // Volver al cursor por defecto
+            }
+        });
+		
 		this.setTitle("GitHub repositories statistics");
 		this.setLayout(new BorderLayout(0, 0));
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 		this.add(centralPanel, BorderLayout.CENTER);
 		this.add(reposJScrollPane, BorderLayout.WEST);
+		this.add(lblFooter, BorderLayout.SOUTH);
 
 		this.setSize(1024, 600);
 		this.setLocationRelativeTo(null);
@@ -236,27 +275,33 @@ public class MainWindow extends JFrame {
 				result.setHorizontalAlignment(JLabel.RIGHT);
 			}
 
-			// Configuración de fondo para celdas seleccionadas
-			if (isSelected) {
-				result.setBackground(table.getSelectionBackground());
-				result.setForeground(table.getSelectionForeground());
-			} else {
-				result.setBackground(table.getBackground());
-			}
-
 			if (selectedRepo != null) {
 				UserStats user = repoStatsMap.get(selectedRepo).getUserStats().get(row);
-				float contribution = ((float) user.getLines()) / repoStatsMap.get(selectedRepo).getLinesChanged();
+				int numCollaborators = repoStatsMap.get(selectedRepo).getUserStats().size() - 1;
+				
+		        float contribution = ((float) user.getLines()) / repoStatsMap.get(selectedRepo).getLinesChanged();
 
-				// Configuración del color de texto en función de las estadísticas del usuario
-				if (user.getLines() == 0 || user.getJavaFiles() == 0 || user.getFirstCommit() == -1) {
-					result.setForeground(Color.RED);
-				} else if (contribution < 0.15f) {
-					result.setForeground(Color.ORANGE);
-				} else if (contribution > 0.35f) {
-					result.setForeground(Color.BLUE);
-				}
-			}
+		        // Configuración del color de texto en función de las estadísticas del usuario
+		        if (user.getLines() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators / 2) {
+		            result.setForeground(new Color(234, 23, 68));  // Ninguna contribución
+		        } else {
+		            // Aportación superior o igual a la media
+		            if (contribution >= 1.0 / numCollaborators) {		                
+		                result.setForeground(new Color(54, 130, 127));
+		            // Aportación inferior a la media
+		            } else {
+		            	result.setForeground(new Color(245, 143, 41));
+		            }
+		        }
+		    }
+			
+		    // Configuración de fondo para celdas seleccionadas
+		    if (isSelected) {
+		        result.setBackground(table.getSelectionBackground());
+		        result.setForeground(table.getSelectionForeground());  // Asegura que el texto sea visible con fondo azul
+		    } else {
+		        result.setBackground(table.getBackground());  // Color de fondo por defecto
+		    }
 
 			// result.setFont(table.getFont());
 			result.setOpaque(true); // Necesario para que el fondo se pinte correctamente

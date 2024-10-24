@@ -84,9 +84,7 @@ public class GitHubDataLoader {
 			                repoStats.setLinesChanged(0);
 			                
 			                for (GHUser collaborator : repository.listCollaborators().toList()) {
-			                    if (!collaborator.getLogin().contains(Configurator.getInstance().getGithubUser())) {
-			                    	repoStats.addUserStats(new UserStats(collaborator.getLogin(), 0, 0, 0, -1, -1));
-			                    }
+			                	repoStats.addUserStats(new UserStats(collaborator.getLogin(), 0, 0, 0, -1, -1));
 			                }
 			                
 			                return;
@@ -182,13 +180,10 @@ public class GitHubDataLoader {
 		try {
 			// Se procesan los colaboradores uno a uno
 			for (GHUser collaborator : collaborators) {
-				// Se omite el proceso del colaborador del Docente 
-				if (!collaborator.getLogin().equalsIgnoreCase(Configurator.getInstance().getGithubUser())) {
-					// Se recuperan los commits del colaborador
-					List<GHCommit> commits = repository.queryCommits().author(collaborator.getLogin()).list().toList();
-					// Se procesan los commits del colaborador
-					proccessCommits(commits, collaborator.getLogin(), repoStats);
-				}
+				// Se recuperan los commits del colaborador
+				List<GHCommit> commits = repository.queryCommits().author(collaborator.getLogin()).list().toList();
+				// Se procesan los commits del colaborador
+				proccessCommits(commits, collaborator.getLogin(), repoStats);
 			}
 		} catch (Exception ex) {
 			buffer.append(String.format("- Error procesando usuarios %s: %s\n", repository.getFullName(), ex.getMessage()));
