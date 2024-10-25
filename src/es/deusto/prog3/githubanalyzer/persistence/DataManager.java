@@ -24,9 +24,9 @@ public class DataManager {
 		
 		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(Configurator.getInstance().getStatsFile()))) {			
 			data = (List<RepoStats>) in.readObject();			
-			System.out.format("Leidos %d RepoStats de '%s'\n", data.size(), Configurator.getInstance().getStatsFile());
+			System.out.format("- Leidos %d RepoStats de '%s'\n\n", data.size(), Configurator.getInstance().getStatsFile());
         } catch (Exception ex) {
-        	System.err.format("Error leyendo fichero binario: %s", ex.getMessage());
+        	System.err.format("* Error leyendo fichero binario: %s\n\n", ex.getMessage());
         }
 		
 		return data;
@@ -35,9 +35,9 @@ public class DataManager {
 	public void storeData(List<RepoStats> data) {
     	try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(Configurator.getInstance().getStatsFile()))) {    		
     		out.writeObject(data);
-    		System.out.format("Guardados %d RepoStats en '%s'\n", data.size(), Configurator.getInstance().getStatsFile());
+    		System.out.format("- Guardados %d RepoStats en '%s'\n\n", data.size(), Configurator.getInstance().getStatsFile());
         } catch (Exception ex) {
-        	System.err.format("Error guardando fichero binario: %s", ex.getMessage());
+        	System.err.format("* Error guardando fichero binario: %s\n\n", ex.getMessage());
         }
 	}
 }

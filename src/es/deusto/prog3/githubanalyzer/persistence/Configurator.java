@@ -32,6 +32,13 @@ public class Configurator {
 		}
 	}
 	
+	public boolean isConfigured() {
+		return githubUser != null && 
+			   githubToken != null && 
+			   !githubUser.isEmpty() && 
+			   !githubToken.isEmpty();
+	}
+	
 	public static Configurator getInstance() {
 		return instance;
 	}

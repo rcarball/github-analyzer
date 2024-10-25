@@ -14,6 +14,12 @@ public class Main {
     public static void main(String[] args) {    	
     	List<RepoStats> statsMap = null;
     	
+    	//Se confima que está configurado el username, el token y que existe al menos un repositorio
+		if (!Configurator.getInstance().isConfigured()) {
+			System.err.println("Revisa username y token de GitHub en el fichero 'resources/config.properties'");
+			System.exit(1);
+		}
+		
     	if (Configurator.getInstance().isLoadFromGithub()) {
     		//SE obtienen las estadísticas desde GitHub
 	    	statsMap = GitHubDataLoader.getInstance().loadData();		    	
@@ -25,6 +31,11 @@ public class Main {
     	}    	
     	
     	final List<RepoStats> list = statsMap;
+    	
+		if (list.isEmpty()) {
+			System.err.println("No hay repositorios, revisa el fichero 'resources/repositories.txt'");
+			System.exit(1);
+		}
     	
     	SwingUtilities.invokeLater(() -> {
 			new MainWindow(list);
