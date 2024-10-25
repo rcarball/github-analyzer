@@ -112,11 +112,8 @@ public class MainWindow extends JFrame {
 					component.setBackground(Color.BLUE);
 				}
 				
-				ImageIcon scaledIcon = new ImageIcon(iconName);
-				//Se escala la imagen a 20x20 píxeles
-				scaledIcon = new ImageIcon(scaledIcon.getImage().getScaledInstance(20, 20, Image.SCALE_DEFAULT));
 				//Se establece la imagen al nodo
-				this.setIcon(scaledIcon);
+				this.setIcon(scaleIcon(new ImageIcon(iconName)));
 
 				return component;
 			}
@@ -245,7 +242,7 @@ public class MainWindow extends JFrame {
 
 	private void initTable() {
 		Vector<String> cabecera = new Vector<String>(
-				Arrays.asList(" USERNAME", "LINES", "% LINES", "FILES", "COMMITS", "LAST COMMIT", "FIRST COMMIT"));
+				Arrays.asList("", "USERNAME", "LINES", "% LINES", "FILES", "COMMITS", "LAST COMMIT", "FIRST COMMIT"));
 		tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera);
 		jTableUserStats = new JTable(tableModelUserStats) {
 			private static final long serialVersionUID = 1L;
@@ -274,6 +271,10 @@ public class MainWindow extends JFrame {
 			} else if (value instanceof Integer) {
 				result.setHorizontalAlignment(JLabel.RIGHT);
 			}
+			
+			if (column == 0) {
+				result.setHorizontalAlignment(JLabel.CENTER);
+			}				
 
 			if (selectedRepo != null) {
 				UserStats user = repoStatsMap.get(selectedRepo).getUserStats().get(row);
@@ -282,15 +283,35 @@ public class MainWindow extends JFrame {
 		        float contribution = ((float) user.getLines()) / repoStatsMap.get(selectedRepo).getLinesChanged();
 
 		        // Configuración del color de texto en función de las estadísticas del usuario
-		        if (user.getLines() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators / 2) {
-		            result.setForeground(new Color(234, 23, 68));  // Ninguna contribución
+		        if (user.getLines() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators / 2) {		        	
+		        	result.setForeground(new Color(234, 23, 68));  // Ninguna contribución
+		        	
+		        	if (column == 0) {
+		        		result.setIcon(scaleIcon(new ImageIcon("resources/images/none.png")));
+		        	}		        	
 		        } else {
-		            // Aportación superior o igual a la media
-		            if (contribution >= 1.0 / numCollaborators) {		                
+		            // Aportación muy superior a la media
+		            if (contribution >= 1.0 / numCollaborators * 1.25) {		                
 		                result.setForeground(new Color(54, 130, 127));
+		                
+			        	if (column == 0) {
+			        		result.setIcon(scaleIcon(new ImageIcon("resources/images/excellent.png")));
+			        	}		        
+		        	
+		        	// Aportación superior o igual a la media
+		            } else if (contribution >= 1.0 / numCollaborators) {		                
+		                result.setForeground(new Color(54, 130, 127));
+		                
+			        	if (column == 0) {
+			        		result.setIcon(scaleIcon(new ImageIcon("resources/images/good.png")));
+			        	}		        	
 		            // Aportación inferior a la media
 		            } else {
 		            	result.setForeground(new Color(245, 143, 41));
+		            	
+			        	if (column == 0) {
+			        		result.setIcon(scaleIcon(new ImageIcon("resources/images/poor.png")));
+			        	}		        	
 		            }
 		        }
 		    }
@@ -313,7 +334,7 @@ public class MainWindow extends JFrame {
 			JLabel result = new JLabel(value.toString());
 			result.setHorizontalAlignment(JLabel.RIGHT);
 
-			if (value.toString().equals(" USERNAME")) {
+			if (value.toString().equals("USERNAME")) {
 				result.setHorizontalAlignment(JLabel.LEFT);
 			} else if (column > 4) {
 				result.setHorizontalAlignment(JLabel.CENTER);
@@ -328,11 +349,16 @@ public class MainWindow extends JFrame {
 			return result;
 		};
 
+		jTableUserStats.setRowHeight(25);
 		jTableUserStats.getTableHeader().setReorderingAllowed(false);
 		jTableUserStats.getTableHeader().setResizingAllowed(false);
 		jTableUserStats.setAutoCreateRowSorter(true);
-		jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);
-		jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(120);
+		jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);		
+		jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(20);
+		jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(40);
+		jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(40);
+		jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(40);
+		//jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(120);
 		jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
 	}
 
@@ -356,7 +382,7 @@ public class MainWindow extends JFrame {
 			tableModelUserStats.setRowCount(0);
 
 			repoStats.getUserStats()
-					.forEach(s -> tableModelUserStats.addRow(new Object[] { s.getUsername(), s.getLines(),
+					.forEach(s -> tableModelUserStats.addRow(new Object[] { "", s.getUsername(), s.getLines(),
 							(s.getLines() == 0) ? 0 : ((float) s.getLines()) / repoStats.getLinesChanged(),
 							s.getJavaFiles(), s.getCommits(), s.getLastCommit(), s.getFirstCommit() }));
 
@@ -366,7 +392,7 @@ public class MainWindow extends JFrame {
 			root.removeAllChildren();
 
 			repoStats.getFileTypeMap()
-					.forEach((k, v) -> root.add(new DefaultMutableTreeNode(String.format("%s (%d)", k, v))));
+.forEach((k, v) -> root.add(new DefaultMutableTreeNode(String.format("%s (%d)", k, v))));
 
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
@@ -388,5 +414,9 @@ public class MainWindow extends JFrame {
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
 		}
+	}
+	
+	private ImageIcon scaleIcon(ImageIcon icon) {
+		return new ImageIcon(icon.getImage().getScaledInstance(20, 20, Image.SCALE_SMOOTH));
 	}
 }
