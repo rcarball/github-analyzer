@@ -16,7 +16,7 @@ public class Main {
     	
     	//Se confima que está configurado el username, el token y que existe al menos un repositorio
 		if (!Configurator.getInstance().isConfigured()) {
-			System.err.println("Revisa username y token de GitHub en el fichero 'resources/config.properties'");
+			System.err.println("Check GitHub username and token in 'resources/config.properties'.");
 			System.exit(1);
 		}
 		
@@ -33,7 +33,7 @@ public class Main {
     	final List<RepoStats> list = statsMap;
     	
 		if (list.isEmpty()) {
-			System.err.println("No hay repositorios, revisa el fichero 'resources/repositories.txt'");
+			System.err.println("No repositories, check 'resources/repositories.txt'.");
 			System.exit(1);
 		}
     	

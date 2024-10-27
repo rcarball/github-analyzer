@@ -41,7 +41,7 @@ public class GitHubDataLoader {
 		List<RepoStats> result = new ArrayList<>();
 		
 		try {
-			System.out.format("- Procesando %d repositorios...\n", repos.size());
+			System.out.format("- Analyzing %d repositories...\n\n", repos.size());
 			
 			// Se usa un CountDownLatch coordinar el fin de todos los hilos
 			CountDownLatch latch = new CountDownLatch(repos.size());
@@ -71,13 +71,13 @@ public class GitHubDataLoader {
 						// Se crea un objeto para procesar el repositorio
 						GHRepository repository = github.getRepository(owner + "/" + repoName);
 						// StringBuffer para hacer una traza del proceso
-						buffer = new StringBuffer(String.format("- Analizando repositorio: %s ...\n", repository.getFullName()));						
+						buffer = new StringBuffer(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));						
 						repoStats.setCreationDate(repository.getCreatedAt().getTime());						
 						// Si el repositorio está vacío, todas las estadísticas son 0.
 
 			            // Comprobar si el repositorio está vacío
 			            if (repository.getSize() == 0) {
-			            	buffer.append(String.format("* El repositorio %s está vacío. \n", repo));
+			            	buffer.append(String.format("\t* %s repository is empty :( \n", repo));
 			                
 			                // Inicializar estadísticas vacías
 			                repoStats.setCodeLines(0);
@@ -135,7 +135,7 @@ public class GitHubDataLoader {
 										commitsByAuthor.putIfAbsent(c.getAuthor().getLogin(), new ArrayList<>());
 										commitsByAuthor.get(c.getAuthor().getLogin()).add(c);
 									} catch (Exception ex) {
-										System.err.println(String.format("* Error procesando commits %s: %s\n\n", repository.getFullName(), ex.getMessage()));									
+										System.err.println(String.format("\t* Error processing commits '%s': %s\n\n", repository.getFullName(), ex.getMessage()));									
 									}
 								});
 								
@@ -144,11 +144,11 @@ public class GitHubDataLoader {
 									proccessCommits(commitsList, collaborator, repoStats);
 								});
 							} catch (Exception ex) {
-								System.err.format("* Error leyendo commits de '%s' (publico): %s\n\n", repository.getFullName(), ex.getMessage());
+								System.err.format("\t* Error reading commits '%s' (public): %s\n\n", repository.getFullName(), ex.getMessage());
 							}
 						}
 					} catch (Exception e) {
-						System.err.format("* Error pocesando '%s': %s\n\n", repo, e.getMessage());
+						System.err.format("\t* Error analyzing '%s': %s\n\n", repo, e.getMessage());
 					} finally {
 						 // Al final del hilo, contar hacia abajo en el latch
                         latch.countDown();
@@ -163,9 +163,9 @@ public class GitHubDataLoader {
 			//Esperar a que terminen todos los hilos del latch
 			latch.await();
 			
-			System.out.format("- %d repositorios procesados correctamente\n\n", result.size());
+			System.out.format("- %d repositories successfull analized\n\n", result.size());
 		} catch (Exception ex) {
-			System.err.format("* Error obteniendo información de GitHub: %s\n\n", ex.getMessage());
+			System.err.format("\t* Error getting info from GitHub: %s\n\n", ex.getMessage());
 		}
 
 		//Se ordena la lista de RepoStats
@@ -187,7 +187,7 @@ public class GitHubDataLoader {
 				proccessCommits(commits, collaborator.getLogin(), repoStats);
 			}
 		} catch (Exception ex) {
-			buffer.append(String.format("* Error procesando usuarios %s: %s\n", repository.getFullName(), ex.getMessage()));
+			buffer.append(String.format("\t* Error processing collaborators %s: %s\n", repository.getFullName(), ex.getMessage()));
 		}
 	}
 	
@@ -222,7 +222,7 @@ public class GitHubDataLoader {
 					commits.size() > 0 ? commits.get(commits.size() - 1).getCommitDate().getTime() : -1,
 					commits.size() > 0 ? commits.get(0).getCommitDate().getTime() : -1));
 		} catch (Exception ex) {
-			System.err.println(String.format("* Error procesando commits de '%s': %s\n\n", collaborator, ex.getMessage()));
+			System.err.println(String.format("\t* Error processing commits '%s': %s\n\n", collaborator, ex.getMessage()));
 		}
 	}
 	
@@ -269,13 +269,13 @@ public class GitHubDataLoader {
 				                    }
 			                    }
 							} catch(Exception ex) {
-								buffer.append(String.format("* Error procesando fichero de '%s': %s\n", c.getName(), ex.getMessage()));
+								buffer.append(String.format("\t* Error processing a file '%s': %s\n", c.getName(), ex.getMessage()));
 							}
 		                }
 					}
 				});
 			} catch (Exception ex) {
-				buffer.append(String.format("* Error procesando carpeta de '%s': %s\n", content.getName(), ex.getMessage()));
+				buffer.append(String.format("\t* Error processing a folder '%s': %s\n", content.getName(), ex.getMessage()));
 			}
 		} else {
 			return;

@@ -28,7 +28,7 @@ public class Configurator {
 			statsFile = properties.getProperty("stats.file");
 			repositoriesFile = properties.getProperty("repositories.file");
 		} catch (Exception ex) {
-			System.out.format("Error leyendo fichero de propiedades: %s", ex.getMessage());
+			System.err.format("* Error reading properties file: %s", ex.getMessage());
 		}
 	}
 	
@@ -73,7 +73,7 @@ public class Configurator {
 				result.add(line);
 			}			
 		} catch (Exception ex) {
-			System.err.format("Error leyendo fichero de repositorios: %s", ex.getMessage());		
+			System.err.format("* Error reading repository file: %s", ex.getMessage());		
 		}
 		
 		return result;

@@ -288,7 +288,7 @@ public class MainWindow extends JFrame {
 		        	
 		        	if (column == 0) {
 		        		result.setIcon(new ImageIcon("resources/images/none.png"));
-		        		result.setToolTipText("Sin contribución al repositorio");
+		        		result.setToolTipText("No contribution to the repository");
 		        	}		        	
 		        } else {
 		            // Aportación muy superior a la media
@@ -297,7 +297,7 @@ public class MainWindow extends JFrame {
 		                
 			        	if (column == 0) {
 			        		result.setIcon(new ImageIcon("resources/images/excellent.png"));
-			        		result.setToolTipText("Excelente: contribución un 25% superior a la media esperada");
+			        		result.setToolTipText("Excellent: contribution 25% above expected average");
 			        	}		        
 		        	
 		        	// Aportación superior o igual a la media
@@ -306,7 +306,7 @@ public class MainWindow extends JFrame {
 		                
 			        	if (column == 0) {
 			        		result.setIcon(new ImageIcon("resources/images/good.png"));
-			        		result.setToolTipText("Buena contribución: en torno a la media esperada");
+			        		result.setToolTipText("Good contribution: around expected average");
 			        	}		        	
 		            // Aportación inferior a la media
 		            } else {
@@ -314,7 +314,7 @@ public class MainWindow extends JFrame {
 		            	
 			        	if (column == 0) {
 			        		result.setIcon(new ImageIcon("resources/images/poor.png"));
-			        		result.setToolTipText("Baja contribución: por debajo de la media esperada");
+			        		result.setToolTipText("Low contribution: below expected average");
 			        	}		        	
 		            }
 		        }
@@ -323,12 +323,11 @@ public class MainWindow extends JFrame {
 		    // Configuración de fondo para celdas seleccionadas
 		    if (isSelected) {
 		        result.setBackground(table.getSelectionBackground());
-		        result.setForeground(table.getSelectionForeground());  // Asegura que el texto sea visible con fondo azul
+		        result.setForeground(table.getSelectionForeground());
 		    } else {
-		        result.setBackground(table.getBackground());  // Color de fondo por defecto
+		        result.setBackground(table.getBackground());
 		    }
 
-			// result.setFont(table.getFont());
 			result.setOpaque(true); // Necesario para que el fondo se pinte correctamente
 
 			return result;
@@ -362,19 +361,15 @@ public class MainWindow extends JFrame {
 		jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(40);
 		jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(40);
 		jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(40);
-		//jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(120);
 		jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
 	}
 
 	private void loadRepoStats(RepoStats repoStats) {
 		if (repoStats != null) {
 			// Se actualizan las estadísticas generales del repo
-			lblCreationDate.setText(
-					String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));
-			lblFirstCommit.setText(
-					String.format("- First commit: %s", dateFormat.format(new Date(repoStats.getFirstCommit()))));
-			lblLastCommit.setText(
-					String.format("- Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
+			lblCreationDate.setText(String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));
+			lblFirstCommit.setText(String.format("- First commit: %s", dateFormat.format(new Date(repoStats.getFirstCommit()))));
+			lblLastCommit.setText(String.format("- Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
 			lblCommits.setText(String.format("- Total commits: %d", repoStats.getCommits()));
 			lblColeLines.setText(String.format("- Total lines of code: %d", repoStats.getCodeLines()));
 			lblLinesChanged.setText(String.format("- Total lines changed: %d", repoStats.getLinesChanged()));
@@ -385,18 +380,20 @@ public class MainWindow extends JFrame {
 			// Se actualiza la tabla de colaboradores
 			tableModelUserStats.setRowCount(0);
 
-			repoStats.getUserStats()
-					.forEach(s -> tableModelUserStats.addRow(new Object[] { "", s.getUsername(), s.getLines(),
-							(s.getLines() == 0) ? 0 : ((float) s.getLines()) / repoStats.getLinesChanged(),
-							s.getJavaFiles(), s.getCommits(), s.getLastCommit(), s.getFirstCommit() }));
+			repoStats.getUserStats().forEach(s -> tableModelUserStats.addRow(new Object[] { "", 
+																				s.getUsername(), s.getLines(),
+																				(s.getLines() == 0) ? 0 : ((float) s.getLines()) / repoStats.getLinesChanged(),
+																				s.getJavaFiles(),
+																				s.getCommits(),
+																				s.getLastCommit(),
+																				s.getFirstCommit() }));
 
 			// Se actualiza el árbol de tipos de ficheros
 			DefaultMutableTreeNode root = (DefaultMutableTreeNode) jTreeFileType.getModel().getRoot();
 			root.setUserObject(String.format("%d file types", repoStats.getFileTypeMap().keySet().size()));
 			root.removeAllChildren();
 
-			repoStats.getFileTypeMap()
-.forEach((k, v) -> root.add(new DefaultMutableTreeNode(String.format("%s (%d)", k, v))));
+			repoStats.getFileTypeMap().forEach((k, v) -> root.add(new DefaultMutableTreeNode(String.format("%s (%d)", k, v))));
 
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
