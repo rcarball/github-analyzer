@@ -70,7 +70,7 @@ public class MainWindow extends JFrame {
 
 		// Crear el JTree con los nodos que contienen objetos RepoStats
 		JTree jTreeRepos = new JTree(repoRootNode);
-		jTreeRepos.setRowHeight(22);
+		jTreeRepos.setRowHeight(23);
 
 		// Asignar un renderizador personalizado como clase anónima
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
@@ -287,7 +287,8 @@ public class MainWindow extends JFrame {
 		        	result.setForeground(new Color(234, 23, 68));  // Ninguna contribución
 		        	
 		        	if (column == 0) {
-		        		result.setIcon(scaleIcon(new ImageIcon("resources/images/none.png")));
+		        		result.setIcon(new ImageIcon("resources/images/none.png"));
+		        		result.setToolTipText("Sin contribución al repositorio");
 		        	}		        	
 		        } else {
 		            // Aportación muy superior a la media
@@ -295,7 +296,8 @@ public class MainWindow extends JFrame {
 		                result.setForeground(new Color(54, 130, 127));
 		                
 			        	if (column == 0) {
-			        		result.setIcon(scaleIcon(new ImageIcon("resources/images/excellent.png")));
+			        		result.setIcon(new ImageIcon("resources/images/excellent.png"));
+			        		result.setToolTipText("Excelente: contribución un 25% superior a la media esperada");
 			        	}		        
 		        	
 		        	// Aportación superior o igual a la media
@@ -303,14 +305,16 @@ public class MainWindow extends JFrame {
 		                result.setForeground(new Color(54, 130, 127));
 		                
 			        	if (column == 0) {
-			        		result.setIcon(scaleIcon(new ImageIcon("resources/images/good.png")));
+			        		result.setIcon(new ImageIcon("resources/images/good.png"));
+			        		result.setToolTipText("Buena contribución: en torno a la media esperada");
 			        	}		        	
 		            // Aportación inferior a la media
 		            } else {
 		            	result.setForeground(new Color(245, 143, 41));
 		            	
 			        	if (column == 0) {
-			        		result.setIcon(scaleIcon(new ImageIcon("resources/images/poor.png")));
+			        		result.setIcon(new ImageIcon("resources/images/poor.png"));
+			        		result.setToolTipText("Baja contribución: por debajo de la media esperada");
 			        	}		        	
 		            }
 		        }
@@ -349,7 +353,7 @@ public class MainWindow extends JFrame {
 			return result;
 		};
 
-		jTableUserStats.setRowHeight(25);
+		jTableUserStats.setRowHeight(26);
 		jTableUserStats.getTableHeader().setReorderingAllowed(false);
 		jTableUserStats.getTableHeader().setResizingAllowed(false);
 		jTableUserStats.setAutoCreateRowSorter(true);
@@ -417,6 +421,6 @@ public class MainWindow extends JFrame {
 	}
 	
 	private ImageIcon scaleIcon(ImageIcon icon) {
-		return new ImageIcon(icon.getImage().getScaledInstance(20, 20, Image.SCALE_SMOOTH));
+		return new ImageIcon(icon.getImage().getScaledInstance(22, 22, Image.SCALE_SMOOTH));
 	}
 }
