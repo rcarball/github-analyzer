@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class RepoStats implements Serializable, Comparable<RepoStats> {
 
@@ -15,8 +16,8 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private String name;
 	private List<UserStats> userStats = new ArrayList<>();
 	private long creationDate;
-	private long firstCommit;
-	private long lastCommit;
+	private long firstCommit = -1;
+	private long lastCommit = -1;
 	private int commits;
 	private int codeLines;
 	private int linesChanged;
@@ -24,6 +25,29 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private boolean isPublic;
 	private Map<String, Integer> fileTypeMap = new HashMap<>();
 
+	public void updateFirstAndLastCommit() {
+		AtomicReference<Long> firstCommit = new AtomicReference<>(Long.MAX_VALUE);
+		AtomicReference<Long> lastCommit = new AtomicReference<>(Long.MIN_VALUE);
+		
+		userStats.forEach(user -> {
+		    // Se actualiza el primer commit
+			if (user.getFirstCommit() < firstCommit.get()) {
+		        firstCommit.set(user.getFirstCommit());
+		    }
+		    
+			// Se actualiza el último commit
+			if (user.getLastCommit() > lastCommit.get()) {
+				lastCommit.set(user.getLastCommit());
+			}
+		});
+		
+		this.firstCommit = firstCommit.get();
+		this.lastCommit = lastCommit.get();
+		
+		System.out.println("First commit: " + this.firstCommit);
+		System.out.println("Last commit: " + this.lastCommit);
+	}
+	
 	public String getUrl() {
 		return url;
 	}

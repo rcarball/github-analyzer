@@ -146,7 +146,7 @@ public class GitHubDataLoader {
 							} catch (Exception ex) {
 								System.err.format("\t* Error reading commits '%s' (public): %s\n\n", repository.getFullName(), ex.getMessage());
 							}
-						}
+						}						
 					} catch (Exception e) {
 						System.err.format("\t* Error analyzing '%s': %s\n\n", repo, e.getMessage());
 					} finally {
@@ -219,8 +219,8 @@ public class GitHubDataLoader {
 					commits.size(), 
 					javaFilesSet.size(), 
 					totalLinesModified,
-					commits.size() > 0 ? commits.get(commits.size() - 1).getCommitDate().getTime() : -1,
-					commits.size() > 0 ? commits.get(0).getCommitDate().getTime() : -1));
+					commits.size() > 0 ? commits.getFirst().getCommitDate().getTime() : -1,
+					commits.size() > 0 ? commits.getLast().getCommitDate().getTime() : -1));
 		} catch (Exception ex) {
 			System.err.println(String.format("\t* Error processing commits '%s': %s\n\n", collaborator, ex.getMessage()));
 		}

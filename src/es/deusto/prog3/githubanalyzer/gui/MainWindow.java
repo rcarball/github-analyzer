@@ -368,8 +368,19 @@ public class MainWindow extends JFrame {
 		if (repoStats != null) {
 			// Se actualizan las estadísticas generales del repo
 			lblCreationDate.setText(String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));
-			lblFirstCommit.setText(String.format("- First commit: %s", dateFormat.format(new Date(repoStats.getFirstCommit()))));
-			lblLastCommit.setText(String.format("- Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
+			
+			if (repoStats.getFirstCommit() == -1) {
+                lblFirstCommit.setText("- First commit: -");
+            } else {
+            	lblFirstCommit.setText(String.format("- First commit: %s", dateFormat.format(new Date(repoStats.getFirstCommit()))));
+            }
+
+			if (repoStats.getLastCommit() == -1) {
+				lblLastCommit.setText("- Last commit: -");
+			} else {			
+				lblLastCommit.setText(String.format("- Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
+			}
+			
 			lblCommits.setText(String.format("- Total commits: %d", repoStats.getCommits()));
 			lblColeLines.setText(String.format("- Total lines of code: %d", repoStats.getCodeLines()));
 			lblLinesChanged.setText(String.format("- Total lines changed: %d", repoStats.getLinesChanged()));
