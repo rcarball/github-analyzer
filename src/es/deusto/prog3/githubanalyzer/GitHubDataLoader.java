@@ -146,7 +146,10 @@ public class GitHubDataLoader {
 							} catch (Exception ex) {
 								System.err.format("\t* Error reading commits '%s' (public): %s\n\n", repository.getFullName(), ex.getMessage());
 							}
-						}						
+						}
+						
+						// Se actualiza el primer y último commit del repositorio
+						repoStats.updateFirstAndLastCommit();
 					} catch (Exception e) {
 						System.err.format("\t* Error analyzing '%s': %s\n\n", repo, e.getMessage());
 					} finally {
@@ -192,11 +195,10 @@ public class GitHubDataLoader {
 	}
 	
 	private void proccessCommits(List<GHCommit> commits, String collaborator, RepoStats repoStats) {
-		Set<String> javaFilesSet = new HashSet<>();
-		
+		Set<String> javaFilesSet = new HashSet<>();			
 		int totalLinesModified = 0;
 
-		try {
+		try {	
 			// Se procesan los commits
 			for (GHCommit commit : commits) {
 				// Se recuperan los ficheros afectados por el commit											
@@ -213,14 +215,14 @@ public class GitHubDataLoader {
 					}
 				}
 			}
-			
+						
 			// Se añade un nuevo UserStas al RepoStats
 			repoStats.addUserStats(new UserStats(collaborator,
 					commits.size(), 
 					javaFilesSet.size(), 
 					totalLinesModified,
-					commits.size() > 0 ? commits.getFirst().getCommitDate().getTime() : -1,
-					commits.size() > 0 ? commits.getLast().getCommitDate().getTime() : -1));
+					commits.size() == 0 ? -1 : commits.getLast().getCommitDate().getTime(),
+					commits.size() == 0 ? -1 : commits.getFirst().getCommitDate().getTime()));
 		} catch (Exception ex) {
 			System.err.println(String.format("\t* Error processing commits '%s': %s\n\n", collaborator, ex.getMessage()));
 		}

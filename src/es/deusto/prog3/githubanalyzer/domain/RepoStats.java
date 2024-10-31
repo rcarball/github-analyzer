@@ -31,21 +31,18 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 		
 		userStats.forEach(user -> {
 		    // Se actualiza el primer commit
-			if (user.getFirstCommit() < firstCommit.get()) {
+			if (user.getFirstCommit() != -1 && user.getFirstCommit() < firstCommit.get()) {
 		        firstCommit.set(user.getFirstCommit());
 		    }
 		    
 			// Se actualiza el último commit
-			if (user.getLastCommit() > lastCommit.get()) {
+			if (user.getLastCommit() != -1 && user.getLastCommit() > lastCommit.get()) {
 				lastCommit.set(user.getLastCommit());
 			}
 		});
 		
-		this.firstCommit = firstCommit.get();
-		this.lastCommit = lastCommit.get();
-		
-		System.out.println("First commit: " + this.firstCommit);
-		System.out.println("Last commit: " + this.lastCommit);
+		this.firstCommit = firstCommit.get() != Long.MAX_VALUE ? firstCommit.get() : -1;
+		this.lastCommit = lastCommit.get() != Long.MIN_VALUE ? lastCommit.get() : -1;
 	}
 	
 	public String getUrl() {
