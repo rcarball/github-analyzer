@@ -235,7 +235,7 @@ public class MainWindow extends JFrame {
 		this.add(reposJScrollPane, BorderLayout.WEST);
 		this.add(lblFooter, BorderLayout.SOUTH);
 
-		this.setSize(1024, 600);
+		this.setSize(1200, 600);
 		this.setLocationRelativeTo(null);
 		this.setVisible(true);
 	}
@@ -278,12 +278,13 @@ public class MainWindow extends JFrame {
 
 			if (selectedRepo != null) {
 				UserStats user = repoStatsMap.get(selectedRepo).getUserStats().get(row);
+				
 				int numCollaborators = repoStatsMap.get(selectedRepo).getUserStats().size() - 1;
 				
 		        float contribution = ((float) user.getLines()) / repoStatsMap.get(selectedRepo).getLinesChanged();
 
 		        // Configuración del color de texto en función de las estadísticas del usuario
-		        if (user.getLines() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators / 2) {		        	
+		        if (user.getLines() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators * 0.5) {		        	
 		        	result.setForeground(new Color(234, 23, 68));  // Ninguna contribución
 		        	
 		        	if (column == 0) {
@@ -358,6 +359,7 @@ public class MainWindow extends JFrame {
 		jTableUserStats.setAutoCreateRowSorter(true);
 		jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);		
 		jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(20);
+		jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(180);
 		jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(40);
 		jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(40);
 		jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(40);
@@ -392,7 +394,7 @@ public class MainWindow extends JFrame {
 			tableModelUserStats.setRowCount(0);
 
 			repoStats.getUserStats().forEach(s -> tableModelUserStats.addRow(new Object[] { "", 
-																				s.getUsername(), s.getLines(),
+																				s.getEmail() != null ? s.getEmail() : s.getUsername(), s.getLines(),
 																				(s.getLines() == 0) ? 0 : ((float) s.getLines()) / repoStats.getLinesChanged(),
 																				s.getJavaFiles(),
 																				s.getCommits(),

@@ -6,12 +6,13 @@ import java.util.Objects;
 public class UserStats implements Serializable, Comparable<UserStats> {
 
 	private static final long serialVersionUID = 1L;
-	private String username;
+	private String username, email;
 	private int commits, javaFiles, lines;
 	private long firstCommit, lastCommit;
 	
-	public UserStats(String username, int commits, int javaFiles, int lines, long firstCommit, long lastCommit) {
+	public UserStats(String username, String email, int commits, int javaFiles, int lines, long firstCommit, long lastCommit) {		
 		this.username = username;
+		this.email = email;
 		this.commits = commits;
 		this.javaFiles = javaFiles;
 		this.lines = lines;
@@ -19,6 +20,10 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		this.lastCommit = lastCommit;
 	}
 
+	public String getEmail() {
+        return email;
+	}
+	
 	public String getUsername() {
 		return username;
 	}
