@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Desktop;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.awt.Image;
@@ -28,6 +29,7 @@ import javax.swing.JTable;
 import javax.swing.JTree;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
@@ -97,10 +99,10 @@ public class MainWindow extends JFrame {
 					// Si el repositorio está vacío, cambiar el color a rojo
 					if (repoStats.getCommits() == 0) {
 						component.setForeground(new Color(245, 143, 41));
-						setText(repoStats.getName()+ " (empty)");
+						setText(repoStats.getName() + " (empty)");
 					} else {
 						component.setForeground(new Color(54, 130, 127));						
-						setText(repoStats.getName());
+						setText(repoStats.getName() + " (" + repoStats.getBranches() + ")");
 					}
 				} else {
 					iconName += "github.png";
@@ -235,14 +237,14 @@ public class MainWindow extends JFrame {
 		this.add(reposJScrollPane, BorderLayout.WEST);
 		this.add(lblFooter, BorderLayout.SOUTH);
 
-		this.setSize(1200, 600);
+		this.setSize(1200, 800);
 		this.setLocationRelativeTo(null);
 		this.setVisible(true);
 	}
 
 	private void initTable() {
 		Vector<String> cabecera = new Vector<String>(
-				Arrays.asList("", "USERNAME", "LINES", "% LINES", "FILES", "COMMITS", "LAST COMMIT", "FIRST COMMIT"));
+				Arrays.asList("", "USERNAME (EMAIL)", "<html>LINES<br>ADDED</html>", "<html>% LINES<br>ADDED</html>", "<html>MODIFIED<br>FILES</html>", "COMMITS", "LAST COMMIT", "FIRST COMMIT"));				
 		tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera);
 		jTableUserStats = new JTable(tableModelUserStats) {
 			private static final long serialVersionUID = 1L;
@@ -251,9 +253,13 @@ public class MainWindow extends JFrame {
 				return false;
 			}
 		};
+		
+		// Establecer la altura de la cabecera
+        JTableHeader header = jTableUserStats.getTableHeader();
+        header.setPreferredSize(new Dimension(header.getPreferredSize().width, 40)); // Altura de 40 píxeles
 
 		TableCellRenderer cellRenderer = (table, value, isSelected, hasFocus, row, column) -> {
-			JLabel result = new JLabel(String.format(" %s", value.toString()));
+			JLabel result = new JLabel(String.format(" %s", value.toString()));			
 			result.setHorizontalAlignment(JLabel.CENTER);
 
 			// Configuración de la alineación y formato del valor dependiendo de su tipo
@@ -279,7 +285,7 @@ public class MainWindow extends JFrame {
 			if (selectedRepo != null) {
 				UserStats user = repoStatsMap.get(selectedRepo).getUserStats().get(row);
 				
-				int numCollaborators = repoStatsMap.get(selectedRepo).getUserStats().size() - 1;
+				int numCollaborators = repoStatsMap.get(selectedRepo).getUserStats().size();
 				
 		        float contribution = ((float) user.getLines()) / repoStatsMap.get(selectedRepo).getLinesChanged();
 
@@ -329,6 +335,11 @@ public class MainWindow extends JFrame {
 		        result.setBackground(table.getBackground());
 		    }
 
+		    // Se añade un tooltip con texto de la cela
+		    if (!result.getText().isEmpty()) {
+		    	result.setToolTipText(result.getText());
+		    }		 
+		    
 			result.setOpaque(true); // Necesario para que el fondo se pinte correctamente
 
 			return result;
@@ -359,7 +370,7 @@ public class MainWindow extends JFrame {
 		jTableUserStats.setAutoCreateRowSorter(true);
 		jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);		
 		jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(20);
-		jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(180);
+		jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(200);
 		jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(40);
 		jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(40);
 		jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(40);
@@ -394,7 +405,8 @@ public class MainWindow extends JFrame {
 			tableModelUserStats.setRowCount(0);
 
 			repoStats.getUserStats().forEach(s -> tableModelUserStats.addRow(new Object[] { "", 
-																				s.getEmail() != null ? s.getEmail() : s.getUsername(), s.getLines(),
+																				s.getEmail() != null ? String.format("%s (%s)", s.getUsername(), s.getEmail()) : s.getUsername(),
+																			    s.getLines(),
 																				(s.getLines() == 0) ? 0 : ((float) s.getLines()) / repoStats.getLinesChanged(),
 																				s.getJavaFiles(),
 																				s.getCommits(),

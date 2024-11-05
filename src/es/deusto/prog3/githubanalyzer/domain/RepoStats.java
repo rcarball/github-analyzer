@@ -18,11 +18,13 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private long creationDate;
 	private long firstCommit = -1;
 	private long lastCommit = -1;
+	private int branches;
 	private int commits;
 	private int codeLines;
 	private int linesChanged;
 	private int externalReferences;
 	private boolean isPublic;
+	
 	private Map<String, Integer> fileTypeMap = new HashMap<>();
 
 	public void updateFirstAndLastCommit() {
@@ -45,6 +47,14 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 		this.lastCommit = lastCommit.get() != Long.MIN_VALUE ? lastCommit.get() : -1;
 	}
 	
+	public int getBranches() {
+		return branches;
+	}
+
+	public void setBranches(int branches) {
+		this.branches = branches;
+	}
+
 	public String getUrl() {
 		return url;
 	}

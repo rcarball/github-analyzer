@@ -3,7 +3,6 @@ package es.deusto.prog3.githubanalyzer;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -17,6 +16,7 @@ import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.kohsuke.github.GHBranch;
 import org.kohsuke.github.GHCommit;
 import org.kohsuke.github.GHContent;
 import org.kohsuke.github.GHRepository;
@@ -25,6 +25,7 @@ import org.kohsuke.github.GitHub;
 import org.kohsuke.github.GitHubBuilder;
 
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
+import es.deusto.prog3.githubanalyzer.domain.SimpleGitUser;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
 import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 
@@ -76,16 +77,22 @@ public class GitHubDataLoader {
 						repoStats.setName(repoName);
 
 						// Añadir el RepoStats a la lista resultado
-						result.add(repoStats);
+						synchronized (result) {
+						    result.add(repoStats);
+						}
 
 						// Crear un objeto para procesar el repositorio
 						GHRepository repository = github.getRepository(owner + "/" + repoName);
-
+												
+						// Obtener las ramas del repositorio
+						List<String> branches = repository.getBranches().keySet().stream().toList();						
+						repoStats.setBranches(branches.size());
+						
 						// StringBuffer para trazar el proceso
-						buffer = new StringBuffer(
-								String.format("- Analyzing repository: %s ...\n", repository.getFullName()));
+						buffer = new StringBuffer(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));
 						repoStats.setCreationDate(repository.getCreatedAt().getTime());
 
+						
 						// Comprobar si el repositorio está vacío
 						if (repository.getSize() == 0) {
 							buffer.append(String.format("\t* %s repository " + "is empty :( \n", repo));
@@ -94,14 +101,16 @@ public class GitHubDataLoader {
 							repoStats.setCodeLines(0);
 							repoStats.setExternalReferences(0);
 							repoStats.setLinesChanged(0);
-
-							for (GHUser collaborator : repository.listCollaborators().toList()) {
-								repoStats.addUserStats(new UserStats(collaborator.getLogin(), collaborator.getEmail(), 0, 0, 0, -1, -1));
+							// Añadir información de los colaboradores con valores vacíos
+							if (repository.listCollaborators() != null) {						
+								for (GHUser collaborator : repository.listCollaborators().toList()) {
+									repoStats.addUserStats(new UserStats(collaborator.getLogin(), collaborator.getEmail(), 0, 0, 0, -1, -1));
+								}
 							}
 
 							return;
-						}
-
+						}												
+						
 						// Obtener el contenido de la carpeta raíz
 						List<GHContent> allFiles = repository.getDirectoryContent("/");
 
@@ -117,6 +126,9 @@ public class GitHubDataLoader {
 						// Asignar contadores de tipos de ficheros
 						repoStats.setFileTypeMap(fileCounters);
 
+						// Se obtienen los commits de todos los usuarios
+						Map<SimpleGitUser, List<GHCommit>> commitsPerUser = processBranches(repository);
+						
 						List<GHUser> collaborators = null;
 
 						try {
@@ -129,41 +141,13 @@ public class GitHubDataLoader {
 
 						// Procesar colaboradores
 						if (collaborators != null) {
-							repoStats.setPublic(false);
-							processCollaborators(collaborators, repository, repoStats, buffer);
+							repoStats.setPublic(false);							
 						} else {
 							repoStats.setPublic(true);
-
-							try {
-								// Recuperar los commits del repositorio
-								List<GHCommit> commits = repository.listCommits().toList();
-
-								// Mapa de commits por autor (del autor se guarda una lista con su username y email)
-								Map<List<String>, List<GHCommit>> commitsByAuthor = new HashMap<>();
-
-								// Agrupar los commits por autor
-								commits.forEach(c -> {
-									try {
-										List<String> author = Arrays.asList(c.getAuthor().getLogin(), c.getAuthor().getEmail());
-										
-										commitsByAuthor.putIfAbsent(author, new ArrayList<>());
-										commitsByAuthor.get(author).add(c);
-									} catch (Exception ex) {
-										System.err
-												.println(String.format("\t* Error processing " + "commits '%s': %s\n\n",
-														repository.getFullName(), ex.getMessage()));
-									}
-								});
-
-								// Procesar los commits de cada autor
-								commitsByAuthor.forEach((collaborator, commitsList) -> {
-									proccessCommits(commitsList, collaborator.getFirst(), collaborator.getLast(), repoStats);
-								});
-							} catch (Exception ex) {
-								System.err.format("\t* Error reading commits " + "'%s' (public): %s\n\n",
-										repository.getFullName(), ex.getMessage());
-							}
 						}
+						
+						// Procesar los commits por usuario
+						processCommitsPerUser(commitsPerUser, repository, repoStats, buffer);
 
 						// Actualizar el primer y último commit
 						repoStats.updateFirstAndLastCommit();
@@ -184,9 +168,9 @@ public class GitHubDataLoader {
 			// Esperar a que todas las tareas se completen
 			for (Future<?> future : futures) {
 				try {
-					future.get();
+				    future.get(); // Esperar a que finalice la tarea
 				} catch (Exception e) {
-					System.err.format("Error in task execution: %s\n", e.getMessage());
+				    System.err.format("\t* Error waiting for a task execution: %s\n", e.getMessage());
 				}
 			}
 
@@ -206,21 +190,55 @@ public class GitHubDataLoader {
 
 		return result;
 	}
-
-	private void processCollaborators(List<GHUser> collaborators, GHRepository repository, RepoStats repoStats,
-			StringBuffer buffer) {
+	
+	private Map<SimpleGitUser, List<GHCommit>> processBranches(GHRepository repository) {
+		Map<SimpleGitUser, List<GHCommit>> result = new HashMap<>();
+		
 		try {
-			// Procesar cada colaborador
-			for (GHUser collaborator : collaborators) {
-				// Recuperar los commits del colaborador
-				List<GHCommit> commits = repository.queryCommits().author(collaborator.getLogin()).list().toList();
-
-				// Procesar los commits del colaborador
-				proccessCommits(commits, collaborator.getLogin(), collaborator.getEmail(), repoStats);
+			// Recuperar las ramas del repositorio
+			Map<String, GHBranch> branches = repository.getBranches();
+			// Procesar cada rama
+			for (Map.Entry<String, GHBranch> branchEntry : branches.entrySet()) {
+				GHBranch branch = branchEntry.getValue();
+	
+				// Recuperar los commits para cada rama
+				List<GHCommit> commits = repository.queryCommits().from(branch.getSHA1()).list().toList();
+				SimpleGitUser author = null;				
+				
+				if (commits != null) {
+					// Procesar los commits
+					for (GHCommit c : commits) {
+						// Se recupera la información del autor o committer del commit
+						GHUser user = c.getAuthor()!= null ? c.getAuthor() : c.getCommitter();
+						
+						// Se crea un objeto SimpleGitUser con la información del autor del commit
+						if (user != null) {
+							author = new SimpleGitUser(user.getLogin(), user.getEmail());							
+						} else {
+							author = new SimpleGitUser(c.getCommitShortInfo().getAuthor().getName(), c.getCommitShortInfo().getAuthor().getEmail());
+						}
+						
+						// Se añade el commit al autor
+						result.putIfAbsent(author, new ArrayList<>());
+						result.get(author).add(c);
+					}
+				}
 			}
 		} catch (Exception ex) {
-			buffer.append(String.format("\t* Error processing collaborators " + "%s: %s\n", repository.getFullName(),
-					ex.getMessage()));
+			System.err.println(String.format("\t* Error processing branches of '%s': %s\n\n", repository.getName(), ex.getMessage()));
+		}
+		
+		return result;
+	}
+
+	private void processCommitsPerUser(Map<SimpleGitUser, List<GHCommit>> commitsPerUser, GHRepository repository, RepoStats repoStats,
+			StringBuffer buffer) {
+		try {
+			commitsPerUser.forEach((user, commits) -> {
+				proccessCommits(commits, user.getName(), user.getEmail(), repoStats);
+			});
+		} catch (Exception ex) {
+			buffer.append(String.format("\t* Error processing collaborators " + "%s: %s\n", repository.getFullName(), ex.getMessage()));
 		}
 	}
 
@@ -238,9 +256,8 @@ public class GitHubDataLoader {
 				for (GHCommit.File file : files) {
 					// Si el fichero es ".java"
 					if (file.getFileName().toLowerCase().endsWith(".java")) {
-						// Contabilizar líneas modificadas
-						totalLinesModified += file.getLinesChanged();
-
+						// Contabilizar líneas añadidas
+						totalLinesModified += file.getLinesAdded();
 						// Almacenar nombre del fichero
 						javaFilesSet.add(file.getFileName().toLowerCase());
 					}
@@ -249,8 +266,8 @@ public class GitHubDataLoader {
 
 			// Añadir nuevo UserStats al RepoStats
 			repoStats.addUserStats(new UserStats(username, email, commits.size(), javaFilesSet.size(), totalLinesModified,
-					commits.isEmpty() ? -1 : commits.get(commits.size() - 1).getCommitDate().getTime(),
-					commits.isEmpty() ? -1 : commits.get(0).getCommitDate().getTime()));
+					commits.isEmpty() ? -1 : commits.getLast().getCommitDate().getTime(),
+					commits.isEmpty() ? -1 : commits.getFirst().getCommitDate().getTime()));
 		} catch (Exception ex) {
 			System.err.println(
 					String.format("\t* Error processing commits " + "'%s': %s\n\n", username, ex.getMessage()));
