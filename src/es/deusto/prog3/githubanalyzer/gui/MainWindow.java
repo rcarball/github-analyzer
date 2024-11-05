@@ -102,7 +102,7 @@ public class MainWindow extends JFrame {
 						setText(repoStats.getName() + " (empty)");
 					} else {
 						component.setForeground(new Color(54, 130, 127));						
-						setText(repoStats.getName() + " (" + repoStats.getBranches() + ")");
+						setText(repoStats.getName() + " - " + repoStats.getBranches() + " branch(es)");
 					}
 				} else {
 					iconName += "github.png";
