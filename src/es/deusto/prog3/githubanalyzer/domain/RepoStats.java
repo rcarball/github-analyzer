@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class RepoStats implements Serializable, Comparable<RepoStats> {
 
@@ -21,31 +20,11 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private int branches;
 	private int commits;
 	private int codeLines;
-	private int linesChanged;
+	private int linesAdded;
 	private int externalReferences;
 	private boolean isPublic;
 	
 	private Map<String, Integer> fileTypeMap = new HashMap<>();
-
-	public void updateFirstAndLastCommit() {
-		AtomicReference<Long> firstCommit = new AtomicReference<>(Long.MAX_VALUE);
-		AtomicReference<Long> lastCommit = new AtomicReference<>(Long.MIN_VALUE);
-		
-		userStats.forEach(user -> {
-		    // Se actualiza el primer commit
-			if (user.getFirstCommit() != -1 && user.getFirstCommit() < firstCommit.get()) {
-		        firstCommit.set(user.getFirstCommit());
-		    }
-		    
-			// Se actualiza el último commit
-			if (user.getLastCommit() != -1 && user.getLastCommit() > lastCommit.get()) {
-				lastCommit.set(user.getLastCommit());
-			}
-		});
-		
-		this.firstCommit = firstCommit.get() != Long.MAX_VALUE ? firstCommit.get() : -1;
-		this.lastCommit = lastCommit.get() != Long.MIN_VALUE ? lastCommit.get() : -1;
-	}
 	
 	public int getBranches() {
 		return branches;
@@ -83,16 +62,20 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 		if (user != null && !userStats.contains(user)) {
 			userStats.add(user);
 			
-			linesChanged += user.getLines();
+			linesAdded += user.getAdded();
 			commits += user.getCommits();
 			
-			if (user.getLastCommit() > lastCommit) {
+			if (lastCommit == -1 && user.getLastCommit() != -1) {
 				lastCommit = user.getLastCommit();
-			}
-			
-			if (firstCommit == 0 || user.getFirstCommit() < firstCommit) {
-				firstCommit = user.getFirstCommit();
+			} else if (lastCommit != -1 && user.getLastCommit() != -1) {
+				lastCommit = Math.max(lastCommit, user.getLastCommit());
 			}			
+			
+			if (firstCommit == -1 && user.getFirstCommit() != -1) {
+				firstCommit = user.getFirstCommit();
+            } else if (firstCommit != -1 && user.getFirstCommit() != -1) {
+                firstCommit = Math.min(firstCommit, user.getFirstCommit());
+            }
 		}
 	}
 
@@ -144,12 +127,12 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 		this.externalReferences = externalReferences;
 	}
 
-	public int getLinesChanged() {
-		return linesChanged;
+	public int getLinesAdded() {
+		return linesAdded;
 	}
 
-	public void setLinesChanged(int linesChanged) {
-		this.linesChanged = linesChanged;
+	public void setLinesAdded(int linesAdded) {
+		this.linesAdded = linesAdded;
 	}
 
 	public Map<String, Integer> getFileTypeMap() {

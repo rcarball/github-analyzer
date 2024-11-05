@@ -21,7 +21,7 @@ public class SimpleGitUser {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(email, name);
+		return Objects.hash(name);
 	}
 
 	@Override
@@ -33,7 +33,7 @@ public class SimpleGitUser {
 		if (getClass() != obj.getClass())
 			return false;
 		SimpleGitUser other = (SimpleGitUser) obj;
-		return Objects.equals(email, other.email) && Objects.equals(name, other.name);
+		return Objects.equals(name, other.name);
 	}
 
 	@Override

@@ -24,11 +24,6 @@ public class DataManager {
 					
 		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(Configurator.getInstance().getStatsFile()))) {			
 			data = (List<RepoStats>) in.readObject();			
-			
-			data.forEach(repoStats -> {
-				repoStats.updateFirstAndLastCommit();
-			});
-			
 			System.out.format("- %d RepoStats loaded from '%s'\n\n", data.size(), Configurator.getInstance().getStatsFile());
         } catch (Exception ex) {
         	System.err.format("* Error reading binary file: %s\n\n", ex.getMessage());

@@ -59,7 +59,7 @@ public class MainWindow extends JFrame {
 
 	public MainWindow(List<RepoStats> data) {
 		// Se crea un mapa con los datos de los repositorios
-		data.forEach(repo -> repoStatsMap.put(repo.getName(), repo));
+		data.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
 
 		// Inicializar el root del JTree
 		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(String.format("%d Repositories", data.size()));
@@ -128,7 +128,7 @@ public class MainWindow extends JFrame {
 			if (nodeValue instanceof RepoStats) {
 				RepoStats repoStats = (RepoStats) nodeValue;
 				loadRepoStats(repoStats);
-				selectedRepo = repoStats.getName();
+				selectedRepo = repoStats.getUrl();
 			} else {
 				loadRepoStats(null);
 				selectedRepo = null;
@@ -192,7 +192,7 @@ public class MainWindow extends JFrame {
 		panelDetails.add(lblURL);		
 
 		JScrollPane usersJScrollPane = new JScrollPane(jTableUserStats);
-		usersJScrollPane.setBorder(new TitledBorder("Collaborators"));
+		usersJScrollPane.setBorder(new TitledBorder("Collaborators / Authors"));
 
 		jTreeFileType = new JTree(new DefaultMutableTreeNode(""));		
 		JScrollPane fileTypeJScrollPane = new JScrollPane(jTreeFileType);
@@ -237,14 +237,21 @@ public class MainWindow extends JFrame {
 		this.add(reposJScrollPane, BorderLayout.WEST);
 		this.add(lblFooter, BorderLayout.SOUTH);
 
-		this.setSize(1200, 800);
+		this.setSize(1200, 700);
 		this.setLocationRelativeTo(null);
 		this.setVisible(true);
 	}
 
 	private void initTable() {
 		Vector<String> cabecera = new Vector<String>(
-				Arrays.asList("", "USERNAME (EMAIL)", "<html>LINES<br>ADDED</html>", "<html>% LINES<br>ADDED</html>", "<html>MODIFIED<br>FILES</html>", "COMMITS", "LAST COMMIT", "FIRST COMMIT"));				
+				Arrays.asList("", "USERNAME (EMAIL)", 
+						          "<html>LINES<br>ADDED</html>", 
+						          "<html>% LINES<br>ADDED</html>", 
+						          "<html>LINES<br>DELETED</html>",
+						          "<html>MODIFIED<br>FILES</html>", 
+						          "COMMITS", 
+						          "LAST COMMIT", 
+						          "FIRST COMMIT"));				
 		tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera);
 		jTableUserStats = new JTable(tableModelUserStats) {
 			private static final long serialVersionUID = 1L;
@@ -256,7 +263,7 @@ public class MainWindow extends JFrame {
 		
 		// Establecer la altura de la cabecera
         JTableHeader header = jTableUserStats.getTableHeader();
-        header.setPreferredSize(new Dimension(header.getPreferredSize().width, 40)); // Altura de 40 píxeles
+        header.setPreferredSize(new Dimension(header.getPreferredSize().width, 35)); // Altura de 40 píxeles
 
 		TableCellRenderer cellRenderer = (table, value, isSelected, hasFocus, row, column) -> {
 			JLabel result = new JLabel(String.format(" %s", value.toString()));			
@@ -282,15 +289,21 @@ public class MainWindow extends JFrame {
 				result.setHorizontalAlignment(JLabel.CENTER);
 			}				
 
-			if (selectedRepo != null) {
+			if (selectedRepo != null) {				
+				if (row >= repoStatsMap.get(selectedRepo).getUserStats().size()) {
+					System.out.println("Row: " + row);
+					repoStatsMap.get(selectedRepo).getUserStats().forEach(u -> System.out.println(u));
+                    return result;
+				}
+				
 				UserStats user = repoStatsMap.get(selectedRepo).getUserStats().get(row);
 				
 				int numCollaborators = repoStatsMap.get(selectedRepo).getUserStats().size();
 				
-		        float contribution = ((float) user.getLines()) / repoStatsMap.get(selectedRepo).getLinesChanged();
+		        float contribution = ((float) user.getAdded()) / repoStatsMap.get(selectedRepo).getLinesAdded();
 
 		        // Configuración del color de texto en función de las estadísticas del usuario
-		        if (user.getLines() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators * 0.5) {		        	
+		        if (user.getAdded() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators * 0.5) {		        	
 		        	result.setForeground(new Color(234, 23, 68));  // Ninguna contribución
 		        	
 		        	if (column == 0) {
@@ -338,7 +351,7 @@ public class MainWindow extends JFrame {
 		    // Se añade un tooltip con texto de la cela
 		    if (!result.getText().isEmpty()) {
 		    	result.setToolTipText(result.getText());
-		    }		 
+		    }		 		    		    
 		    
 			result.setOpaque(true); // Necesario para que el fondo se pinte correctamente
 
@@ -349,16 +362,15 @@ public class MainWindow extends JFrame {
 			JLabel result = new JLabel(value.toString());
 			result.setHorizontalAlignment(JLabel.RIGHT);
 
-			if (value.toString().equals("USERNAME")) {
+			if (column == 1) {
 				result.setHorizontalAlignment(JLabel.LEFT);
-			} else if (column > 4) {
+			} else if (column > 6) {
 				result.setHorizontalAlignment(JLabel.CENTER);
 			}
 
 			result.setBackground(table.getBackground());
 			result.setForeground(table.getForeground());
 			result.setFont(table.getFont().deriveFont(Font.BOLD));
-
 			result.setOpaque(true);
 
 			return result;
@@ -367,13 +379,16 @@ public class MainWindow extends JFrame {
 		jTableUserStats.setRowHeight(26);
 		jTableUserStats.getTableHeader().setReorderingAllowed(false);
 		jTableUserStats.getTableHeader().setResizingAllowed(false);
-		jTableUserStats.setAutoCreateRowSorter(true);
+		jTableUserStats.setAutoCreateRowSorter(false);
+		jTableUserStats.setFillsViewportHeight(true);
 		jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);		
-		jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(20);
-		jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(200);
-		jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(40);
-		jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(40);
-		jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(40);
+		jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(15);
+		jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(220);
+		jTableUserStats.getColumnModel().getColumn(2).setPreferredWidth(30);
+		jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(45);
+		jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(45);
+		jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(45);
+		jTableUserStats.getColumnModel().getColumn(6).setPreferredWidth(45);
 		jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
 	}
 
@@ -396,7 +411,7 @@ public class MainWindow extends JFrame {
 			
 			lblCommits.setText(String.format("- Total commits: %d", repoStats.getCommits()));
 			lblColeLines.setText(String.format("- Total lines of code: %d", repoStats.getCodeLines()));
-			lblLinesChanged.setText(String.format("- Total lines changed: %d", repoStats.getLinesChanged()));
+			lblLinesChanged.setText(String.format("- Total lines added: %d", repoStats.getLinesAdded()));
 			lblExternalRefs.setText(String.format("- External references: %d", repoStats.getExternalReferences()));
 			lblURL.setText(String.format("<html>- <u><i>%s</i></u></html>", repoStats.getName()));			
 			lblURL.setForeground(Color.BLUE);  // Color de hipervínculo			
@@ -406,8 +421,9 @@ public class MainWindow extends JFrame {
 
 			repoStats.getUserStats().forEach(s -> tableModelUserStats.addRow(new Object[] { "", 
 																				s.getEmail() != null ? String.format("%s (%s)", s.getUsername(), s.getEmail()) : s.getUsername(),
-																			    s.getLines(),
-																				(s.getLines() == 0) ? 0 : ((float) s.getLines()) / repoStats.getLinesChanged(),
+																			    s.getAdded(),
+																				(s.getAdded() == 0) ? 0 : ((float) s.getAdded()) / repoStats.getLinesAdded(),
+																				s.getDeleted(),
 																				s.getJavaFiles(),
 																				s.getCommits(),
 																				s.getLastCommit(),

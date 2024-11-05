@@ -7,15 +7,18 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 
 	private static final long serialVersionUID = 1L;
 	private String username, email;
-	private int commits, javaFiles, lines;
+	private int commits, javaFiles;
+	private int added, deleted, changed;
 	private long firstCommit, lastCommit;
 	
-	public UserStats(String username, String email, int commits, int javaFiles, int lines, long firstCommit, long lastCommit) {		
+	public UserStats(String username, String email, int commits, int javaFiles, int added, int deleted, int changed, long firstCommit, long lastCommit) {		
 		this.username = username;
 		this.email = email;
 		this.commits = commits;
 		this.javaFiles = javaFiles;
-		this.lines = lines;
+		this.added = added;
+		this.deleted = deleted;
+		this.changed = changed;
 		this.firstCommit = firstCommit;
 		this.lastCommit = lastCommit;
 	}
@@ -36,8 +39,16 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		return javaFiles;
 	}
 
-	public int getLines() {
-		return lines;
+	public int getAdded() {
+		return added;
+	}
+	
+	public int getDeleted() {
+		return deleted;
+	}
+	
+	public int getChanged() {
+        return changed;
 	}
 
 	public long getFirstCommit() {
@@ -64,11 +75,12 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		UserStats other = (UserStats) obj;
 		return Objects.equals(username, other.username);
 	}
-
+	
 	@Override
 	public String toString() {
-		return "UserStats [username=" + username + ", commits=" + commits + ", JavaFiles=" + javaFiles
-				+ ", lines=" + lines + ", firstCommit=" + firstCommit + ", lastCommit=" + lastCommit + "]";
+		return "UserStats [username=" + username + ", email=" + email + ", commits=" + commits + ", javaFiles="
+				+ javaFiles + ", added=" + added + ", deleted=" + deleted + ", changed=" + changed + ", firstCommit="
+				+ firstCommit + ", lastCommit=" + lastCommit + "]";
 	}
 
 	@Override
@@ -78,8 +90,8 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	//- 3.º Mayor núm. de commits
 	//- 4.º Username alfabéticamente
 	public int compareTo(UserStats o) {
-		if (lines != o.lines) {
-			return Integer.compare(o.lines, lines);
+		if (added != o.added) {
+			return Integer.compare(o.added, added);
 		} else if (javaFiles != o.javaFiles) {
 			return Integer.compare(o.javaFiles, javaFiles);
 		} else if (commits != o.commits) {

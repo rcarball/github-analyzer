@@ -89,9 +89,17 @@ public class GitHubDataLoader {
 						repoStats.setBranches(branches.size());
 						
 						// StringBuffer para trazar el proceso
-						buffer = new StringBuffer(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));
+						buffer = new StringBuffer(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));						
+						
+						// Añadir información de la fecha de creación
 						repoStats.setCreationDate(repository.getCreatedAt().getTime());
 
+						// Comprobar si el repositorio es privado o público
+						if (repository.isPrivate()) {
+							repoStats.setPublic(false);
+						} else {
+							repoStats.setPublic(true);
+						}
 						
 						// Comprobar si el repositorio está vacío
 						if (repository.getSize() == 0) {
@@ -100,11 +108,11 @@ public class GitHubDataLoader {
 							// Inicializar estadísticas vacías
 							repoStats.setCodeLines(0);
 							repoStats.setExternalReferences(0);
-							repoStats.setLinesChanged(0);
+							repoStats.setLinesAdded(0);
 							// Añadir información de los colaboradores con valores vacíos
 							if (repository.listCollaborators() != null) {						
 								for (GHUser collaborator : repository.listCollaborators().toList()) {
-									repoStats.addUserStats(new UserStats(collaborator.getLogin(), collaborator.getEmail(), 0, 0, 0, -1, -1));
+									repoStats.addUserStats(new UserStats(collaborator.getLogin(), collaborator.getEmail(), 0, 0, 0, 0, 0, -1, -1));
 								}
 							}
 
@@ -129,28 +137,9 @@ public class GitHubDataLoader {
 						// Se obtienen los commits de todos los usuarios
 						Map<SimpleGitUser, List<GHCommit>> commitsPerUser = processBranches(repository);
 						
-						List<GHUser> collaborators = null;
-
-						try {
-							// Obtener la lista de colaboradores
-							collaborators = repository.listCollaborators().toList();
-						} catch (Exception ex) {
-							// Si el repositorio es público se produce un error
-							collaborators = null;
-						}
-
-						// Procesar colaboradores
-						if (collaborators != null) {
-							repoStats.setPublic(false);							
-						} else {
-							repoStats.setPublic(true);
-						}
-						
 						// Procesar los commits por usuario
 						processCommitsPerUser(commitsPerUser, repository, repoStats, buffer);
-
-						// Actualizar el primer y último commit
-						repoStats.updateFirstAndLastCommit();
+							
 					} catch (Exception e) {
 						System.err.format("\t* Error analyzing '%s': %s\n\n", repo, e.getMessage());
 					} finally {
@@ -236,6 +225,7 @@ public class GitHubDataLoader {
 		try {
 			commitsPerUser.forEach((user, commits) -> {
 				proccessCommits(commits, user.getName(), user.getEmail(), repoStats);
+				buffer.append(String.format("\t* Commits of '%s' (%s) processed: %d\n", user.getName(), user.getEmail(), commits.size()));
 			});
 		} catch (Exception ex) {
 			buffer.append(String.format("\t* Error processing collaborators " + "%s: %s\n", repository.getFullName(), ex.getMessage()));
@@ -244,7 +234,9 @@ public class GitHubDataLoader {
 
 	private void proccessCommits(List<GHCommit> commits, String username, String email, RepoStats repoStats) {
 		Set<String> javaFilesSet = new HashSet<>();
-		int totalLinesModified = 0;
+		int linesAdded = 0;
+		int linesDeleted = 0;
+		int linesChanged = 0;
 
 		try {
 			// Procesar los commits
@@ -257,7 +249,11 @@ public class GitHubDataLoader {
 					// Si el fichero es ".java"
 					if (file.getFileName().toLowerCase().endsWith(".java")) {
 						// Contabilizar líneas añadidas
-						totalLinesModified += file.getLinesAdded();
+						linesAdded += file.getLinesAdded();						
+						// Contabilizar líneas borradas
+						linesDeleted += file.getLinesDeleted();
+						// Contabilizar líneas modificadas
+						linesChanged += file.getLinesChanged();						
 						// Almacenar nombre del fichero
 						javaFilesSet.add(file.getFileName().toLowerCase());
 					}
@@ -265,12 +261,11 @@ public class GitHubDataLoader {
 			}
 
 			// Añadir nuevo UserStats al RepoStats
-			repoStats.addUserStats(new UserStats(username, email, commits.size(), javaFilesSet.size(), totalLinesModified,
+			repoStats.addUserStats(new UserStats(username, email, commits.size(), javaFilesSet.size(), linesAdded, linesDeleted, linesChanged,
 					commits.isEmpty() ? -1 : commits.getLast().getCommitDate().getTime(),
 					commits.isEmpty() ? -1 : commits.getFirst().getCommitDate().getTime()));
 		} catch (Exception ex) {
-			System.err.println(
-					String.format("\t* Error processing commits " + "'%s': %s\n\n", username, ex.getMessage()));
+			System.err.println(String.format("\t* Error processing commits " + "'%s': %s\n\n", username, ex.getMessage()));
 		}
 	}
 
@@ -316,15 +311,13 @@ public class GitHubDataLoader {
 									}
 								}
 							} catch (Exception ex) {
-								buffer.append(String.format("\t* Error " + "processing file '%s': %s\n", c.getName(),
-										ex.getMessage()));
+								buffer.append(String.format("\t* Error " + "processing file '%s': %s\n", c.getName(), ex.getMessage()));
 							}
 						}
 					}
 				});
 			} catch (Exception ex) {
-				buffer.append(String.format("\t* Error processing folder '%s'" + ": %s\n", content.getName(),
-						ex.getMessage()));
+				buffer.append(String.format("\t* Error processing folder '%s'" + ": %s\n", content.getName(), ex.getMessage()));
 			}
 		}
 	}
