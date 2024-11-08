@@ -1,5 +1,7 @@
 El proyecto genera estadísticas de actividad de respositorios de GitHub. Permite el acceso a repositorios Públicos o repositorios privados a los que tiene acceso un determinado username.
 
+La aplicación tiene un árbol que muestra los respositorios consultados en la parte derecha. Al serleccionar un repositorio, en la parte central se muestran las estadísticas generales del repositorio y el detalle del aporte de las personas que han realizado algún commit.
+
 La clase principal es: **es.deusto.prog3.githubanalyzer.Main**
 
 Tiene dos ficheros de configuración:
