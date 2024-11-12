@@ -377,6 +377,7 @@ public class MainWindow extends JFrame {
 		};
 
 		jTableUserStats.setRowHeight(26);
+		jTableUserStats.setShowGrid(false);
 		jTableUserStats.getTableHeader().setReorderingAllowed(false);
 		jTableUserStats.getTableHeader().setResizingAllowed(false);
 		jTableUserStats.setAutoCreateRowSorter(false);
