@@ -155,9 +155,11 @@ public class GitHubDataLoader {
 			}); // fin repos.forEach
 
 			// Esperar a que todas las tareas se completen
+			int i = futures.size();
 			for (Future<?> future : futures) {
 				try {
 				    future.get(); // Esperar a que finalice la tarea
+				    System.out.format("\t* Task %d completed\n", i--);
 				} catch (Exception e) {
 				    System.err.format("\t* Error waiting for a task execution: %s\n", e.getMessage());
 				}
