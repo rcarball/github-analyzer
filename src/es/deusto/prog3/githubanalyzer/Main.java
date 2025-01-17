@@ -20,15 +20,15 @@ public class Main {
 			System.exit(1);
 		}
 		
+		//Se leen las estadísticas desde un fichero binario
+		statsMap = DataManager.getInstance().loadData();		
+		
     	if (Configurator.getInstance().isLoadFromGithub()) {
-    		//SE obtienen las estadísticas desde GitHub
-	    	statsMap = GitHubDataLoader.getInstance().loadData();		    	
+    		//Se obtienen las estadísticas desde GitHub
+	    	statsMap = GitHubDataLoader.getInstance().loadData(statsMap);		    	
 	    	//Se guardan las estadísticas en un fichero binario
 	    	DataManager.getInstance().storeData(statsMap);		    	
-    	} else {
-    		//Se leen las estadísticas desde un fichero binario
-    		statsMap = DataManager.getInstance().loadData();
-    	}    	
+    	}	
     	
     	final List<RepoStats> list = statsMap;
     	

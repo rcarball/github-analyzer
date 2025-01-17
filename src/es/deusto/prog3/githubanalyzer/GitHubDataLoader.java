@@ -42,7 +42,7 @@ public class GitHubDataLoader {
 		return instance;
 	}
 
-	public List<RepoStats> loadData() {
+	public List<RepoStats> loadData(List<RepoStats> statsMap) {
 		List<RepoStats> result = Collections.synchronizedList(new ArrayList<>());
 
 		try {
@@ -76,20 +76,42 @@ public class GitHubDataLoader {
 						repoStats.setUrl(repo);
 						repoStats.setName(repoName);
 
+						// Crear un objeto para procesar el repositorio
+						GHRepository repository = github.getRepository(owner + "/" + repoName);
+						
+						// StringBuffer para trazar el proceso
+						buffer = new StringBuffer(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));						
+												
+						// Se recupera el RepoStat existente
+						RepoStats oldRepoStats = statsMap.stream().filter(r -> r.getUrl().equals(repo)).findFirst().orElse(null);		
+						
+						// Si ya se había procesado el respositorio y estaba en el fichero
+						if (oldRepoStats != null) {
+							// Se recupera el último commit desde la nube
+							GHCommit latestCommit = repository.listCommits().toList().get(0);
+							// Se recupera la fecha el último commit
+							Long lastCommitDate = latestCommit.getCommitDate().getTime();
+							// Si no hay nuevos commits en la nube
+							if (oldRepoStats.getLastCommit() == lastCommitDate) {
+								// Se utiliza la versión previa del RepoStat
+								synchronized (result) {
+									result.add(oldRepoStats);
+								}
+								
+								buffer.append(String.format("\t* %s repository has not changed! \n", repo));
+								
+								return;
+							}							
+						}
+						
 						// Añadir el RepoStats a la lista resultado
 						synchronized (result) {
 						    result.add(repoStats);
 						}
-
-						// Crear un objeto para procesar el repositorio
-						GHRepository repository = github.getRepository(owner + "/" + repoName);
-												
+						
 						// Obtener las ramas del repositorio
 						List<String> branches = repository.getBranches().keySet().stream().toList();						
-						repoStats.setBranches(branches.size());
-						
-						// StringBuffer para trazar el proceso
-						buffer = new StringBuffer(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));						
+						repoStats.setBranches(branches.size());						
 						
 						// Añadir información de la fecha de creación
 						repoStats.setCreationDate(repository.getCreatedAt().getTime());
