@@ -17,6 +17,7 @@ public class Configurator {
 	private boolean loadFromGithub = true;
 	private String statsFile = "";
 	private String repositoriesFile = "";
+	private String statsCSV = "";
 	
 	private Configurator() {
 		try {
@@ -27,6 +28,7 @@ public class Configurator {
 			loadFromGithub = properties.getProperty("update.from.github").equalsIgnoreCase("YES") ? true : false;
 			statsFile = properties.getProperty("stats.file");
 			repositoriesFile = properties.getProperty("repositories.file");
+			statsCSV = properties.getProperty("stats.csv");
 		} catch (Exception ex) {
 			System.err.format("* Error reading properties file: %s", ex.getMessage());
 		}
@@ -61,6 +63,10 @@ public class Configurator {
 
 	public String getRepositoriesFile() {
 		return repositoriesFile;
+	}
+	
+	public String getStatsCSV() {
+        return statsCSV;
 	}
 	
 	public List<String> getRepositories() {
