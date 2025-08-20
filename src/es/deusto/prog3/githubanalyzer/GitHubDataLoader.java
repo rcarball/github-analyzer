@@ -219,15 +219,9 @@ public class GitHubDataLoader {
 				if (commits != null) {
 					// Procesar los commits
 					for (GHCommit c : commits) {
-						// Se recupera la información del autor o committer del commit
-						GHUser user = c.getAuthor()!= null ? c.getAuthor() : c.getCommitter();
-						
-						// Se crea un objeto SimpleGitUser con la información del autor del commit
-						if (user != null) {
-							author = new SimpleGitUser(user.getLogin(), user.getEmail());							
-						} else {
-							author = new SimpleGitUser(c.getCommitShortInfo().getAuthor().getName(), c.getCommitShortInfo().getAuthor().getEmail());
-						}
+						// Se recupera la información del autor o committer del commit				
+						author = new SimpleGitUser(c.getCommitShortInfo().getCommitter().getName(), 
+								                   c.getCommitShortInfo().getCommitter().getEmail());
 						
 						// Se añade el commit al autor
 						result.putIfAbsent(author, new ArrayList<>());
