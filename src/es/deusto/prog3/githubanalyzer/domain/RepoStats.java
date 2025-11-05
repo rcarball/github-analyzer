@@ -20,9 +20,10 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private int branches;
 	private int commits;
 	private int codeLines;
-	private int linesAdded;
+	private int linesAdded, linesDeleted, linesChanged;
 	private int externalReferences;
 	private boolean isPublic;
+	private long lastPushTime;
 	
 	private Map<String, Integer> fileTypeMap = new HashMap<>();
 	
@@ -175,5 +176,29 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	@Override
 	public int compareTo(RepoStats o) {
 		return this.name.compareTo(o.name);
+	}
+
+	public long getLastPushTime() {
+		return lastPushTime;
+	}
+
+	public void setLastPushTime(long lastPushTime) {
+		this.lastPushTime = lastPushTime;
+	}
+
+	public int getLinesDeleted() {
+		return linesDeleted;
+	}
+
+	public void setLinesDeleted(int linesDeleted) {
+		this.linesDeleted = linesDeleted;
+	}
+
+	public int getLinesChanged() {
+		return linesChanged;
+	}
+
+	public void setLinesChanged(int linesChanged) {
+		this.linesChanged = linesChanged;
 	}
 }
