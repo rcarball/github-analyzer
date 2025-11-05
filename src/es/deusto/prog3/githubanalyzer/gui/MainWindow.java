@@ -19,14 +19,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
+import java.util.concurrent.ExecutionException;
 
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTree;
+import javax.swing.SwingWorker;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
@@ -35,8 +38,10 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 
+import es.deusto.prog3.githubanalyzer.GitHubDataLoader;
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
+import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
 	private static final long serialVersionUID = 1L;
@@ -53,25 +58,15 @@ public class MainWindow extends JFrame {
 	private JTable jTableUserStats;
 	private DefaultTableModel tableModelUserStats;
 	private JTree jTreeFileType;
+	private JTree jTreeRepos = new JTree();
+	
+	private JButton btnRefresh = new JButton("Refresh from GitHub");
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
 
 	public MainWindow(List<RepoStats> data) {
-		// Se crea un mapa con los datos de los repositorios
-		data.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
-
-		// Inicializar el root del JTree
-		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(String.format("%d Repositories", data.size()));
-
-		// Ahora agregamos los objetos RepoStats directamente en los nodos del JTree
-		data.forEach(repo -> {
-			DefaultMutableTreeNode repoNode = new DefaultMutableTreeNode(repo); // repo es de tipo RepoStats
-			repoRootNode.add(repoNode);
-		});
-
-		// Crear el JTree con los nodos que contienen objetos RepoStats
-		JTree jTreeRepos = new JTree(repoRootNode);
+		// Se configura el JTree de repositorios
 		jTreeRepos.setRowHeight(23);
 
 		// Asignar un renderizador personalizado como clase anónima
@@ -134,7 +129,10 @@ public class MainWindow extends JFrame {
 				selectedRepo = null;
 			}
 		});
-
+		
+		// Se cargan los datos iniciales de los repositorios
+		updateReposJTree(data);
+		// Se inicializa la tabla de persona colaboradoras
 		initTable();
 
 		JScrollPane reposJScrollPane = new JScrollPane(jTreeRepos);
@@ -228,11 +226,47 @@ public class MainWindow extends JFrame {
             	lblFooter.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));  // Volver al cursor por defecto
             }
         });
+
+		// Configuración del botón de refresco
+		btnRefresh.setToolTipText("Refresh data from GitHub");
+		btnRefresh.addActionListener(e -> {						
+			// SwingWorker para tareas largas en segundo plano
+	        SwingWorker<List<RepoStats>, String> worker = new SwingWorker<>() {
+	            
+	            @Override
+	            protected List<RepoStats> doInBackground() throws Exception {
+	                // Se obtienen las estadísticas desde GitHub
+	            	List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(null, true);
+	    	    	//Se guardan las estadísticas en un fichero binario
+	    	    	DataManager.getInstance().storeData(newStats);
+	    	    	// Se devuelve la nueva lista de estadísticas
+	    	    	return newStats;
+	            }
+
+	            @Override
+	            protected void done() {
+	            	try {
+		            	// Se actualizan los datos en la interfaz cuando se obtienen los nuevos datos
+		    	    	updateReposJTree(get());
+					} catch (InterruptedException | ExecutionException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+	            }
+	        };
+
+	        // Iniciar el worker
+	        worker.execute();
+		});
+		
+		JPanel topPanel = new JPanel(new BorderLayout());
+		topPanel.add(btnRefresh, BorderLayout.EAST);
 		
 		this.setTitle("GitHub repositories statistics");
-		this.setLayout(new BorderLayout(0, 0));
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
+		this.setLayout(new BorderLayout(0, 0));	
+		this.add(topPanel, BorderLayout.NORTH);
 		this.add(centralPanel, BorderLayout.CENTER);
 		this.add(reposJScrollPane, BorderLayout.WEST);
 		this.add(lblFooter, BorderLayout.SOUTH);
@@ -242,6 +276,27 @@ public class MainWindow extends JFrame {
 		this.setVisible(true);
 	}
 
+	private void updateReposJTree(List<RepoStats> data) {
+		// Se limpia el mapa de repositorios
+		repoStatsMap.clear();
+		
+		// Se crea un mapa con los datos de los repositorios
+		data.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
+		
+		// Inicializar el root del JTree
+		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(String.format("%d Repositories", data.size()));
+
+		// Ahora agregamos los objetos RepoStats directamente en los nodos del JTree
+		data.forEach(repo -> {
+			DefaultMutableTreeNode repoNode = new DefaultMutableTreeNode(repo); // repo es de tipo RepoStats
+			repoRootNode.add(repoNode);
+		});
+		
+		// Se actualiza el modelo del JTree
+		jTreeRepos.setModel(new DefaultTreeModel(repoRootNode));
+		
+	}
+	
 	private void initTable() {
 		Vector<String> cabecera = new Vector<String>(
 				Arrays.asList("", "USERNAME (EMAIL)", 

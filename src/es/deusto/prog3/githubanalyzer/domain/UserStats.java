@@ -61,7 +61,7 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(username);
+		return Objects.hash(email.toLowerCase());
 	}
 
 	@Override
@@ -73,7 +73,8 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		if (getClass() != obj.getClass())
 			return false;
 		UserStats other = (UserStats) obj;
-		return Objects.equals(username, other.username);
+		return Objects.equals(email.toLowerCase(), other.email.toLowerCase()) ||
+			   Objects.equals(username.toLowerCase(), other.username.toLowerCase());
 	}
 	
 	@Override

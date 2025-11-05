@@ -25,7 +25,7 @@ public class Main {
 		
     	if (Configurator.getInstance().isLoadFromGithub()) {
     		//Se obtienen las estadísticas desde GitHub
-	    	statsMap = GitHubDataLoader.getInstance().loadData(statsMap);		    	
+	    	statsMap = GitHubDataLoader.getInstance().loadData(statsMap, false);		    	
 	    	//Se guardan las estadísticas en un fichero binario
 	    	DataManager.getInstance().storeData(statsMap);		    	
     	}	

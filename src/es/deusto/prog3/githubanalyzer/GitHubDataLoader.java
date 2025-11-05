@@ -65,14 +65,14 @@ public class GitHubDataLoader {
 
 	/**
 	 * Carga los datos del repositorio.
-	 * @param statsMap Lista de estadísticas previamente cargadas (usada para caché).
+	 * @param initialStats Lista de estadísticas previamente cargadas (usada para caché).
 	 * @param forceRefresh Si es true, ignora la caché y vuelve a descargar todo desde GitHub.
 	 * @return Lista de estadísticas de repositorio actualizadas.
 	 */
-	public List<RepoStats> loadData(List<RepoStats> statsMap, boolean forceRefresh) {
-		// Validación de entrada
-		if (statsMap == null) {
-			statsMap = new ArrayList<>();
+	public List<RepoStats> loadData(List<RepoStats> initialStats, boolean forceRefresh) {
+		// Si no se pasa una lista previa de estadísticas, se crea una vacía
+		if (initialStats == null) {
+			initialStats = new ArrayList<>();
 		}
 		
 		List<RepoStats> result = Collections.synchronizedList(new ArrayList<>());
@@ -82,7 +82,6 @@ public class GitHubDataLoader {
 
 			// Obtener el número de procesadores disponibles
 			// Para tareas I/O (como llamadas API), es bueno tener más hilos que cores.
-			// +1 es una heurística común y más conservadora que * 2,
 			// para no agotar la cuota de la API tan rápido.
 			int numProcessors = Runtime.getRuntime().availableProcessors() + 1;
 
@@ -96,7 +95,7 @@ public class GitHubDataLoader {
 			GitHub github = new GitHubBuilder().withOAuthToken(Configurator.getInstance().getGithubToken()).build();
 			
 			// Referencia final para usar en lambda
-			final List<RepoStats> finalStatsMap = statsMap;
+			final List<RepoStats> finalStatsMap = initialStats;
 
 			// Por cada URL de repositorio
 			repos.forEach(repo -> {
@@ -126,15 +125,12 @@ public class GitHubDataLoader {
 						// Usamos 'pushedAt' en lugar del último commit.
 						// 'pushedAt' es un timestamp que actualiza GitHub con *cualquier* push
 						// (a cualquier rama, tags, etc.).
-						// Es una sola llamada (ya incluida en el objeto 'repository')
-						// en lugar de una llamada costosa para 'listCommits'.
 						long lastPushTime = repository.getPushedAt().getTime();
 						
 						// Si ya se había procesado el repositorio y estaba en el fichero
 						// Y NO estamos forzando la actualización
 						if (oldRepoStats != null && !forceRefresh) {
 							// Comparamos el timestamp del último push
-							// (Requiere que RepoStats tenga 'lastPushTime' en lugar de 'lastCommit')
 							if (oldRepoStats.getLastPushTime() == lastPushTime) {
 								// Se utiliza la versión previa del RepoStat
 								synchronized (result) {
@@ -142,13 +138,11 @@ public class GitHubDataLoader {
 								}
 								
 								buffer.append(String.format("\t* %s repository has not changed (using cache).\n", repo));
-								System.out.println(buffer.toString());
-								
 								return; // Fin, no procesamos este repo
 							}
 						}
 						
-						// Si no hay caché o está desactualizado, creamos uno nuevo
+						// Si no hay caché o está desactualizado, creamos un nuevo RepoStats
 						RepoStats repoStats = new RepoStats();
 						repoStats.setUrl(repo);
 						repoStats.setName(repoName);
