@@ -25,10 +25,12 @@ import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTree;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
@@ -248,9 +250,17 @@ public class MainWindow extends JFrame {
 	            	try {
 		            	// Se actualizan los datos en la interfaz cuando se obtienen los nuevos datos
 		    	    	updateReposJTree(get());
+		    	    	
+		    	    	SwingUtilities.invokeLater(() -> {
+			            	// Se muestra un mensaje de confirmación
+		    	    		JOptionPane.showMessageDialog(null,
+		    	    				"Data refreshed successfully from GitHub.", 
+		    	    				"Refresh Completed", 
+		    	    				JOptionPane.INFORMATION_MESSAGE);
+		    	    	});
+		    	    	
 					} catch (InterruptedException | ExecutionException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
+						System.err.println("Error refreshing data: " + e.getMessage());
 					}
 	            }
 	        };
