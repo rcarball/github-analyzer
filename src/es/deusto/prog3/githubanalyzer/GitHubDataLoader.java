@@ -1,6 +1,5 @@
 /**
- * 05/11/2025: Versión revisada y mejorada usando Gemini AI v 2.5Pro
- * Corrección de errores y optimizaciones varias.
+ * 09/11/2025: Versión revisada y mejorada usando Gemini AI v 2.5Pro
  */
 
 package es.deusto.prog3.githubanalyzer;
@@ -20,9 +19,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.kohsuke.github.GHBranch;
 import org.kohsuke.github.GHCommit;
+/**
+ * 05/11/2025: Versión revisada y mejorada usando Gemini AI v 2.5Pro
+ * Corrección de errores y optimizaciones varias.
+ * 09/11/2025: Corregidos bugs de conteo de commits, fechas y líneas añadidas (merge commits).
+ */
 import org.kohsuke.github.GHContent;
 import org.kohsuke.github.GHRepository;
 import org.kohsuke.github.GHUser;
@@ -38,7 +43,7 @@ import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 public class GitHubDataLoader {
 
 	private static final GitHubDataLoader instance = new GitHubDataLoader();
-	private final List<String> repos = Configurator.getInstance().getRepositories();
+	private final List<String> repos;
 	
 	// Constantes
 	private static final Pattern EXTERNAL_PATTERN = Pattern.compile("IAG|FUENTE-EXTERNA");
@@ -47,6 +52,17 @@ public class GitHubDataLoader {
 	private static final String JAVA_EXTENSION = ".java";
 
 	private GitHubDataLoader() {
+		// Cargar la lista desde el configurador
+		List<String> originalRepos = Configurator.getInstance().getRepositories();
+		
+		if (originalRepos != null) {
+			this.repos = new ArrayList<>(originalRepos.stream()
+				.map(String::trim) // Quitar espacios accidentales
+				.filter(repo -> repo != null && !repo.isEmpty()) // Filtrar nulos o vacíos
+				.collect(Collectors.toSet())); // toSet() elimina duplicados
+		} else {
+			this.repos = Collections.emptyList();
+		}
 	}
 
 	public static GitHubDataLoader getInstance() {
@@ -101,7 +117,6 @@ public class GitHubDataLoader {
 			repos.forEach(repo -> {
 				// Enviar una tarea al ExecutorService
 				Future<?> future = executorService.submit(() -> {
-					// Usar StringBuilder en lugar de StringBuffer (no se comparte entre hilos)
 					StringBuilder buffer = null;
 
 					try {
@@ -124,10 +139,9 @@ public class GitHubDataLoader {
 						// --- OPTIMIZACIÓN DE CACHÉ ---
 						// Usamos 'pushedAt' en lugar del último commit.
 						// 'pushedAt' es un timestamp que actualiza GitHub con *cualquier* push
-						// (a cualquier rama, tags, etc.).
 						long lastPushTime = repository.getPushedAt().getTime();
 						
-						// Si ya se había procesado el repositorio y estaba en el fichero
+						// Si ya se había procesado el repositorio y estaba en en la caché
 						// Y NO estamos forzando la actualización
 						if (oldRepoStats != null && !forceRefresh) {
 							// Comparamos el timestamp del último push
@@ -201,7 +215,9 @@ public class GitHubDataLoader {
 						repoStats.setFileTypeMap(fileCounters);
 
 						// Se obtienen los commits de todos los usuarios
-						Map<SimpleGitUser, List<GHCommit>> commitsPerUser = processBranches(repository, branches);
+						// Pasamos repoStats para que este método pueda rellenar
+						// el total de commits y las fechas globales del repo.
+						Map<SimpleGitUser, List<GHCommit>> commitsPerUser = processBranches(repository, branches, repoStats);
 						
 						// Procesar los commits por usuario
 						processCommitsPerUser(commitsPerUser, repository, repoStats, buffer);
@@ -352,10 +368,17 @@ public class GitHubDataLoader {
 	    }
 	}
 	
+	// Se añade RepoStats como parámetro para poder rellenar el
+	// total de commits y las fechas globales del repositorio.
 	private Map<SimpleGitUser, List<GHCommit>> processBranches(GHRepository repository, 
-	                                                           Map<String, GHBranch> branches) {
+	                                                           Map<String, GHBranch> branches,
+	                                                           RepoStats repoStats) {
 	    Map<SimpleGitUser, List<GHCommit>> result = new HashMap<>();
 	    Set<String> processedCommits = new HashSet<>();
+	    	
+	    // Variables para almacenar las fechas del primer y último commit del REPO
+	    long repoFirstCommitDate = Long.MAX_VALUE;
+	    long repoLastCommitDate = Long.MIN_VALUE;
 	    
 	    try {
 	        // Procesar cada rama
@@ -379,13 +402,24 @@ public class GitHubDataLoader {
 	                    }
 	                    processedCommits.add(commitSHA);
 	                    
-	                    // --- CORRECCIÓN CRÍTICA: Autor vs. Committer ---
+	                    // Actualizar fechas globales del repo
+	                    try {
+	                        long commitTime = c.getCommitDate().getTime();
+	                        if (commitTime < repoFirstCommitDate) {
+	                            repoFirstCommitDate = commitTime;
+	                        }
+	                        if (commitTime > repoLastCommitDate) {
+	                            repoLastCommitDate = commitTime;
+	                        }
+	                    } catch (Exception e) {
+	                        // A veces la API de fecha puede fallar, mejor protegerlo
+	                        System.err.println("Error al obtener fecha del commit: " + c.getSHA1());
+	                    }
+	                    
 	                    // El 'Committer' es quien pulsa "merge" (puedes ser tú).
 	                    // El 'Author' es quien escribió el código (el alumno).
 	                    // Queremos al 'Author'.
 	                    
-	                    // Usamos el "Fully Qualified Name" (nombre completo) para evitar problemas
-	                    // de importación con el JAR de la v1.329
 	                    GitUser authorInfo = c.getCommitShortInfo().getAuthor();
 	                    
 	                    String name = (authorInfo != null) ? authorInfo.getName() : "Unknown";
@@ -409,6 +443,11 @@ public class GitHubDataLoader {
 	        System.err.printf("\t* Error processing branches of '%s': %s\n\n", 
 	            repository.getName(), ex.getMessage());
 	    }
+	    
+	    // Guardamos el total de commits únicos y las fechas globales en el RepoStats
+	    repoStats.setCommits(processedCommits.size());
+	    repoStats.setFirstCommit(repoFirstCommitDate == Long.MAX_VALUE ? -1 : repoFirstCommitDate);
+	    repoStats.setLastCommit(repoLastCommitDate == Long.MIN_VALUE ? -1 : repoLastCommitDate);
 	    
 	    return result;
 	}
@@ -434,10 +473,35 @@ public class GitHubDataLoader {
 		int linesAdded = 0;
 		int linesDeleted = 0;
 		int linesChanged = 0;
+		
+		// Variables para encontrar el rango de fechas real
+		long firstCommitDate = Long.MAX_VALUE;
+		long lastCommitDate = Long.MIN_VALUE;
 
 		try {
 			// Procesar los commits
 			for (GHCommit commit : commits) {
+			    // Si el commit tiene más de 1 "padre", es un "merge commit".
+			    // Los merge commits a menudo duplican el conteo de líneas
+			    // (sumando todo el trabajo de la rama que se fusiona).
+			    // Los saltamos para evitar inflar las estadísticas.
+			    if (commit.getParents() != null && commit.getParents().size() > 1) {
+			        continue; // Saltar este commit
+			    }
+
+				// Actualizar las fechas min/max para este usuario
+				try {
+					long commitTime = commit.getCommitDate().getTime();
+					if (commitTime < firstCommitDate) {
+						firstCommitDate = commitTime;
+					}
+					if (commitTime > lastCommitDate) {
+						lastCommitDate = commitTime;
+					}
+				} catch (Exception e) {
+					// Proteger en caso de que la fecha falle
+				}
+				
 				// Recuperar los ficheros afectados por el commit
 				// Esta es la llamada más costosa. 1 por commit.
 				List<GHCommit.File> files = commit.listFiles().toList();
@@ -460,9 +524,11 @@ public class GitHubDataLoader {
 				}
 			}
 
-			// Simplificar cálculo de fechas
-			long firstCommitDate = commits.isEmpty() ? -1 : commits.get(commits.size() - 1).getCommitDate().getTime();
-			long lastCommitDate = commits.isEmpty() ? -1 : commits.get(0).getCommitDate().getTime();
+			// Asignar las fechas corregidas (o -1 si no se encontraron)
+			if (commits.isEmpty()) {
+			    firstCommitDate = -1;
+			    lastCommitDate = -1;
+			}
 
 			// Añadir nuevo UserStats al RepoStats
 			repoStats.addUserStats(new UserStats(
