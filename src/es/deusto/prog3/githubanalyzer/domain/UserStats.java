@@ -59,6 +59,14 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		return lastCommit;
 	}
 
+	public int getChurn() {
+		return added + deleted;
+	}
+	
+	public int getNetLines() {
+		return added - deleted;
+	}
+
 	@Override
 	public int hashCode() {
 		return Objects.hash(email.toLowerCase());
