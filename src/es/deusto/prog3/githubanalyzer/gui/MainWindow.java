@@ -43,6 +43,7 @@ import javax.swing.tree.DefaultTreeModel;
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader;
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
+import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
@@ -152,6 +153,17 @@ public class MainWindow extends JFrame {
 		lblLinesChanged = new JLabel("- Total lines changed:");
 		lblExternalRefs = new JLabel("- External references:");
 		lblURL = new JLabel("- URL:");
+		
+		// Tooltips para las etiquetas
+		lblCommits.setToolTipText("Unique commits in the repository across all branches (deduplicated by SHA).");
+		lblCreationDate.setToolTipText("Repository creation date (GitHub).");
+		lblFirstCommit.setToolTipText("Earliest commit date detected in the analyzed history.");
+		lblLastCommit.setToolTipText("Latest commit date detected in the analyzed history.");
+		lblColeLines.setToolTipText("Total lines of code in .java files (counted from repository contents).");
+		lblLinesChanged.setToolTipText("Java churn = total added + deleted lines in .java files (excluding merge commits).");
+		lblExternalRefs.setToolTipText("Occurrences of external-reference patterns (IAG or FUENTE-EXTERNA) in .java files.");
+		lblURL.setToolTipText("Open the repository in your browser.");
+
 		
         // Añadir el MouseListener para capturar el clic
 		lblURL.addMouseListener(new MouseAdapter() {
@@ -308,160 +320,196 @@ public class MainWindow extends JFrame {
 	}
 	
 	private void initTable() {
-		Vector<String> cabecera = new Vector<String>(
-				Arrays.asList("", "USERNAME (EMAIL)", 
-						          "<html>LINES<br>ADDED</html>", 
-						          "<html>% LINES<br>ADDED</html>", 
-						          "<html>LINES<br>DELETED</html>",
-						          "<html>MODIFIED<br>FILES</html>", 
-						          "COMMITS", 
-						          "LAST COMMIT", 
-						          "FIRST COMMIT"));				
-		tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera);
-		jTableUserStats = new JTable(tableModelUserStats) {
-			private static final long serialVersionUID = 1L;
+	    Vector<String> cabecera = new Vector<>(
+	        Arrays.asList("USERNAME (EMAIL)",
+	            "<html>JAVA<br>ADDED</html>",
+	            "<html>JAVA<br>DELETED</html>",
+	            "<html>JAVA<br>CHURN</html>",
+	            "<html>% JAVA<br>CHURN</html>",
+	            "<html>JAVA<br>FILES</html>",
+	            "<html>JAVA<br>COMMITS</html>",
+	            "<html>LAST<br>COMMIT</html>",
+	            "<html>FIRST<br>COMMIT</html>")
+	    );
 
-			public boolean isCellEditable(int row, int col) {
-				return false;
-			}
-		};
-		
-		// Establecer la altura de la cabecera
-        JTableHeader header = jTableUserStats.getTableHeader();
-        header.setPreferredSize(new Dimension(header.getPreferredSize().width, 35)); // Altura de 40 píxeles
+	    tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera);
 
-		TableCellRenderer cellRenderer = (table, value, isSelected, hasFocus, row, column) -> {
-			JLabel result = new JLabel(String.format(" %s", value.toString()));			
-			result.setHorizontalAlignment(JLabel.CENTER);
+	    jTableUserStats = new JTable(tableModelUserStats) {
+	        private static final long serialVersionUID = 1L;
 
-			// Configuración de la alineación y formato del valor dependiendo de su tipo
-			if (value instanceof String) {
-				result.setHorizontalAlignment(JLabel.LEFT);
-			} else if (value instanceof Long) {
-				if (((long) value) != -1) {
-					result.setText(dateFormat.format(new Date((long) value)));
-				} else {
-					result.setText("-");
-				}
-			} else if (value instanceof Float) {
-				result.setText(String.format("%.2f %%", (float) value * 100));
-				result.setHorizontalAlignment(JLabel.RIGHT);
-			} else if (value instanceof Integer) {
-				result.setHorizontalAlignment(JLabel.RIGHT);
-			}
-			
-			if (column == 0) {
-				result.setHorizontalAlignment(JLabel.CENTER);
-			}				
+	        @Override
+	        public boolean isCellEditable(int row, int col) {
+	            return false;
+	        }
 
-			if (selectedRepo != null) {				
-				if (row >= repoStatsMap.get(selectedRepo).getUserStats().size()) {
-					System.out.println("Row: " + row);
-					repoStatsMap.get(selectedRepo).getUserStats().forEach(u -> System.out.println(u));
-                    return result;
-				}
-				
-				UserStats user = repoStatsMap.get(selectedRepo).getUserStats().get(row);
-				
-				int numCollaborators = repoStatsMap.get(selectedRepo).getUserStats().size();
-				
-		        float contribution = ((float) user.getAdded()) / repoStatsMap.get(selectedRepo).getLinesAdded();
+	        @Override
+	        public String getToolTipText(java.awt.event.MouseEvent e) {
+	            if (selectedRepo == null) return super.getToolTipText(e);
 
-		        // Configuración del color de texto en función de las estadísticas del usuario
-		        if (user.getAdded() == 0 || user.getFirstCommit() == -1 || contribution < 1.0 / numCollaborators * 0.5) {		        	
-		        	result.setForeground(new Color(234, 23, 68));  // Ninguna contribución
-		        	
-		        	if (column == 0) {
-		        		result.setIcon(new ImageIcon("resources/images/none.png"));
-		        		result.setToolTipText("No contribution to the repository");
-		        	}		        	
-		        } else {
-		            // Aportación muy superior a la media
-		            if (contribution >= 1.0 / numCollaborators * 1.25) {		                
-		                result.setForeground(new Color(54, 130, 127));
-		                
-			        	if (column == 0) {
-			        		result.setIcon(new ImageIcon("resources/images/excellent.png"));
-			        		result.setToolTipText("Excellent: contribution 25% above expected average");
-			        	}		        
-		        	
-		        	// Aportación superior o igual a la media
-		            } else if (contribution >= 1.0 / numCollaborators) {		                
-		                result.setForeground(new Color(54, 130, 127));
-		                
-			        	if (column == 0) {
-			        		result.setIcon(new ImageIcon("resources/images/good.png"));
-			        		result.setToolTipText("Good contribution: around expected average");
-			        	}		        	
-		            // Aportación inferior a la media
-		            } else {
-		            	result.setForeground(new Color(245, 143, 41));
-		            	
-			        	if (column == 0) {
-			        		result.setIcon(new ImageIcon("resources/images/poor.png"));
-			        		result.setToolTipText("Low contribution: below expected average");
-			        	}		        	
-		            }
-		        }
-		    }
-			
-		    // Configuración de fondo para celdas seleccionadas
-		    if (isSelected) {
-		        result.setBackground(table.getSelectionBackground());
-		        result.setForeground(table.getSelectionForeground());
-		    } else {
-		        result.setBackground(table.getBackground());
-		    }
+	            int row = rowAtPoint(e.getPoint());
+	            if (row < 0) return super.getToolTipText(e);
 
-		    // Se añade un tooltip con texto de la cela
-		    if (!result.getText().isEmpty()) {
-		    	result.setToolTipText(result.getText());
-		    }		 		    		    
-		    
-			result.setOpaque(true); // Necesario para que el fondo se pinte correctamente
+	            RepoStats repo = repoStatsMap.get(selectedRepo);
+	            if (repo == null) return super.getToolTipText(e);
 
-			return result;
-		};
+	            // Si más adelante ocultas al docente, esta línea habrá que adaptarla
+	            if (row >= repo.getUserStats().size()) return super.getToolTipText(e);
 
-		TableCellRenderer headerRenderer = (table, value, isSelected, hasFocus, row, column) -> {
-			JLabel result = new JLabel(value.toString());
-			result.setHorizontalAlignment(JLabel.RIGHT);
+	            UserStats u = repo.getUserStats().get(row);
+	            return buildInterpretationTooltip(repo, u);
+	        }
+	    };
 
-			if (column == 1) {
-				result.setHorizontalAlignment(JLabel.LEFT);
-			} else if (column > 6) {
-				result.setHorizontalAlignment(JLabel.CENTER);
-			}
+	    // Altura de la cabecera
+	    JTableHeader header = jTableUserStats.getTableHeader();
+	    header.setPreferredSize(new Dimension(header.getPreferredSize().width, 35));
 
-			result.setBackground(table.getBackground());
-			result.setForeground(table.getForeground());
-			result.setFont(table.getFont().deriveFont(Font.BOLD));
-			result.setOpaque(true);
+	    TableCellRenderer cellRenderer = (table, value, isSelected, hasFocus, row, column) -> {
+	    	Object safeValue = (value == null) ? "" : value;
+	    	JLabel result = new JLabel(" " + safeValue.toString());
+	        result.setHorizontalAlignment(JLabel.CENTER);
 
-			return result;
-		};
+	        // Tooltip básico de la celda (si tiene texto útil)
+	        String tt = result.getText() != null ? result.getText().trim() : "";
+	        if (!tt.isEmpty() && !"-".equals(tt)) result.setToolTipText(tt);
+	        else result.setToolTipText(null);
 
-		jTableUserStats.setRowHeight(26);
-		jTableUserStats.setShowGrid(false);
-		jTableUserStats.getTableHeader().setReorderingAllowed(false);
-		jTableUserStats.getTableHeader().setResizingAllowed(false);
-		jTableUserStats.setAutoCreateRowSorter(false);
-		jTableUserStats.setFillsViewportHeight(true);
-		jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);		
-		jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(15);
-		jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(220);
-		jTableUserStats.getColumnModel().getColumn(2).setPreferredWidth(30);
-		jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(45);
-		jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(45);
-		jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(45);
-		jTableUserStats.getColumnModel().getColumn(6).setPreferredWidth(45);
-		jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
+	        // Formato por tipo
+	        if (value instanceof String) {
+	            result.setHorizontalAlignment(JLabel.LEFT);
+	        } else if (value instanceof Long) {
+	            if (((long) value) != -1) result.setText(dateFormat.format(new Date((long) value)));
+	            else result.setText("-");
+	        } else if (value instanceof Float) {
+	            result.setText(String.format("%.2f %%", (float) value * 100));
+	            result.setHorizontalAlignment(JLabel.RIGHT);
+	        } else if (value instanceof Integer) {
+	            result.setHorizontalAlignment(JLabel.RIGHT);
+	        }
+
+	        if (column == 0) result.setHorizontalAlignment(JLabel.LEFT);
+
+	        if (selectedRepo != null) {
+	            RepoStats repo = repoStatsMap.get(selectedRepo);
+	            if (repo != null) {
+
+	                if (row >= repo.getUserStats().size()) return result;
+
+	                UserStats user = repo.getUserStats().get(row);
+
+	                // Contribuyentes reales (sin docente) para expected share dinámico
+	                int numContributors = Math.max(1, realContributorsExcludingTeacher(repo).size());
+	                float expected = 1.0f / numContributors;
+
+	                int repoChurn = repo.getLinesChanged(); // changed = churn (added+deleted)
+	                int userChurn = user.getAdded() + user.getDeleted();
+	                float contribution = (repoChurn == 0) ? 0f : ((float) userChurn) / repoChurn;
+
+	                boolean teacher = isTeacher(user);
+
+	                if (!teacher && (userChurn == 0 || user.getFirstCommit() == -1 || contribution < expected * 0.5f)) {
+	                    result.setForeground(new Color(234, 23, 68)); // muy por debajo de lo esperado
+
+	                    if (column == 0) {
+	                        result.setToolTipText("Very low or no contribution (below 50% of expected share).");
+	                    }
+	                } else if (teacher) {
+	                    // Docente: estilo neutro (no entra en expected)
+	                    result.setForeground(Color.DARK_GRAY);
+	                    if (column == 0) {
+	                        result.setToolTipText("Teacher account (excluded from expected-share calculation).");
+	                    }
+	                } else {
+	                    if (contribution >= expected * 1.25f) {
+	                        result.setForeground(new Color(54, 130, 127));
+	                        if (column == 0) {
+	                            result.setToolTipText("Excellent: contribution 25% above expected average");
+	                        }
+	                    } else if (contribution >= expected) {
+	                        result.setForeground(new Color(54, 130, 127));
+	                        if (column == 0) {
+	                            result.setToolTipText("Good contribution: around expected average");
+	                        }
+	                    } else {
+	                        result.setForeground(new Color(245, 143, 41));
+	                        if (column == 0) {
+	                            result.setToolTipText("Low contribution: below expected average");
+	                        }
+	                    }
+	                }
+	            }
+	        }
+
+	        // Fondo para selección
+	        if (isSelected) {
+	            result.setBackground(table.getSelectionBackground());
+	            result.setForeground(table.getSelectionForeground());
+	        } else {
+	            result.setBackground(table.getBackground());
+	        }
+
+	        result.setOpaque(true);
+	        return result;
+	    };
+
+	    final String[] headerTooltips = new String[] {
+    	    "GitHub username (login) when available; otherwise derived from commit author info. Emoji indicates contribution level.",
+    	    "Java lines added (sum over non-merge commits).",
+    	    "Java lines deleted (sum over non-merge commits).",
+    	    "Java churn = added + deleted (sum over non-merge commits).",
+    	    "% of repository Java churn attributed to this user.",
+    	    "Number of distinct .java files modified by the user.",
+    	    "Number of non-merge commits that modified at least one .java file.",
+    	    "Date of the user's last non-merge commit considered.",
+    	    "Date of the user's first non-merge commit considered."
+	    };
+	    
+	    TableCellRenderer headerRenderer = (table, value, isSelected, hasFocus, row, column) -> {
+	        JLabel result = new JLabel(value.toString());
+	        result.setText(value.toString());
+
+	        result.setHorizontalAlignment(JLabel.RIGHT);
+	        
+	        if (column == 0) result.setHorizontalAlignment(JLabel.LEFT);
+	        else if (column >= 7) result.setHorizontalAlignment(JLabel.CENTER);
+	        else result.setHorizontalAlignment(JLabel.RIGHT);
+	        
+	        result.setFont(table.getFont().deriveFont(Font.BOLD));
+	        result.setBackground(table.getBackground());
+	        result.setForeground(table.getForeground());
+	        result.setOpaque(true);
+
+	        if (column >= 0 && column < headerTooltips.length) {
+	            result.setToolTipText(headerTooltips[column]);
+	        }
+	        return result;
+	    };
+
+	    jTableUserStats.setRowHeight(26);
+	    jTableUserStats.setShowGrid(false);
+	    jTableUserStats.getTableHeader().setReorderingAllowed(false);
+	    jTableUserStats.getTableHeader().setResizingAllowed(false);
+	    jTableUserStats.setAutoCreateRowSorter(false);
+	    jTableUserStats.setFillsViewportHeight(true);
+	    jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);
+
+	    jTableUserStats.getColumnModel().getColumn(0).setPreferredWidth(260); // username
+	    jTableUserStats.getColumnModel().getColumn(1).setPreferredWidth(55);  // added
+	    jTableUserStats.getColumnModel().getColumn(2).setPreferredWidth(55);  // deleted
+	    jTableUserStats.getColumnModel().getColumn(3).setPreferredWidth(55);  // churn
+	    jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(55);  // % churn
+	    jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(55);  // java files
+	    jTableUserStats.getColumnModel().getColumn(6).setPreferredWidth(55);  // java commits
+	    jTableUserStats.getColumnModel().getColumn(7).setPreferredWidth(75);  // last
+	    jTableUserStats.getColumnModel().getColumn(8).setPreferredWidth(75);  // first
+
+	    jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
 	}
-
+	
 	private void loadRepoStats(RepoStats repoStats) {
 		if (repoStats != null) {
 			// Se actualizan las estadísticas generales del repo
-			lblCreationDate.setText(String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));
+			lblCreationDate.setText(String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));			
 			
 			if (repoStats.getFirstCommit() == -1) {
                 lblFirstCommit.setText("- First commit: -");
@@ -475,9 +523,18 @@ public class MainWindow extends JFrame {
 				lblLastCommit.setText(String.format("- Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
 			}
 			
-			lblCommits.setText(String.format("- Total commits: %d", repoStats.getCommits()));
+			int javaCommitsSum = repoStats.getUserStats().stream().mapToInt(UserStats::getCommits).sum();
+
+			lblCommits.setText(String.format("- Total commits (unique): %d", repoStats.getCommits()));
+			lblCommits.setToolTipText(String.format(
+			    "<html>Unique commits across all branches (deduplicated by SHA).<br>" +
+			    "Java commits (sum of users, non-merge commits touching .java): %d</html>",
+			    javaCommitsSum
+			));
+			
 			lblColeLines.setText(String.format("- Total lines of code: %d", repoStats.getCodeLines()));
-			lblLinesChanged.setText(String.format("- Total lines added: %d", repoStats.getLinesAdded()));
+			lblLinesChanged.setText(String.format("- Java churn (added+deleted): %d", repoStats.getLinesChanged()));
+			lblLinesChanged.setToolTipText(String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
 			lblExternalRefs.setText(String.format("- External references: %d", repoStats.getExternalReferences()));
 			lblURL.setText(String.format("<html>- <u><i>%s</i></u></html>", repoStats.getName()));			
 			lblURL.setForeground(Color.BLUE);  // Color de hipervínculo			
@@ -485,15 +542,33 @@ public class MainWindow extends JFrame {
 			// Se actualiza la tabla de colaboradores
 			tableModelUserStats.setRowCount(0);
 
-			repoStats.getUserStats().forEach(s -> tableModelUserStats.addRow(new Object[] { "", 
-																				s.getEmail() != null ? String.format("%s (%s)", s.getUsername(), s.getEmail()) : s.getUsername(),
-																			    s.getAdded(),
-																				(s.getAdded() == 0) ? 0 : ((float) s.getAdded()) / repoStats.getLinesAdded(),
-																				s.getDeleted(),
-																				s.getJavaFiles(),
-																				s.getCommits(),
-																				s.getLastCommit(),
-																				s.getFirstCommit() }));
+			int repoChurn = repoStats.getLinesChanged(); // churn java
+			int numContributors = Math.max(1, realContributorsExcludingTeacher(repoStats).size());
+			float expected = 1.0f / numContributors;
+
+			repoStats.getUserStats().forEach(s -> {
+			    int churn = s.getAdded() + s.getDeleted();
+			    float pct = (repoChurn == 0) ? 0f : ((float) churn) / repoChurn;
+
+			    String baseName = (s.getEmail() != null && !s.getEmail().isBlank())
+			        ? String.format("%s (%s)", s.getUsername(), s.getEmail())
+			        : s.getUsername();
+
+			    String emoji = getContributionEmoji(repoStats, s, expected, repoChurn); // nuevo método
+			    String displayName = emoji + " " + baseName;
+
+			    tableModelUserStats.addRow(new Object[] {
+			        displayName,
+			        s.getAdded(),
+			        s.getDeleted(),
+			        churn,
+			        pct,
+			        s.getJavaFiles(),
+			        s.getCommits(),
+			        s.getLastCommit(),
+			        s.getFirstCommit()
+			    });
+			});
 
 			// Se actualiza el árbol de tipos de ficheros
 			DefaultMutableTreeNode root = (DefaultMutableTreeNode) jTreeFileType.getModel().getRoot();
@@ -510,7 +585,7 @@ public class MainWindow extends JFrame {
 			lblLastCommit.setText("- Last commit:");
 			lblCommits.setText("- Total commits:");
 			lblColeLines.setText("- Total lines of code:");
-			lblLinesChanged.setText("- Total lines changed:");
+			lblLinesChanged.setText("- Java churn (added+deleted):");
 			lblExternalRefs.setText("- External references:");
 			lblURL.setText("- URL:");
 
@@ -527,4 +602,137 @@ public class MainWindow extends JFrame {
 	private ImageIcon scaleIcon(ImageIcon icon) {
 		return new ImageIcon(icon.getImage().getScaledInstance(22, 22, Image.SCALE_SMOOTH));
 	}
+	
+	private boolean isTeacher(UserStats u) {
+	    String tUser = Configurator.getInstance().getTeacherUser();
+	    String tEmail = Configurator.getInstance().getTeacherEmail();
+
+	    String user = (u.getUsername() == null) ? "" : u.getUsername().trim().toLowerCase();
+	    String email = (u.getEmail() == null) ? "" : u.getEmail().trim().toLowerCase();
+
+	    if (tUser != null && !tUser.isBlank() && user.equals(tUser.trim().toLowerCase())) return true;
+
+	    if (tEmail != null && !tEmail.isBlank()) {
+	        String te = tEmail.trim().toLowerCase();
+	        if (!email.isBlank() && email.equals(te)) return true;
+
+	        int at1 = email.indexOf('@');
+	        int at2 = te.indexOf('@');
+	        String lp1 = at1 > 0 ? email.substring(0, at1) : email;
+	        String lp2 = at2 > 0 ? te.substring(0, at2) : te;
+	        if (!lp1.isBlank() && lp1.equals(lp2)) return true;
+	    }
+	    return false;
+	}
+
+	private int userChurn(UserStats u) {
+	    return u.getAdded() + u.getDeleted();
+	}
+
+	private boolean isRealContributor(UserStats u) {
+	    return userChurn(u) > 0 || u.getCommits() > 0;
+	}
+
+	private List<UserStats> realContributorsExcludingTeacher(RepoStats repo) {
+	    return repo.getUserStats().stream()
+	        .filter(u -> !isTeacher(u))
+	        .filter(this::isRealContributor)
+	        .collect(java.util.stream.Collectors.toList());
+	}
+	
+	private String buildInterpretationTooltip(RepoStats repo, UserStats u) {
+	    int repoChurn = repo.getLinesChanged(); // churn java
+	    int uChurn = userChurn(u);
+	    int commitsJava = u.getCommits();
+
+	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
+	    int n = Math.max(1, contributors.size());
+	    float expected = 1f / n;
+
+	    float share = (repoChurn <= 0) ? 0f : (uChurn / (float) repoChurn);
+	    float churnPerCommit = (commitsJava <= 0) ? 0f : (uChurn / (float) commitsJava);
+
+	    // Umbrales relativos (ajustables)
+	    float low = expected * 0.5f;     // < 50% de lo esperado
+	    float okMin = expected * 0.8f;   // 80% de lo esperado
+	    float okMax = expected * 1.2f;   // 120% de lo esperado
+	    float high = expected * 1.25f;   // 125% de lo esperado
+	    float motor = expected * 2.0f;   // el doble de lo esperado (más justo que 50-60% fijo)
+
+	    // IA/pegado: mejor relativo al repo: churn por commit comparado con media del repo
+	    float avgChurnPerCommit = 0f;
+	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
+	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
+	    if (totalCommitsJava > 0) avgChurnPerCommit = totalChurn / (float) totalCommitsJava;
+
+	    boolean suspiciousAI = commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f;
+
+	    StringBuilder sb = new StringBuilder("<html>");
+	    sb.append("<b>Interpretación docente (indicadores)</b><br>");
+	    sb.append(String.format("Contribuyentes reales (sin docente): <b>%d</b> → esperado ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
+
+	    if (isTeacher(u)) {
+	        sb.append("👩‍🏫 Este usuario está marcado como <b>docente</b> (excluido del cálculo de esperado).<br>");
+	        sb.append("</html>");
+	        return sb.toString();
+	    }
+
+	    // ✅ Contribución equilibrada
+	    if (share >= okMin && share <= okMax && commitsJava > 0) {
+	        sb.append("✅ <b>Contribución equilibrada</b>: cerca de lo esperado para el tamaño del equipo.<br>");
+	    }
+
+	    // ⚠️ Motor del equipo
+	    if (share >= motor) {
+	        sb.append("⚠️ <b>“Motor” del equipo</b>: muy por encima de lo esperado. Revisar reparto de tareas.<br>");
+	    }
+	    
+	    // 🌟 Aporte alto
+	    if (share >= high) {
+	        sb.append("🌟 <b>Aporte alto</b>: por encima de lo esperado para el tamaño del equipo.<br>");
+	    }
+
+	    // ⚠️ Aporte mínimo
+	    if (uChurn == 0 || commitsJava == 0 || share < low) {
+	        sb.append("⚠️ <b>Aporte mínimo</b>: por debajo de lo esperado o casi nulo. Revisar evidencia adicional.<br>");
+	    }
+
+	    // 🧠 Patrón IA/pegado (relativo a la media del repo)
+	    if (suspiciousAI) {
+	        sb.append("🧠 <b>Patrón IA/pegado</b>: churn por commit muy alto respecto a la media del repo. Pedir defensa.<br>");
+	    }
+
+	    // 🔁 Corrección/limpieza (mucho borrado)
+	    if (uChurn > 0) {
+	        float delRatio = u.getDeleted() / (float) uChurn;
+	        if (delRatio >= 0.55f && uChurn >= 200) {
+	            sb.append("🔁 <b>Trabajo de corrección/limpieza</b>: alto porcentaje de borrado. Comprobar contexto.<br>");
+	        }
+	    }
+
+	    // ⏱️ Ritmo irregular (todo al final)
+	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1 && repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
+	        long repoSpan = repo.getLastCommit() - repo.getFirstCommit();
+	        long userLastOffset = u.getLastCommit() - repo.getFirstCommit();
+	        if (repoSpan > 0 && (userLastOffset / (float) repoSpan) > 0.85f && uChurn >= 200) {
+	            sb.append("⏱️ <b>Ritmo irregular</b>: actividad concentrada al final del periodo.<br>");
+	        }
+	    }
+
+	    sb.append("</html>");
+	    return sb.toString();
+	}
+	
+	private String getContributionEmoji(RepoStats repo, UserStats user, float expected, int repoChurn) {
+	    if (isTeacher(user)) return "👩‍🏫";
+
+	    int churn = userChurn(user);
+	    float share = (repoChurn == 0) ? 0f : (churn / (float) repoChurn);
+
+	    if (churn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f) return "⛔";
+	    if (share >= expected * 1.25f) return "🌟";
+	    if (share >= expected) return "✅";
+	    return "⚠️";
+	}
+
 }

@@ -18,6 +18,8 @@ public class Configurator {
 	private String statsFile = "";
 	private String repositoriesFile = "";
 	private String statsCSV = "";
+	private String teacherUser = "";
+	private String teacherEmail = "";
 	
 	private Configurator() {
 		try {
@@ -29,6 +31,8 @@ public class Configurator {
 			statsFile = properties.getProperty("stats.file");
 			repositoriesFile = properties.getProperty("repositories.file");
 			statsCSV = properties.getProperty("stats.csv");
+			teacherUser = properties.getProperty("teacher.user");
+			teacherEmail = properties.getProperty("teacher.email");
 		} catch (Exception ex) {
 			System.err.format("* Error reading properties file: %s", ex.getMessage());
 		}
@@ -69,6 +73,14 @@ public class Configurator {
         return statsCSV;
 	}
 	
+	public String getTeacherUser() {
+		return teacherUser;
+	}
+
+	public String getTeacherEmail() {
+		return teacherEmail;
+	}
+
 	public List<String> getRepositories() {
 		List<String> result = new ArrayList<>();
 		
