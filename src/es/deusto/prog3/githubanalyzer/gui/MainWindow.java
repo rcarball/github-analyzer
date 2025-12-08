@@ -11,9 +11,12 @@ import java.awt.GridLayout;
 import java.awt.Image;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.net.URI;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -21,6 +24,7 @@ import java.util.Map;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 
+import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFrame;
@@ -32,6 +36,7 @@ import javax.swing.JTable;
 import javax.swing.JTree;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
+import javax.swing.ToolTipManager;
 import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
@@ -57,6 +62,7 @@ public class MainWindow extends JFrame {
 	private JLabel lblLinesChanged;
 	private JLabel lblExternalRefs;
 	private JLabel lblURL;
+	private JLabel lblStatus = new JLabel(" ");
 	private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
 	private JTable jTableUserStats;
 	private DefaultTableModel tableModelUserStats;
@@ -66,6 +72,7 @@ public class MainWindow extends JFrame {
 	private JButton btnRefresh = new JButton("Refresh from GitHub");
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
+	private List<UserStats> displayedUsers = new ArrayList<>();
 	private String selectedRepo;
 
 	public MainWindow(List<RepoStats> data) {
@@ -163,7 +170,6 @@ public class MainWindow extends JFrame {
 		lblLinesChanged.setToolTipText("Java churn = total added + deleted lines in .java files (excluding merge commits).");
 		lblExternalRefs.setToolTipText("Occurrences of external-reference patterns (IAG or FUENTE-EXTERNA) in .java files.");
 		lblURL.setToolTipText("Open the repository in your browser.");
-
 		
         // Añadir el MouseListener para capturar el clic
 		lblURL.addMouseListener(new MouseAdapter() {
@@ -281,6 +287,13 @@ public class MainWindow extends JFrame {
 	        worker.execute();
 		});
 		
+		lblStatus.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
+		lblStatus.setForeground(new Color(80, 80, 80));
+
+		JPanel bottomPanel = new JPanel(new BorderLayout());
+		bottomPanel.add(lblStatus, BorderLayout.WEST);
+		bottomPanel.add(lblFooter, BorderLayout.EAST);
+				
 		JPanel topPanel = new JPanel(new BorderLayout());
 		topPanel.add(btnRefresh, BorderLayout.EAST);
 		
@@ -290,12 +303,18 @@ public class MainWindow extends JFrame {
 		this.setLayout(new BorderLayout(0, 0));	
 		this.add(topPanel, BorderLayout.NORTH);
 		this.add(centralPanel, BorderLayout.CENTER);
-		this.add(reposJScrollPane, BorderLayout.WEST);
-		this.add(lblFooter, BorderLayout.SOUTH);
+		this.add(reposJScrollPane, BorderLayout.WEST);		
+		this.add(bottomPanel, BorderLayout.SOUTH);
 
 		this.setSize(1200, 700);
 		this.setLocationRelativeTo(null);
-		this.setVisible(true);
+	
+		// Tooltips más “lentos” (en ms)
+		ToolTipManager.sharedInstance().setInitialDelay(300);   // aparece rápido
+		ToolTipManager.sharedInstance().setDismissDelay(20000); // 20 segundos visible
+		ToolTipManager.sharedInstance().setReshowDelay(100);    // al pasar entre celdas
+		
+		this.setVisible(true);		
 	}
 
 	private void updateReposJTree(List<RepoStats> data) {
@@ -321,7 +340,8 @@ public class MainWindow extends JFrame {
 	
 	private void initTable() {
 	    Vector<String> cabecera = new Vector<>(
-	        Arrays.asList("USERNAME (EMAIL)",
+	        Arrays.asList(
+	            "USERNAME (EMAIL)",
 	            "<html>JAVA<br>ADDED</html>",
 	            "<html>JAVA<br>DELETED</html>",
 	            "<html>JAVA<br>CHURN</html>",
@@ -329,7 +349,8 @@ public class MainWindow extends JFrame {
 	            "<html>JAVA<br>FILES</html>",
 	            "<html>JAVA<br>COMMITS</html>",
 	            "<html>LAST<br>COMMIT</html>",
-	            "<html>FIRST<br>COMMIT</html>")
+	            "<html>FIRST<br>COMMIT</html>"
+	        )
 	    );
 
 	    tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera);
@@ -352,27 +373,22 @@ public class MainWindow extends JFrame {
 	            RepoStats repo = repoStatsMap.get(selectedRepo);
 	            if (repo == null) return super.getToolTipText(e);
 
-	            // Si más adelante ocultas al docente, esta línea habrá que adaptarla
-	            if (row >= repo.getUserStats().size()) return super.getToolTipText(e);
+	            // IMPORTANTE: mapear contra el orden real mostrado en la tabla
+	            if (row >= displayedUsers.size()) return super.getToolTipText(e);
 
-	            UserStats u = repo.getUserStats().get(row);
+	            UserStats u = displayedUsers.get(row);
 	            return buildInterpretationTooltip(repo, u);
 	        }
 	    };
 
-	    // Altura de la cabecera
+	    // Altura de cabecera
 	    JTableHeader header = jTableUserStats.getTableHeader();
 	    header.setPreferredSize(new Dimension(header.getPreferredSize().width, 35));
 
 	    TableCellRenderer cellRenderer = (table, value, isSelected, hasFocus, row, column) -> {
-	    	Object safeValue = (value == null) ? "" : value;
-	    	JLabel result = new JLabel(" " + safeValue.toString());
+	        Object safeValue = (value == null) ? "" : value;
+	        JLabel result = new JLabel(" " + safeValue.toString());
 	        result.setHorizontalAlignment(JLabel.CENTER);
-
-	        // Tooltip básico de la celda (si tiene texto útil)
-	        String tt = result.getText() != null ? result.getText().trim() : "";
-	        if (!tt.isEmpty() && !"-".equals(tt)) result.setToolTipText(tt);
-	        else result.setToolTipText(null);
 
 	        // Formato por tipo
 	        if (value instanceof String) {
@@ -380,6 +396,7 @@ public class MainWindow extends JFrame {
 	        } else if (value instanceof Long) {
 	            if (((long) value) != -1) result.setText(dateFormat.format(new Date((long) value)));
 	            else result.setText("-");
+	            result.setHorizontalAlignment(JLabel.CENTER);
 	        } else if (value instanceof Float) {
 	            result.setText(String.format("%.2f %%", (float) value * 100));
 	            result.setHorizontalAlignment(JLabel.RIGHT);
@@ -387,60 +404,54 @@ public class MainWindow extends JFrame {
 	            result.setHorizontalAlignment(JLabel.RIGHT);
 	        }
 
+	        // USERNAME a la izquierda
 	        if (column == 0) result.setHorizontalAlignment(JLabel.LEFT);
 
+	        // Colorear por contribución (usando la MISMA lista que pinta la tabla)
 	        if (selectedRepo != null) {
 	            RepoStats repo = repoStatsMap.get(selectedRepo);
-	            if (repo != null) {
+	            if (repo != null && row >= 0 && row < displayedUsers.size()) {
 
-	                if (row >= repo.getUserStats().size()) return result;
+	                UserStats user = displayedUsers.get(row);
 
-	                UserStats user = repo.getUserStats().get(row);
-
-	                // Contribuyentes reales (sin docente) para expected share dinámico
 	                int numContributors = Math.max(1, realContributorsExcludingTeacher(repo).size());
 	                float expected = 1.0f / numContributors;
 
-	                int repoChurn = repo.getLinesChanged(); // changed = churn (added+deleted)
+	                int repoChurn = repo.getLinesChanged(); // churn total repo (java)
 	                int userChurn = user.getAdded() + user.getDeleted();
-	                float contribution = (repoChurn == 0) ? 0f : ((float) userChurn) / repoChurn;
+	                float share = (repoChurn == 0) ? 0f : ((float) userChurn) / repoChurn;
 
 	                boolean teacher = isTeacher(user);
 
-	                if (!teacher && (userChurn == 0 || user.getFirstCommit() == -1 || contribution < expected * 0.5f)) {
-	                    result.setForeground(new Color(234, 23, 68)); // muy por debajo de lo esperado
-
-	                    if (column == 0) {
-	                        result.setToolTipText("Very low or no contribution (below 50% of expected share).");
-	                    }
-	                } else if (teacher) {
-	                    // Docente: estilo neutro (no entra en expected)
+	                if (teacher) {
 	                    result.setForeground(Color.DARK_GRAY);
-	                    if (column == 0) {
-	                        result.setToolTipText("Teacher account (excluded from expected-share calculation).");
-	                    }
+	                } else if (userChurn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f) {
+	                    result.setForeground(new Color(234, 23, 68)); // muy bajo
+	                } else if (share >= expected * 1.25f) {
+	                    result.setForeground(new Color(54, 130, 127)); // alto
+	                } else if (share >= expected) {
+	                    result.setForeground(new Color(54, 130, 127)); // ok
 	                } else {
-	                    if (contribution >= expected * 1.25f) {
-	                        result.setForeground(new Color(54, 130, 127));
-	                        if (column == 0) {
-	                            result.setToolTipText("Excellent: contribution 25% above expected average");
-	                        }
-	                    } else if (contribution >= expected) {
-	                        result.setForeground(new Color(54, 130, 127));
-	                        if (column == 0) {
-	                            result.setToolTipText("Good contribution: around expected average");
-	                        }
-	                    } else {
-	                        result.setForeground(new Color(245, 143, 41));
-	                        if (column == 0) {
-	                            result.setToolTipText("Low contribution: below expected average");
-	                        }
-	                    }
+	                    result.setForeground(new Color(245, 143, 41)); // bajo
+	                }
+
+	                // Tooltip corto por celda (opcional): dejamos que JTable.getToolTipText muestre el largo
+	                // pero para la col 0 damos un hint rápido
+	                if (column == 0) {
+	                    if (teacher) result.setToolTipText("👩‍🏫 Teacher (excluded from expected share)");
+	                    else if (userChurn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f)
+	                        result.setToolTipText("⛔ Very low / no contribution");
+	                    else if (share >= expected * 1.25f)
+	                        result.setToolTipText("🌟 High contribution");
+	                    else if (share >= expected)
+	                        result.setToolTipText("✅ Around expected contribution");
+	                    else
+	                        result.setToolTipText("⚠️ Below expected contribution");
 	                }
 	            }
 	        }
 
-	        // Fondo para selección
+	        // Fondo selección
 	        if (isSelected) {
 	            result.setBackground(table.getSelectionBackground());
 	            result.setForeground(table.getSelectionForeground());
@@ -453,27 +464,24 @@ public class MainWindow extends JFrame {
 	    };
 
 	    final String[] headerTooltips = new String[] {
-    	    "GitHub username (login) when available; otherwise derived from commit author info. Emoji indicates contribution level.",
-    	    "Java lines added (sum over non-merge commits).",
-    	    "Java lines deleted (sum over non-merge commits).",
-    	    "Java churn = added + deleted (sum over non-merge commits).",
-    	    "% of repository Java churn attributed to this user.",
-    	    "Number of distinct .java files modified by the user.",
-    	    "Number of non-merge commits that modified at least one .java file.",
-    	    "Date of the user's last non-merge commit considered.",
-    	    "Date of the user's first non-merge commit considered."
+	        "GitHub username (login) when available; otherwise derived from commit author info. Emoji indicates contribution level.",
+	        "Java lines added (sum over non-merge commits).",
+	        "Java lines deleted (sum over non-merge commits).",
+	        "Java churn = added + deleted (sum over non-merge commits).",
+	        "% of repository Java churn attributed to this user.",
+	        "Number of distinct .java files modified by the user.",
+	        "Number of non-merge commits that modified at least one .java file.",
+	        "Date of the user's last non-merge commit considered.",
+	        "Date of the user's first non-merge commit considered."
 	    };
-	    
-	    TableCellRenderer headerRenderer = (table, value, isSelected, hasFocus, row, column) -> {
-	        JLabel result = new JLabel(value.toString());
-	        result.setText(value.toString());
 
-	        result.setHorizontalAlignment(JLabel.RIGHT);
-	        
+	    TableCellRenderer headerRenderer = (table, value, isSelected, hasFocus, row, column) -> {
+	        JLabel result = new JLabel(value == null ? "" : value.toString());
+
 	        if (column == 0) result.setHorizontalAlignment(JLabel.LEFT);
 	        else if (column >= 7) result.setHorizontalAlignment(JLabel.CENTER);
 	        else result.setHorizontalAlignment(JLabel.RIGHT);
-	        
+
 	        result.setFont(table.getFont().deriveFont(Font.BOLD));
 	        result.setBackground(table.getBackground());
 	        result.setForeground(table.getForeground());
@@ -504,10 +512,31 @@ public class MainWindow extends JFrame {
 	    jTableUserStats.getColumnModel().getColumn(8).setPreferredWidth(75);  // first
 
 	    jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
+	    
+	    // --- BARRA DE ESTADO: mostrar resumen del tooltip bajo el ratón ---
+	    jTableUserStats.addMouseMotionListener(new MouseMotionAdapter() {
+	        @Override
+	        public void mouseMoved(MouseEvent e) {
+	            if (lblStatus == null) return;
+	            String tip = jTableUserStats.getToolTipText(e); // HTML largo (buildInterpretationTooltip)
+	            lblStatus.setText(tooltipForStatusBar(tip));    // tu método: lo convierte a tags cortos
+	        }
+	    });
+
+	    jTableUserStats.addMouseListener(new MouseAdapter() {
+	        @Override
+	        public void mouseExited(MouseEvent e) {
+	            if (lblStatus != null) lblStatus.setText(" ");
+	        }
+	    });
 	}
+
 	
 	private void loadRepoStats(RepoStats repoStats) {
 		if (repoStats != null) {
+			// Se limpia la lista de usuarios mostrados
+			displayedUsers.clear();
+			
 			// Se actualizan las estadísticas generales del repo
 			lblCreationDate.setText(String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));			
 			
@@ -545,8 +574,14 @@ public class MainWindow extends JFrame {
 			int repoChurn = repoStats.getLinesChanged(); // churn java
 			int numContributors = Math.max(1, realContributorsExcludingTeacher(repoStats).size());
 			float expected = 1.0f / numContributors;
-
-			repoStats.getUserStats().forEach(s -> {
+			
+			displayedUsers = new ArrayList<>(repoStats.getUserStats());
+			displayedUsers.sort(
+			    Comparator.comparingInt((UserStats s) -> s.getAdded() + s.getDeleted()).reversed()
+			              .thenComparingInt(UserStats::getCommits)
+			);
+			
+			displayedUsers.forEach(s -> {
 			    int churn = s.getAdded() + s.getDeleted();
 			    float pct = (repoChurn == 0) ? 0f : ((float) churn) / repoChurn;
 
@@ -554,7 +589,7 @@ public class MainWindow extends JFrame {
 			        ? String.format("%s (%s)", s.getUsername(), s.getEmail())
 			        : s.getUsername();
 
-			    String emoji = getContributionEmoji(repoStats, s, expected, repoChurn); // nuevo método
+			    String emoji = getContributionEmoji(repoStats, s, expected, repoChurn);
 			    String displayName = emoji + " " + baseName;
 
 			    tableModelUserStats.addRow(new Object[] {
@@ -734,5 +769,80 @@ public class MainWindow extends JFrame {
 	    if (share >= expected) return "✅";
 	    return "⚠️";
 	}
+	
+	private String tooltipForStatusBar(String htmlTooltip) {
+	    if (htmlTooltip == null) return " ";
 
+	    String plain = htmlTooltip
+	            .replaceAll("(?i)<br\\s*/?>", "\n")
+	            .replaceAll("<[^>]*>", "")
+	            .replace("&nbsp;", " ")
+	            .trim();
+
+	    if (plain.isBlank()) return " ";
+
+	    String[] lines = plain.split("\\R+");
+	    List<String> candidates = new ArrayList<>();
+	    for (String line : lines) {
+	        String s = line.trim();
+	        if (s.isEmpty()) continue;
+	        String low = s.toLowerCase();
+	        if (low.startsWith("interpretación docente")) continue;
+	        if (low.startsWith("contribuyentes reales")) continue;
+	        candidates.add(s);
+	    }
+	    if (candidates.isEmpty()) return " ";
+
+	    // "emoji + título" => cortar en ":" o "–" o "-"
+	    java.util.function.Function<String, String> shortLine = (String s) -> {
+	        String t = s.trim();
+	        int cut = t.indexOf(':');
+	        if (cut < 0) cut = t.indexOf('–');
+	        if (cut < 0) cut = t.indexOf('-');
+	        if (cut > 0) t = t.substring(0, cut).trim();
+	        return t.replaceAll("\\s{2,}", " ");
+	    };
+
+	    // 1) Aporte (cogemos el "mejor" según prioridad)
+	    String contribution = null;
+	    String[] contributionPriority = new String[] { "👩‍🏫", "⛔", "⚠️", "🔁", "🌟", "✅" };
+	    outer:
+	    for (String p : contributionPriority) {
+	        for (String c : candidates) {
+	            if (c.contains(p) && !c.contains("⏱️") && !c.contains("🧠")) {
+	                contribution = shortLine.apply(c);
+	                break outer;
+	            }
+	        }
+	    }
+	    // Si no lo encontramos pero hay alguna línea de contribución (✅🌟⚠️ etc.), usa la primera “no ritmo/no IA”
+	    if (contribution == null) {
+	        for (String c : candidates) {
+	            if (!c.contains("⏱️") && !c.contains("🧠")) {
+	                contribution = shortLine.apply(c);
+	                break;
+	            }
+	        }
+	    }
+
+	    // 2) IA/Pegado
+	    String ai = null;
+	    for (String c : candidates) {
+	        if (c.contains("🧠")) { ai = shortLine.apply(c); break; }
+	    }
+
+	    // 3) Ritmo
+	    String rhythm = null;
+	    for (String c : candidates) {
+	        if (c.contains("⏱️")) { rhythm = shortLine.apply(c); break; }
+	    }
+
+	    // Unir sin duplicados
+	    List<String> out = new ArrayList<>();
+	    if (contribution != null && !contribution.isBlank()) out.add(contribution);
+	    if (ai != null && !ai.isBlank() && !out.contains(ai)) out.add(ai);
+	    if (rhythm != null && !rhythm.isBlank() && !out.contains(rhythm)) out.add(rhythm);
+
+	    return out.isEmpty() ? " " : String.join("   |   ", out);
+	}
 }
