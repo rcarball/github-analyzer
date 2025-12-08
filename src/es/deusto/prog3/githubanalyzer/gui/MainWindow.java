@@ -142,30 +142,33 @@ public class MainWindow extends JFrame {
 		initTable();
 
 		JScrollPane reposJScrollPane = new JScrollPane(jTreeRepos);
-		reposJScrollPane.setBorder(new TitledBorder("GitHub Repositories"));
+		reposJScrollPane.setBorder(new TitledBorder("Repositories"));
 
 		JPanel panelDetails = new JPanel();
-		panelDetails.setBorder(new TitledBorder("General Details"));
+		panelDetails.setBorder(new TitledBorder("Repository overview"));
 		panelDetails.setLayout(new GridLayout(4, 2, 0, 0));
 
-		lblCreationDate = new JLabel("- Creation date:");
-		lblFirstCommit = new JLabel("- First commit:");
-		lblLastCommit = new JLabel("- Last commit:");
-		lblCommits = new JLabel("- Total commit:");
-		lblColeLines = new JLabel("- Total lines of code:");
-		lblLinesChanged = new JLabel("- Total lines changed:");
-		lblExternalRefs = new JLabel("- External references:");
-		lblURL = new JLabel("- URL:");
+		lblCommits       = new JLabel("• Total commits (unique):");
+		lblCreationDate  = new JLabel("• Created:");
+		lblFirstCommit   = new JLabel("• First commit:");
+		lblLastCommit    = new JLabel("• Last commit:");
+		lblColeLines     = new JLabel("• Java LOC (snapshot):");
+		lblLinesChanged  = new JLabel("• Java churn (added+deleted):");
+		lblExternalRefs  = new JLabel("• External references:");
+		lblURL           = new JLabel("• Open repository:");
 		
-		// Tooltips para las etiquetas
-		lblCommits.setToolTipText("Unique commits in the repository across all branches (deduplicated by SHA).");
-		lblCreationDate.setToolTipText("Repository creation date (GitHub).");
-		lblFirstCommit.setToolTipText("Earliest commit date detected in the analyzed history.");
-		lblLastCommit.setToolTipText("Latest commit date detected in the analyzed history.");
-		lblColeLines.setToolTipText("Total lines of code in .java files (counted from repository contents).");
-		lblLinesChanged.setToolTipText("Java churn = total added + deleted lines in .java files (excluding merge commits).");
-		lblExternalRefs.setToolTipText("Occurrences of external-reference patterns (IAG or FUENTE-EXTERNA) in .java files.");
-		lblURL.setToolTipText("Open the repository in your browser.");
+		lblCommits.setToolTipText("<html><b>Unique commits</b> across all branches (deduplicated by SHA).<br>"
+		                          + "This is a global activity indicator (not the same as “Java commits per person”).</html>");
+		lblCreationDate.setToolTipText("Repository creation date (from GitHub).");
+		lblFirstCommit.setToolTipText("Earliest commit date found in the analyzed history.");
+		lblLastCommit.setToolTipText("Latest commit date found in the analyzed history.");
+		lblColeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>"
+		                            + "It measures code size, not effort.</html>");
+		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>"
+		                               + "Computed from non-merge commits only.</html>");
+		lblExternalRefs.setToolTipText("<html>Occurrences of patterns <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files.<br>"
+		                               + "Useful to flag external/AI-assisted code references.</html>");
+		lblURL.setToolTipText("Click to open the repository in your browser.");
 		
         // Añadir el MouseListener para capturar el clic
 		lblURL.addMouseListener(new MouseAdapter() {
@@ -206,7 +209,7 @@ public class MainWindow extends JFrame {
 		panelDetails.add(lblURL);		
 
 		JScrollPane usersJScrollPane = new JScrollPane(jTableUserStats);
-		usersJScrollPane.setBorder(new TitledBorder("Collaborators / Authors"));
+		usersJScrollPane.setBorder(new TitledBorder("People (authors / contributors)"));
 
 		jTreeFileType = new JTree(new DefaultMutableTreeNode(""));		
 		JScrollPane fileTypeJScrollPane = new JScrollPane(jTreeFileType);
@@ -244,7 +247,7 @@ public class MainWindow extends JFrame {
         });
 
 		// Configuración del botón de refresco
-		btnRefresh.setToolTipText("Refresh data from GitHub");
+		btnRefresh.setToolTipText("Refresh (GitHub)");
 		btnRefresh.addActionListener(e -> {						
 			// SwingWorker para tareas largas en segundo plano
 	        SwingWorker<List<RepoStats>, String> worker = new SwingWorker<>() {
@@ -267,14 +270,21 @@ public class MainWindow extends JFrame {
 		    	    	
 		    	    	SwingUtilities.invokeLater(() -> {
 			            	// Se muestra un mensaje de confirmación
-		    	    		JOptionPane.showMessageDialog(null,
-		    	    				"Data refreshed successfully from GitHub.", 
-		    	    				"Refresh Completed", 
-		    	    				JOptionPane.INFORMATION_MESSAGE);
-		    	    	});
-		    	    	
+		    	    		JOptionPane.showMessageDialog(
+		    	    			    null,
+		    	    			    "Data refreshed successfully.",
+		    	    			    "Refresh completed",
+		    	    			    JOptionPane.INFORMATION_MESSAGE
+		    	    			);
+		    	    	});		    	    	
 					} catch (InterruptedException | ExecutionException e) {
-						System.err.println("Error refreshing data: " + e.getMessage());
+						JOptionPane.showMessageDialog(
+							    null,
+							    "Refresh failed.\n\nTip: GitHub may throttle requests when refreshing many repositories.\n"
+							    + "Try again later or use offline mode (cached data).",
+							    "Refresh failed",
+							    JOptionPane.WARNING_MESSAGE
+							);
 					}
 	            }
 	        };
@@ -293,7 +303,7 @@ public class MainWindow extends JFrame {
 		JPanel topPanel = new JPanel(new BorderLayout());
 		topPanel.add(btnRefresh, BorderLayout.EAST);
 		
-		this.setTitle("GitHub repositories statistics");
+		this.setTitle("GitHub Repository Analyzer");
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 		this.setLayout(new BorderLayout(0, 0));	
@@ -327,15 +337,15 @@ public class MainWindow extends JFrame {
 	private void initTable() {
 	    Vector<String> cabecera = new Vector<>(
 	        Arrays.asList(
-	            "USERNAME (EMAIL)",
-	            "<html>JAVA<br>ADDED</html>",
-	            "<html>JAVA<br>DELETED</html>",
-	            "<html>JAVA<br>CHURN</html>",
-	            "<html>% JAVA<br>CHURN</html>",
-	            "<html>JAVA<br>FILES</html>",
-	            "<html>JAVA<br>COMMITS</html>",
-	            "<html>LAST<br>COMMIT</html>",
-	            "<html>FIRST<br>COMMIT</html>"
+	        		"USERNAME",
+	        		"<html>JAVA<br>ADDED</html>",
+	        		"<html>JAVA<br>DELETED</html>",
+	        		"<html>JAVA<br>CHURN</html>",
+	        		"<html>% JAVA<br>CHURN</html>",
+	        		"<html>JAVA<br>FILES</html>",
+	        		"<html>JAVA<br>COMMITS</html>",
+	        		"<html>LAST<br>COMMIT</html>",
+	        		"<html>FIRST<br>COMMIT</html>"
 	        )
 	    );
 
@@ -448,17 +458,17 @@ public class MainWindow extends JFrame {
 	    };
 
 	    final String[] headerTooltips = new String[] {
-	        "GitHub username (login) when available; otherwise derived from commit author info. Emoji indicates contribution level.",
-	        "Java lines added (sum over non-merge commits).",
-	        "Java lines deleted (sum over non-merge commits).",
-	        "Java churn = added + deleted (sum over non-merge commits).",
-	        "% of repository Java churn attributed to this user.",
-	        "Number of distinct .java files modified by the user.",
-	        "Number of non-merge commits that modified at least one .java file.",
-	        "Date of the user's last non-merge commit considered.",
-	        "Date of the user's first non-merge commit considered."
+	    	    "GitHub login when available; otherwise derived from commit author info. Emoji = main contribution indicator.",
+	    	    "Java lines added (sum over non-merge commits).",
+	    	    "Java lines deleted (sum over non-merge commits).",
+	    	    "Java churn = added + deleted (sum over non-merge commits).",
+	    	    "User share of repository Java churn.",
+	    	    "Distinct .java files modified by the user.",
+	    	    "Non-merge commits that touched at least one .java file.",
+	    	    "Date of the user's last considered non-merge commit.",
+	    	    "Date of the user's first considered non-merge commit."
 	    };
-
+	    
 	    TableCellRenderer headerRenderer = (table, value, isSelected, hasFocus, row, column) -> {
 	        JLabel result = new JLabel(value == null ? "" : value.toString());
 
@@ -643,7 +653,7 @@ public class MainWindow extends JFrame {
 	}
 	
 	private String buildInterpretationTooltip(RepoStats repo, UserStats u) {
-	    int repoChurn = repo.getLinesChanged(); // churn java
+	    int repoChurn = repo.getLinesChanged(); // Java churn at repo level
 	    int uChurn = userChurn(u);
 	    int commitsJava = u.getCommits();
 
@@ -654,70 +664,86 @@ public class MainWindow extends JFrame {
 	    float share = (repoChurn <= 0) ? 0f : (uChurn / (float) repoChurn);
 	    float churnPerCommit = (commitsJava <= 0) ? 0f : (uChurn / (float) commitsJava);
 
-	    // Umbrales relativos (ajustables)
-	    float low = expected * 0.5f;     // < 50% de lo esperado
-	    float okMin = expected * 0.8f;   // 80% de lo esperado
-	    float okMax = expected * 1.2f;   // 120% de lo esperado
-	    float high = expected * 1.25f;   // 125% de lo esperado
-	    float motor = expected * 2.0f;   // el doble de lo esperado (más justo que 50-60% fijo)
+	    // Relative thresholds
+	    float veryLow = expected * 0.5f;   // < 50% of expected
+	    float okMin   = expected * 0.8f;   // 80%
+	    float okMax   = expected * 1.2f;   // 120%
+	    float high    = expected * 1.25f;  // 125%
+	    float engine  = expected * 2.0f;   // 200%
 
-	    // IA/pegado: churn por commit comparado con media del repo
+	    // Repo-average churn/commit for AI/paste-like signal
 	    float avgChurnPerCommit = 0f;
 	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
 	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
 	    if (totalCommitsJava > 0) avgChurnPerCommit = totalChurn / (float) totalCommitsJava;
 
-	    boolean suspiciousAI = commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f;
+	    boolean aiPasteLike = commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f;
+
+	    boolean cleanup = false;
+	    if (uChurn > 0) {
+	        float delRatio = u.getDeleted() / (float) uChurn;
+	        cleanup = (delRatio >= 0.55f && uChurn >= 200);
+	    }
+
+	    boolean irregularRhythm = false;
+	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1
+	            && repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
+
+	        long repoSpan = repo.getLastCommit() - repo.getFirstCommit();
+	        long userLastOffset = u.getLastCommit() - repo.getFirstCommit();
+	        irregularRhythm = (repoSpan > 0 && (userLastOffset / (float) repoSpan) > 0.85f && uChurn >= 200);
+	    }
 
 	    StringBuilder sb = new StringBuilder("<html>");
-	    sb.append(String.format("Contribuyentes (sin docente): <b>%d</b> → esperado ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
+	    sb.append("<b>Teaching interpretation (indicators)</b><br>");
+	    sb.append(String.format(
+	        "Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>",
+	        n, expected * 100
+	    ));
 
+	    // 1) Teacher
 	    if (isTeacher(u)) {
-	        sb.append("👩‍🏫 Este usuario está marcado como <b>docente</b> (excluido del cálculo de esperado).<br>");
+	        sb.append("👩‍🏫 <b>Teacher account</b>: excluded from expected-share calculations.<br>");
 	        sb.append("</html>");
 	        return sb.toString();
 	    }
 
-	    // ✅ Contribución equilibrada
-	    if (share >= okMin && share <= okMax && commitsJava > 0) {
-	        sb.append("✅ <b>Contribución equilibrada</b>: cerca de lo esperado para el tamaño del equipo.<br>");
+	    // 2) Very low / no contribution
+	    if (uChurn == 0 || commitsJava == 0 || share < veryLow) {
+	        sb.append("⛔ <b>Very low / no contribution</b>: below expected or near zero. Check additional evidence.<br>");
 	    }
 
-	    // ⚠️ Motor del equipo
-	    if (share >= motor) {
-	        sb.append("⚠️ <b>“Motor” del equipo</b>: muy por encima de lo esperado. Revisar reparto de tareas.<br>");
+	    // 3) Team engine
+	    if (share >= engine) {
+	        sb.append("⚠️ <b>Team “engine”</b>: far above expected. Review task distribution and authorship.<br>");
 	    }
-	    
-	    // 🌟 Aporte alto
+
+	    // 4) High contribution
 	    if (share >= high) {
-	        sb.append("🌟 <b>Aporte alto</b>: por encima de lo esperado para el tamaño del equipo.<br>");
+	        sb.append("🌟 <b>High contribution</b>: above expected for the team size.<br>");
 	    }
 
-	    // ⚠️ Aporte mínimo
-	    if (uChurn == 0 || commitsJava == 0 || share < low) {
-	        sb.append("⚠️ <b>Aporte mínimo</b>: por debajo de lo esperado o casi nulo. Revisar evidencia adicional.<br>");
+	    // 5) Balanced contribution (only if not already flagged as very low)
+	    if (share >= okMin && share <= okMax && commitsJava > 0) {
+	        sb.append("✅ <b>Balanced contribution</b>: close to expected for the team size.<br>");
+	    } else if (uChurn > 0 && commitsJava > 0 && share >= veryLow && share < okMin) {
+	        // Optional: keep your "below expected" hint in the tooltip body
+	        sb.append("⚠️ <b>Below expected contribution</b>: noticeable but under the expected share.<br>");
 	    }
 
-	    // 🧠 Patrón IA/pegado (relativo a la media del repo)
-	    if (suspiciousAI) {
-	        sb.append("🧠 <b>Patrón IA/pegado</b>: churn por commit muy alto respecto a la media del repo. Pedir defensa.<br>");
+	    // 6) Cleanup/correction work
+	    if (cleanup) {
+	        sb.append("🔁 <b>Cleanup/correction work</b>: high deletion ratio. Verify context and continuity.<br>");
 	    }
 
-	    // 🔁 Corrección/limpieza (mucho borrado)
-	    if (uChurn > 0) {
-	        float delRatio = u.getDeleted() / (float) uChurn;
-	        if (delRatio >= 0.55f && uChurn >= 200) {
-	            sb.append("🔁 <b>Trabajo de corrección/limpieza</b>: alto porcentaje de borrado. Comprobar contexto.<br>");
-	        }
+	    // 7) AI/paste-like pattern
+	    if (aiPasteLike) {
+	        sb.append("🧠 <b>AI/paste-like pattern</b>: very high churn per commit vs repo average. Ask for a defense.<br>");
 	    }
 
-	    // ⏱️ Ritmo irregular (todo al final)
-	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1 && repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
-	        long repoSpan = repo.getLastCommit() - repo.getFirstCommit();
-	        long userLastOffset = u.getLastCommit() - repo.getFirstCommit();
-	        if (repoSpan > 0 && (userLastOffset / (float) repoSpan) > 0.85f && uChurn >= 200) {
-	            sb.append("⏱️ <b>Ritmo irregular</b>: actividad concentrada al final del periodo.<br>");
-	        }
+	    // 8) Irregular rhythm
+	    if (irregularRhythm) {
+	        sb.append("⏱️ <b>Irregular rhythm</b>: activity concentrated near the end of the period.<br>");
 	    }
 
 	    sb.append("</html>");
@@ -749,17 +775,20 @@ public class MainWindow extends JFrame {
 
 	    String[] lines = plain.split("\\R+");
 	    List<String> candidates = new ArrayList<>();
+
 	    for (String line : lines) {
 	        String s = line.trim();
 	        if (s.isEmpty()) continue;
+
 	        String low = s.toLowerCase();
-	        if (low.startsWith("interpretación docente")) continue;
-	        if (low.startsWith("contribuyentes reales")) continue;
+	        if (low.startsWith("teaching interpretation")) continue;
+	        if (low.startsWith("active contributors")) continue;
+	        if (low.startsWith("contributors")) continue;
+
 	        candidates.add(s);
 	    }
 	    if (candidates.isEmpty()) return " ";
 
-	    // "emoji + título" => cortar en ":" o "–" o "-"
 	    java.util.function.Function<String, String> shortLine = (String s) -> {
 	        String t = s.trim();
 	        int cut = t.indexOf(':');
@@ -769,45 +798,44 @@ public class MainWindow extends JFrame {
 	        return t.replaceAll("\\s{2,}", " ");
 	    };
 
-	    // 1) Aporte (cogemos el "mejor" según prioridad)
+	    // Contribution slot: prefer teacher / very low / engine / high / balanced / below expected
 	    String contribution = null;
-	    String[] contributionPriority = new String[] { "👩‍🏫", "⛔", "⚠️", "🔁", "🌟", "✅" };
+	    String[] contributionPriority = new String[] { "👩‍🏫", "⛔", "⚠️", "🌟", "✅" };
+
 	    outer:
 	    for (String p : contributionPriority) {
 	        for (String c : candidates) {
-	            if (c.contains(p) && !c.contains("⏱️") && !c.contains("🧠")) {
+	            // ignore AI/rhythm/cleanup for the contribution slot
+	            if (c.contains(p) && !c.contains("🧠") && !c.contains("⏱️") && !c.contains("🔁")) {
 	                contribution = shortLine.apply(c);
 	                break outer;
 	            }
 	        }
 	    }
-	    // Si no lo encontramos pero hay alguna línea de contribución (✅🌟⚠️ etc.), usa la primera “no ritmo/no IA”
-	    if (contribution == null) {
-	        for (String c : candidates) {
-	            if (!c.contains("⏱️") && !c.contains("🧠")) {
-	                contribution = shortLine.apply(c);
-	                break;
-	            }
-	        }
-	    }
 
-	    // 2) IA/Pegado
+	    // AI
 	    String ai = null;
 	    for (String c : candidates) {
 	        if (c.contains("🧠")) { ai = shortLine.apply(c); break; }
 	    }
 
-	    // 3) Ritmo
+	    // Rhythm
 	    String rhythm = null;
 	    for (String c : candidates) {
 	        if (c.contains("⏱️")) { rhythm = shortLine.apply(c); break; }
 	    }
 
-	    // Unir sin duplicados
+	    // Cleanup
+	    String cleanup = null;
+	    for (String c : candidates) {
+	        if (c.contains("🔁")) { cleanup = shortLine.apply(c); break; }
+	    }
+
 	    List<String> out = new ArrayList<>();
 	    if (contribution != null && !contribution.isBlank()) out.add(contribution);
 	    if (ai != null && !ai.isBlank() && !out.contains(ai)) out.add(ai);
 	    if (rhythm != null && !rhythm.isBlank() && !out.contains(rhythm)) out.add(rhythm);
+	    if (cleanup != null && !cleanup.isBlank() && !out.contains(cleanup)) out.add(cleanup);
 
 	    return out.isEmpty() ? " " : String.join("   |   ", out);
 	}
