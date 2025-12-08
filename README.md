@@ -1,62 +1,74 @@
-# 📊 GitHub Analyzer (enfoque docente)
+# 📊 GitHub Analyzer (Teaching-Oriented)
 
-Aplicación Java (Swing) para analizar actividad en repositorios de GitHub de proyectos en equipo (p. ej., alumnado). Soporta repositorios **públicos** y **privados** (si el token tiene permisos).
+Java (Swing) application to analyze activity in GitHub repositories for **team projects** (e.g., students). It supports **public** and **private** repositories (if the token has access).
 
-> 🧭 Enfoque: estas métricas están pensadas para estimar **práctica real de programación** (especialmente en Java) en un contexto de aprendizaje. Por ello, algunas cifras **no coinciden** con GitHub en *Insights → Contributors* (ver “📐 Significado de las estadísticas”).
-
----
-
-## ✨ Qué hace la aplicación
-
-- 🌳 Muestra un **árbol** con los repositorios analizados.
-- 🧾 Al seleccionar un repo, presenta **estadísticas generales** del repositorio.
-- 👥 Muestra una **tabla por persona** con métricas de commits y líneas (centradas en `.java`).
-- 🧩 Incluye un resumen de **tipos de fichero** encontrados.
-- 🔄 Permite **refrescar** los datos desde GitHub o trabajar en **modo offline** con caché.
+> 🧭 Teaching focus: these metrics are designed to approximate **hands-on programming practice** (especially in Java) in a learning context.  
+> Therefore, some numbers may **not match** GitHub *Insights → Contributors* (see “📐 Metrics meaning”, “❓ FAQ” and “🔒 Privacy & teaching ethics”).
 
 ---
 
-## 🧑‍🏫 Idea docente (por qué estas métricas)
+## ✨ What the app does
 
-En grupos con dominio limitado de Git, sin pruebas automatizadas y con poca documentación/diseño, suele ser útil medir:
-
-- **Commits Java (sin merges)** → frecuencia de trabajo real en código
-- **Churn Java (añadidas + borradas)** → volumen de edición efectiva
-- **Net Java (añadidas − borradas)** → crecimiento neto (opcional para interpretar)
-
-Estas métricas son **indicadores**: ayudan a orientar la revisión y a detectar casos atípicos, pero no sustituyen a la valoración cualitativa.
+- 🌳 Shows a **tree** with the analyzed repositories.
+- 🧾 When selecting a repo, displays **general repository metrics**.
+- 👥 Displays a **per-person table** with commit/line metrics (focused on `.java`).
+- 🧩 Includes a summary of **file types** found in the repository.
+- 🔄 Allows refreshing data from GitHub or working **offline** using a cached snapshot.
 
 ---
 
-## 🚀 Cómo ejecutar
+## 🧑‍🏫 Teaching rationale (why these metrics)
 
-### Requisitos
-- ☕ Java 17+ (recomendado)
-- 🗂️ Las librerías están incluidas en una carpeta `lib/`
-- 🔑 Token de GitHub
+In teams with limited Git experience, little testing/documentation, and minimal refactoring/design practices, it is often useful to measure:
 
-### Clase principal
+- **Java commits (non-merge)** → frequency of real work in code.
+- **Java churn (added + deleted)** → volume of effective edits.
+- **Net Java (added − deleted)** → net growth (optional, useful to interpret “cleanup/correction” work).
+
+✅ These metrics are **indicators**: they help guide review and spot unusual patterns, but they do **not** replace qualitative assessment.
+
+---
+
+## 🚀 How to run
+
+### Requirements
+- ☕ Java 17+ (recommended)
+- 🗂️ Libraries are included in the `lib/` folder (no Maven/Gradle)
+- 🔑 GitHub token (recommended; required for private repositories)
+
+### Main class
 - `es.deusto.prog3.githubanalyzer.Main`
 
+### Running (no Maven/Gradle)
+Depends on your IDE, but typically:
+
+- Import as a **Java Project**
+- Add `lib/` to the project **Build Path**
+- Run the `Main` class
+
 ---
 
-## ⚙️ Configuración
+## ⚙️ Configuration
 
-La aplicación usa dos ficheros principales:
+The application uses two main files:
 
 ### 1) `resources/config.properties`
 
 ```properties
-github.user=_USERNAME_              # Username (informativo)
-github.token=_TOKEN_                # Token de acceso (recomendado para repos privados)
-update.from.github=_<yes|no>_       # yes: descarga online | no: modo offline (usa stats.dat)
-repositories.file=resources/repositories.txt  # Lista de repos a analizar
-stats.file=resources/stats.dat      # Caché binaria de la última descarga
+github.user=_USERNAME_                         # Username (informational)
+github.token=_TOKEN_                           # Access token (recommended for private repos)
+update.from.github=_<yes|no>_                  # yes: online refresh | no: offline mode (uses stats.dat)
+repositories.file=resources/repositories.txt   # Repository list
+stats.file=resources/stats.dat                 # Binary cache of last refresh
+
+# (Optional) To exclude the "teacher" account from some GUI comparisons
+teacher.user=_TEACHER_USERNAME_
+teacher.email=_TEACHER_EMAIL_
 ```
 
 ### 2) `resources/repositories.txt`
 
-Un repositorio por línea:
+One repository per line:
 
 ```txt
 https://github.com/OWNER/REPO1
@@ -65,95 +77,168 @@ https://github.com/OWNER/REPO2
 
 ---
 
-## 🔐 Token de GitHub
+## 🔐 GitHub token
 
-Para repos privados o para evitar limitaciones por refrescos repetidos, usa un token con permisos de lectura sobre los repositorios.
+For private repositories and to reduce limitations when refreshing frequently, use a token with **read** permissions for the repositories.
 
-> 🧠 Consejo práctico: si refrescas muchas veces seguidas (p. ej. 20 repos), GitHub puede limitar temporalmente las peticiones. En ese caso, utiliza el modo offline (`update.from.github=no`) y vuelve a refrescar más tarde.
+> 🧠 Practical advice: if you refresh many times in a row (e.g., ~20 repos), GitHub may temporarily rate-limit requests.  
+> In that case, use offline mode (`update.from.github=no`) and refresh again later.
 
 ---
 
-## 📐 Significado de las estadísticas
+## 📐 Metrics meaning
 
-### 🧾 Estadísticas generales del repositorio
+### 🧾 Repository-level metrics
 
 - **🧱 Total commits (unique)**  
-  Número de commits **únicos** detectados en el repositorio (deduplicados por SHA) considerando el historial analizado (incluyendo todas las ramas conocidas).  
-  ✅ Útil como indicador de actividad global.  
-  ⚠️ No equivale a “commits Java por persona”, porque esa métrica es distinta (ver tabla).
+  Number of **unique commits** detected (deduplicated by SHA) across the analyzed history, considering **all known branches**.  
+  ✅ Useful as a global activity indicator.  
+  ⚠️ This is not the same as “Java commits per person” because that metric uses a different definition (see table).
 
 - **📅 Creation date**  
-  Fecha de creación del repositorio en GitHub.
+  Repository creation date on GitHub.
 
 - **⏱️ First commit / Last commit**  
-  Primer y último commit detectados en el historial analizado. Sirven para estimar el periodo real de trabajo.
+  Earliest and latest commit detected in the analyzed history.  
+  📌 Useful to estimate the real working period and detect “last-minute” work.
 
 - **📄 Total lines of code**  
-  Número de líneas existentes en ficheros **`.java`** (lectura del contenido).  
-  📌 Es una “foto” del código actual, no una medida directa de esfuerzo.
+  Number of lines currently present in **`.java`** files (content snapshot).  
+  📌 This is a “final-state photo”, not a direct measure of effort.
 
 - **🔁 Java churn (added + deleted)**  
-  Total de líneas **añadidas + borradas** en `.java` (a partir de commits analizados, excluyendo merge commits).  
-  ✅ Métrica útil como proxy de edición real.  
-  ⚠️ Puede inflarse con pegados masivos, formateos o generación automática.
+  Total **added + deleted** lines in `.java` (from analyzed commits, excluding merge commits).  
+  ✅ Good proxy for effective editing work.  
+  ⚠️ Can be inflated by mass pastes, formatting, or auto-generated code.
 
 - **🔗 External references**  
-  Nº de coincidencias en `.java` de patrones: `IAG` o `FUENTE-EXTERNA`.  
-  📌 Señal para identificar referencias externas o código creado con IA Generativa.
+  Number of occurrences in `.java` of these patterns: `IAG` or `FUENTE-EXTERNA`.  
+  📌 A signal to identify external references or generative-AI related code.
 
 ---
 
-### 👤 Tabla por persona (colaboradores/autores)
+### 👤 Per-person table (collaborators/authors)
 
-> Identidad: cuando GitHub lo permite, se usa el **login**; si no, se usa información de autoría del commit.
+> Identity: when possible, the app uses the GitHub **login**; otherwise it falls back to commit author information.  
+> The app also attempts to merge identities that likely belong to the same person (e.g., login + `noreply`, same email local-part, or anchored-name matching).
 
 - **✅ Java commits**  
-  Número de commits (**excluyendo merges**) que modifican al menos un fichero `.java`.  
-  🎯 En este proyecto se interpreta como “commits de trabajo real”.
+  Number of commits (**excluding merges**) that modify at least one `.java` file.  
+  🎯 Interpreted here as “real coding commits”.
 
 - **➕ Java added / ➖ Java deleted**  
-  Líneas añadidas/borradas en `.java` (sumadas sobre commits no-merge).
+  Added/deleted lines in `.java` (summed over non-merge commits).
 
 - **🔁 Java churn**  
-  `added + deleted` en `.java`.  
-  ✅ Se usa para valorar la contribución relativa y evitar sesgos (por ejemplo, solo medir añadidas penaliza a quien corrige borrando).
+  `added + deleted` in `.java`.  
+  ✅ Used to assess relative contribution while reducing bias (counting only added lines penalizes those who fix by deleting).
 
 - **📊 % Java churn**  
-  Proporción del churn total del repo atribuida a esa persona.  
-  📌 Útil para comparar contribución dentro del equipo.
+  Share of total repository Java churn attributed to a person.  
+  📌 Useful to compare contributions within the team.
 
 - **🧩 Java files**  
-  Nº de ficheros `.java` distintos modificados por la persona.  
-  📌 Ayuda a distinguir “intervención en varias partes” vs “trabajo localizado”.
+  Number of distinct `.java` files modified.  
+  📌 Helps distinguish “wide intervention” vs “localized work”.
 
 - **📅 First / Last commit (user)**  
-  Primera/última fecha de commit no-merge considerada para esa persona.
+  First/last non-merge commit date considered for the person.  
+  📌 Useful for identifying inactivity windows and end-loaded activity.
 
 ---
 
-## 🧑‍🏫 Ejemplo de interpretación para el profesorado (rápida y práctica)
+## 🧑‍🏫 Quick interpretation for instructors (practical)
 
-> Objetivo: orientar la revisión y detectar casos a revisar, no “poner nota automática”.
+> Goal: guide review and detect cases worth checking—not “automatic grading”.
 
-- ✅ **Contribución equilibrada**: varios miembros con % churn similar y commits Java repartidos → el trabajo suele estar más distribuido.
-- ⚠️ **Un “motor” del equipo**: 1 persona con >50–60% del churn y muchos commits Java → probablemente ha llevado el peso; revisar reparto de tareas y autoría.
-- ⚠️ **Aporte mínimo**: churn muy bajo (≈0) o commits Java casi nulos → revisar historial, comunicación del equipo y evidencia adicional (issues, commits, explicación oral).
-- 🧠 **Patrón típico de IA/pegado**: churn muy alto con muy pocos commits Java (p. ej. 2 commits y 2000 líneas) → pedir defensa: explicación del código, trazado y preguntas de comprensión.
-- 🔁 **Trabajo “de corrección”**: deleted alto y churn alto, pero net bajo → puede ser limpieza/corrección; comprobar si también hay commits Java sostenidos y cambios distribuidos.
-- ⏱️ **Ritmo irregular**: casi todo el churn en los últimos días → suele indicar acumulación y riesgo de baja comprensión; útil para planificar el examen individual.
-
----
-
-## 🧠 Limitaciones (para evitar malentendidos)
-
-- Estas métricas no miden calidad directamente (correctitud, diseño, estilo).
-- Cambios de formato o grandes pegados pueden inflar churn.
-- Los commits pueden variar según hábitos (micro-commits vs commits grandes).
-- Si GitHub limita peticiones (rate limit), el refresco online puede tardar o fallar; usa el modo offline si es necesario.
+- ✅ **Balanced contribution**: several members with similar % churn and distributed Java commits → work is usually shared.
+- ⚠️ **One “engine” in the team**: one person with >50–60% churn and many Java commits → likely carried the workload; review task distribution and authorship.
+- ⚠️ **Minimal contribution**: churn near zero or almost no Java commits → review history, team communication, and additional evidence (issues, commit messages, oral defense).
+- 🧠 **Typical AI/paste pattern**: very high churn with very few Java commits (e.g., 2 commits and 2000 lines) → request a defense: explain code, trace execution, comprehension questions.
+- 🔁 **Correction/cleanup work**: high deleted and high churn but low net → may be cleanup; verify sustained Java commits and distributed changes.
+- ⏱️ **Irregular rhythm**: most churn concentrated in the last days → often indicates accumulation and lower understanding; useful to plan the individual lab exam.
 
 ---
 
-## 📜 Licencia
+## ❓ FAQ
 
-Este proyecto se distribuye bajo la **MIT License**.  
-Más información: https://opensource.org/license/mit/
+### Why don’t the numbers match GitHub *Insights → Contributors*?
+GitHub’s Insights uses its own heuristics and may attribute activity based on merge strategies, default-branch history, UI grouping, and additional signals.  
+This app intentionally uses a **teaching-focused definition**:
+- Per-person “Java commits” count only **non-merge commits touching `.java`**
+- “Java churn” counts only `.java` **added + deleted** from **non-merge commits**
+- Repository “unique commits” are deduplicated by **SHA** across analyzed branches
+
+So the goal is **consistency for teaching interpretation**, not matching the GitHub UI.
+
+### A student appears with very low contribution (⛔/⚠️). Does it mean they did nothing?
+Not necessarily. Common reasons:
+- They contributed mostly to **non-Java** files (docs, configs, assets)
+- They worked via merges/PRs that get represented as **merge commits** (excluded for “real work” line metrics)
+- Their identity is split across logins/emails and needs merging (see next question)
+
+Use this as an indicator to ask for evidence: commit messages, issues, discussions, or an oral explanation.
+
+### Why does the app “merge” identities? Is it safe?
+In student projects it is common to have:
+- GitHub `noreply` addresses
+- Different emails across machines
+- Different display names vs logins  
+The app merges identities when there is strong evidence they are the same person (e.g., same email, same email local-part, anchored-name matches).  
+This reduces “duplicate rows” for one student.
+
+### What about AI-generated code? Does the app detect it?
+The app does **not** claim to detect AI usage reliably.  
+It can highlight **patterns** (e.g., high churn with very few commits) that are common in copy/paste or AI-assisted bursts.  
+Always confirm with a defense: explanation, tracing, and comprehension questions.
+
+### Can churn be inflated even with honest work?
+Yes. Churn increases with:
+- formatting or auto-formatting
+- large refactors (even if correct)
+- generated code or templates  
+Treat churn as a proxy, not a direct measure of skill.
+
+### The refresh sometimes fails or seems slow—what can I do?
+If you refresh many repositories repeatedly, GitHub may temporarily rate-limit requests.
+- Use offline mode (`update.from.github=no`) to work from `stats.dat`
+- Refresh again later
+- Avoid repeated “refresh” cycles in short intervals
+
+---
+
+## 🔒 Privacy & teaching ethics
+
+This tool is designed for **educational support**, and its outputs should be handled responsibly.
+
+**Recommended principles:**
+- ✅ **Transparency**: inform students that repository activity is analyzed and explain what is measured (and what is not).
+- ✅ **Proportionality**: use the metrics to *guide* review and interviews, not as an automatic grade.
+- ✅ **Context first**: interpret outliers with context (team roles, setup tasks, merges, non-Java contributions).
+- ✅ **Right to explain**: if metrics suggest an anomaly, allow students to provide evidence (issues, planning, oral defense, code walkthrough).
+- ✅ **Minimize exposure**: avoid publicly sharing per-student metrics or screenshots with identifiable information.
+- ✅ **Data retention**: keep cached data (`stats.dat`) only as long as needed for assessment and feedback.
+
+> 🧠 The goal is to promote learning and fairness, not surveillance.  
+> Treat metrics as *signals*, not verdicts.
+
+---
+
+## 🧠 Limitations (to avoid misunderstandings)
+
+- These metrics do not directly measure quality (correctness, design, style).
+- Formatting changes or large pastes can inflate churn.
+- Commit habits vary widely (many small commits vs few large commits).
+- GitHub’s UI and heuristics may attribute contributions differently.
+- If GitHub rate-limits requests, online refresh may slow down or fail; offline mode can help.
+
+
+## 🧾 Credits
+- Icons: *Pixel perfect* (Flaticon) — shown in the application.
+
+---
+
+## 📜 License
+
+This project is released under the **MIT License**.  
+More information: https://opensource.org/license/mit/

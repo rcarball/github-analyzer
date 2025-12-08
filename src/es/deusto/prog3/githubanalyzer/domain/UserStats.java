@@ -93,20 +93,31 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	}
 
 	@Override
-	//Criterio de ordenación por defecto de UserStats
-	//- 1.º Mayor núm. de líneas
-	//- 2.º Mayor núm. de ficheros
-	//- 3.º Mayor núm. de commits
-	//- 4.º Username alfabéticamente
 	public int compareTo(UserStats o) {
-		if (added != o.added) {
-			return Integer.compare(o.added, added);
-		} else if (javaFiles != o.javaFiles) {
-			return Integer.compare(o.javaFiles, javaFiles);
-		} else if (commits != o.commits) {
-			return Integer.compare(o.commits, commits);
-		} else {
-			return username.compareTo(o.username);
-		}
+	    if (o == null) return -1; // este va antes
+
+	    int thisChurn = this.added + this.deleted;
+	    int otherChurn = o.added + o.deleted;
+
+	    // 1) Mayor churn (aporte) primero
+	    int c = Integer.compare(otherChurn, thisChurn);
+	    if (c != 0) return c;
+
+	    // 2) Mayor nº de commits primero
+	    c = Integer.compare(o.commits, this.commits);
+	    if (c != 0) return c;
+
+	    // 3) Mayor nº de ficheros primero
+	    c = Integer.compare(o.javaFiles, this.javaFiles);
+	    if (c != 0) return c;
+
+	    // 4) Más reciente primero (si existe)
+	    c = Long.compare(o.lastCommit, this.lastCommit);
+	    if (c != 0) return c;
+
+	    // 5) Username alfabético (null-safe)
+	    String u1 = (this.username == null) ? "" : this.username;
+	    String u2 = (o.username == null) ? "" : o.username;
+	    return u1.compareToIgnoreCase(u2);
 	}
 }

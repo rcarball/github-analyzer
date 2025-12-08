@@ -16,7 +16,6 @@ import java.net.URI;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -72,14 +71,13 @@ public class MainWindow extends JFrame {
 	private JButton btnRefresh = new JButton("Refresh from GitHub");
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
-	private List<UserStats> displayedUsers = new ArrayList<>();
 	private String selectedRepo;
 
 	public MainWindow(List<RepoStats> data) {
 		// Se configura el JTree de repositorios
 		jTreeRepos.setRowHeight(23);
 
-		// Asignar un renderizador personalizado como clase anónima
+		// Asignar un render personalizado como clase anónima
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
 			private static final long serialVersionUID = 1L;
 
@@ -98,10 +96,9 @@ public class MainWindow extends JFrame {
 				// Verificar si el userObject es de tipo RepoStats
 				if (userObject instanceof RepoStats) {
 					RepoStats repoStats = (RepoStats) userObject;
-
 					iconName += repoStats.isPublic() ? "public.png" : "private.png";
 					
-					// Si el repositorio está vacío, cambiar el color a rojo
+					// Si el repositorio está vacío, cambiar el color de text a rojo
 					if (repoStats.getCommits() == 0) {
 						component.setForeground(new Color(245, 143, 41));
 						setText(repoStats.getName() + " (empty)");
@@ -119,7 +116,6 @@ public class MainWindow extends JFrame {
 					component.setBackground(Color.BLUE);
 				}
 				
-				//Se establece la imagen al nodo
 				this.setIcon(scaleIcon(new ImageIcon(iconName)));
 
 				return component;
@@ -142,7 +138,7 @@ public class MainWindow extends JFrame {
 		
 		// Se cargan los datos iniciales de los repositorios
 		updateReposJTree(data);
-		// Se inicializa la tabla de persona colaboradoras
+		// Se inicializa la tabla de personas colaboradoras
 		initTable();
 
 		JScrollPane reposJScrollPane = new JScrollPane(jTreeRepos);
@@ -318,24 +314,14 @@ public class MainWindow extends JFrame {
 	}
 
 	private void updateReposJTree(List<RepoStats> data) {
-		// Se limpia el mapa de repositorios
 		repoStatsMap.clear();
-		
-		// Se crea un mapa con los datos de los repositorios
 		data.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
-		
-		// Inicializar el root del JTree
 		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(String.format("%d Repositories", data.size()));
-
-		// Ahora agregamos los objetos RepoStats directamente en los nodos del JTree
 		data.forEach(repo -> {
 			DefaultMutableTreeNode repoNode = new DefaultMutableTreeNode(repo); // repo es de tipo RepoStats
 			repoRootNode.add(repoNode);
 		});
-		
-		// Se actualiza el modelo del JTree
 		jTreeRepos.setModel(new DefaultTreeModel(repoRootNode));
-		
 	}
 	
 	private void initTable() {
@@ -373,15 +359,13 @@ public class MainWindow extends JFrame {
 	            RepoStats repo = repoStatsMap.get(selectedRepo);
 	            if (repo == null) return super.getToolTipText(e);
 
-	            // IMPORTANTE: mapear contra el orden real mostrado en la tabla
-	            if (row >= displayedUsers.size()) return super.getToolTipText(e);
+	            if (row >= repo.getUserStats().size()) return super.getToolTipText(e);
 
-	            UserStats u = displayedUsers.get(row);
+	            UserStats u = repo.getUserStats().get(row);
 	            return buildInterpretationTooltip(repo, u);
 	        }
 	    };
 
-	    // Altura de cabecera
 	    JTableHeader header = jTableUserStats.getTableHeader();
 	    header.setPreferredSize(new Dimension(header.getPreferredSize().width, 35));
 
@@ -410,9 +394,9 @@ public class MainWindow extends JFrame {
 	        // Colorear por contribución (usando la MISMA lista que pinta la tabla)
 	        if (selectedRepo != null) {
 	            RepoStats repo = repoStatsMap.get(selectedRepo);
-	            if (repo != null && row >= 0 && row < displayedUsers.size()) {
+	            if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
 
-	                UserStats user = displayedUsers.get(row);
+	                UserStats user = repo.getUserStats().get(row);
 
 	                int numContributors = Math.max(1, realContributorsExcludingTeacher(repo).size());
 	                float expected = 1.0f / numContributors;
@@ -513,13 +497,12 @@ public class MainWindow extends JFrame {
 
 	    jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
 	    
-	    // --- BARRA DE ESTADO: mostrar resumen del tooltip bajo el ratón ---
 	    jTableUserStats.addMouseMotionListener(new MouseMotionAdapter() {
 	        @Override
 	        public void mouseMoved(MouseEvent e) {
 	            if (lblStatus == null) return;
-	            String tip = jTableUserStats.getToolTipText(e); // HTML largo (buildInterpretationTooltip)
-	            lblStatus.setText(tooltipForStatusBar(tip));    // tu método: lo convierte a tags cortos
+	            String tip = jTableUserStats.getToolTipText(e);
+	            lblStatus.setText(tooltipForStatusBar(tip));
 	        }
 	    });
 
@@ -531,12 +514,8 @@ public class MainWindow extends JFrame {
 	    });
 	}
 
-	
 	private void loadRepoStats(RepoStats repoStats) {
 		if (repoStats != null) {
-			// Se limpia la lista de usuarios mostrados
-			displayedUsers.clear();
-			
 			// Se actualizan las estadísticas generales del repo
 			lblCreationDate.setText(String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));			
 			
@@ -566,7 +545,7 @@ public class MainWindow extends JFrame {
 			lblLinesChanged.setToolTipText(String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
 			lblExternalRefs.setText(String.format("- External references: %d", repoStats.getExternalReferences()));
 			lblURL.setText(String.format("<html>- <u><i>%s</i></u></html>", repoStats.getName()));			
-			lblURL.setForeground(Color.BLUE);  // Color de hipervínculo			
+			lblURL.setForeground(Color.BLUE);			
 
 			// Se actualiza la tabla de colaboradores
 			tableModelUserStats.setRowCount(0);
@@ -575,22 +554,13 @@ public class MainWindow extends JFrame {
 			int numContributors = Math.max(1, realContributorsExcludingTeacher(repoStats).size());
 			float expected = 1.0f / numContributors;
 			
-			displayedUsers = new ArrayList<>(repoStats.getUserStats());
-			displayedUsers.sort(
-			    Comparator.comparingInt((UserStats s) -> s.getAdded() + s.getDeleted()).reversed()
-			              .thenComparingInt(UserStats::getCommits)
-			);
-			
-			displayedUsers.forEach(s -> {
+			repoStats.getUserStats().forEach(s -> {
 			    int churn = s.getAdded() + s.getDeleted();
 			    float pct = (repoChurn == 0) ? 0f : ((float) churn) / repoChurn;
 
-			    String baseName = (s.getEmail() != null && !s.getEmail().isBlank())
-			        ? String.format("%s (%s)", s.getUsername(), s.getEmail())
-			        : s.getUsername();
-
-			    String emoji = getContributionEmoji(repoStats, s, expected, repoChurn);
-			    String displayName = emoji + " " + baseName;
+			    String displayName = String.format("%s %s", 
+			    		                           getContributionEmoji(repoStats, s, expected, repoChurn),
+			    		                           s.getUsername()); 
 
 			    tableModelUserStats.addRow(new Object[] {
 			        displayName,
@@ -605,13 +575,10 @@ public class MainWindow extends JFrame {
 			    });
 			});
 
-			// Se actualiza el árbol de tipos de ficheros
 			DefaultMutableTreeNode root = (DefaultMutableTreeNode) jTreeFileType.getModel().getRoot();
 			root.setUserObject(String.format("%d file types", repoStats.getFileTypeMap().keySet().size()));
 			root.removeAllChildren();
-
 			repoStats.getFileTypeMap().forEach((k, v) -> root.add(new DefaultMutableTreeNode(String.format("%s (%d)", k, v))));
-
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
 		} else {
@@ -625,7 +592,7 @@ public class MainWindow extends JFrame {
 			lblURL.setText("- URL:");
 
 			tableModelUserStats.setRowCount(0);
-
+			
 			DefaultMutableTreeNode root = (DefaultMutableTreeNode) jTreeFileType.getModel().getRoot();
 			root.setUserObject("0 file types");
 			root.removeAllChildren();
@@ -694,7 +661,7 @@ public class MainWindow extends JFrame {
 	    float high = expected * 1.25f;   // 125% de lo esperado
 	    float motor = expected * 2.0f;   // el doble de lo esperado (más justo que 50-60% fijo)
 
-	    // IA/pegado: mejor relativo al repo: churn por commit comparado con media del repo
+	    // IA/pegado: churn por commit comparado con media del repo
 	    float avgChurnPerCommit = 0f;
 	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
 	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
@@ -703,8 +670,7 @@ public class MainWindow extends JFrame {
 	    boolean suspiciousAI = commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f;
 
 	    StringBuilder sb = new StringBuilder("<html>");
-	    sb.append("<b>Interpretación docente (indicadores)</b><br>");
-	    sb.append(String.format("Contribuyentes reales (sin docente): <b>%d</b> → esperado ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
+	    sb.append(String.format("Contribuyentes (sin docente): <b>%d</b> → esperado ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
 
 	    if (isTeacher(u)) {
 	        sb.append("👩‍🏫 Este usuario está marcado como <b>docente</b> (excluido del cálculo de esperado).<br>");
