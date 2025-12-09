@@ -62,7 +62,7 @@ public class MainWindow extends JFrame {
 	private JLabel lblExternalRefs;
 	private JLabel lblURL;
 	private JLabel lblStatus = new JLabel(" ");
-	private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
+	private SimpleDateFormat dateFormat = new SimpleDateFormat("MMM-dd");
 	private JTable jTableUserStats;
 	private DefaultTableModel tableModelUserStats;
 	private JTree jTreeFileType;
@@ -73,6 +73,71 @@ public class MainWindow extends JFrame {
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
 
+	private enum ContributionBadge {
+	    TEACHER("🎓", Color.DARK_GRAY,
+	            "Teacher account",
+	            "Teacher account: excluded from expected-share calculations."),
+	    VERY_LOW("🛑", new Color(234, 23, 68),
+	            "Very low / no contribution",
+	            "Very low / no contribution: below expected or near zero. Check additional evidence."),
+	    BELOW("🟠️", new Color(245, 143, 41),
+	            "Below expected contribution",
+	            "Below expected contribution: noticeable but under the expected share."),
+	    BALANCED("✅", new Color(54, 130, 127),
+	            "Balanced contribution",
+	            "Balanced contribution: close to expected for the team size."),
+	    HIGH("🌟", new Color(54, 130, 127),
+	            "High contribution",
+	            "High contribution: above expected for the team size.");
+
+	    final String emoji;
+	    final Color color;
+	    final String shortLabel;   // para status / tooltip corto
+	    final String longLine;     // para tooltip largo
+
+	    ContributionBadge(String emoji, Color color, String shortLabel, String longLine) {
+	        this.emoji = emoji;
+	        this.color = color;
+	        this.shortLabel = shortLabel;
+	        this.longLine = longLine;
+	    }
+
+	    String shortText() { return emoji + " " + shortLabel; }
+	}
+	
+	private enum AlertFlag {
+	    ENGINE("🚀️", "Team “engine”", "Far above expected. Review task distribution and authorship."),
+	    CLEANUP("🧹", "Cleanup/correction work", "High deletion ratio. Verify context and continuity."),
+	    AI_PASTE("🧠", "AI/paste-like pattern", "Very high churn per commit vs repo average. Ask for a defense."),
+	    RHYTHM("⏱️", "Irregular rhythm", "Activity concentrated near the end of the period.");
+
+	    final String emoji;
+	    final String title;
+	    final String description;
+
+	    AlertFlag(String emoji, String title, String description) {
+	        this.emoji = emoji;
+	        this.title = title;
+	        this.description = description;
+	    }
+
+	    String shortText() { return emoji + " " + title; }
+
+	    String htmlLine() {
+	        return emoji + " <b>" + title + "</b>: " + description + "<br>";
+	    }
+	}
+
+	private static class Interpretation {
+	    final ContributionBadge badge;
+	    final List<AlertFlag> flags;
+
+	    Interpretation(ContributionBadge badge, List<AlertFlag> flags) {
+	        this.badge = badge;
+	        this.flags = flags;
+	    }
+	}
+	
 	public MainWindow(List<RepoStats> data) {
 		jTreeRepos.setRowHeight(23);
 
@@ -108,9 +173,9 @@ public class MainWindow extends JFrame {
 					component.setForeground(Color.BLACK);
 				}
 
-				if (selected || hasFocus) {
-					component.setForeground(Color.WHITE);
-					component.setBackground(Color.BLUE);
+				if (selected) {
+				    setForeground(Color.WHITE);
+				    setBackgroundSelectionColor(new Color(0, 120, 215));
 				}
 				
 				this.setIcon(scaleIcon(new ImageIcon(iconName)));
@@ -170,7 +235,7 @@ public class MainWindow extends JFrame {
                 try {
                     // Use default browser to open the URL
                 	if (selectedRepo != null) {
-                		Desktop.getDesktop().browse(new URI(repoStatsMap.get(selectedRepo).getUrl()));
+                	    Desktop.getDesktop().browse(new URI(selectedRepo));
                 	}
                 } catch (Exception ex) {
                     ex.printStackTrace();
@@ -372,88 +437,57 @@ public class MainWindow extends JFrame {
 	            return buildInterpretationTooltip(repo, u);
 	        }
 	    };
-
+	    
+	    jTableUserStats.setRowHeight(28);
 	    JTableHeader header = jTableUserStats.getTableHeader();
 	    header.setPreferredSize(new Dimension(header.getPreferredSize().width, 35));
 
+	    // --- Table cell renderer (single source of truth for color + short tooltip) ---
 	    TableCellRenderer cellRenderer = (table, value, isSelected, hasFocus, row, column) -> {
-	        Object safeValue = (value == null) ? "" : value;
-	        JLabel result = new JLabel(" " + safeValue.toString());
-	        result.setHorizontalAlignment(JLabel.CENTER);
+	        JLabel label = new JLabel();
+	        label.setOpaque(true);
 
-	        // Horizontal alignment by type
-	        if (value instanceof String) {
-	            result.setHorizontalAlignment(JLabel.LEFT);
-	        } else if (value instanceof Long) {
-	            if (((long) value) != -1) result.setText(dateFormat.format(new Date((long) value)));
-	            else result.setText("-");
-	            result.setHorizontalAlignment(JLabel.CENTER);
-	        } else if (value instanceof Float) {
-	            result.setText(String.format("%.2f %%", (float) value * 100));
-	            result.setHorizontalAlignment(JLabel.RIGHT);
-	        } else if (value instanceof Integer) {
-	            result.setHorizontalAlignment(JLabel.RIGHT);
-	        }
+	        // 1) Safe value and formatted text
+	        Object v = (value == null) ? "" : value;
+	        String text = formatCellValue(v);
+	        label.setText(text.startsWith("<html>") ? text : (" " + text));
 
-	        // Username column: left align
-	        if (column == 0) result.setHorizontalAlignment(JLabel.LEFT);
+	        // 2) Alignment rules (decided once, no redundant overrides)
+	        label.setHorizontalAlignment(computeAlignment(v, column));
 
-	        // Color coding based on contribution share
-	        if (selectedRepo != null) {
-	            RepoStats repo = repoStatsMap.get(selectedRepo);
+	        // 3) Color coding + short tooltip derived from the same interpretation used everywhere
+	        RepoStats repo = (selectedRepo == null) ? null : repoStatsMap.get(selectedRepo);
+	        if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
+	            UserStats user = repo.getUserStats().get(row);
+
+	            Interpretation it = interpret(repo, user);
 	            
-	            if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
+	            // Apply row color (all columns)
+	            label.setForeground(it.badge.color);
 
-	                UserStats user = repo.getUserStats().get(row);
-
-	                int numContributors = Math.max(1, realContributorsExcludingTeacher(repo).size());
-	                float expected = 1.0f / numContributors;
-
-	                int repoChurn = repo.getLinesChanged(); // churn total repo (java)
-	                int userChurn = user.getAdded() + user.getDeleted();
-	                float share = (repoChurn == 0) ? 0f : ((float) userChurn) / repoChurn;
-
-	                boolean teacher = isTeacher(user);
-
-	                if (teacher) {
-	                    result.setForeground(Color.DARK_GRAY);
-	                } else if (userChurn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f) {
-	                    result.setForeground(new Color(234, 23, 68)); // very low
-	                } else if (share >= expected * 1.25f) {
-	                    result.setForeground(new Color(54, 130, 127)); // high
-	                } else if (share >= expected) {
-	                    result.setForeground(new Color(54, 130, 127)); // ok
-	                } else {
-	                    result.setForeground(new Color(245, 143, 41)); // below expected
+	            // Tooltip only on the first column.
+	            if (column == 0) {
+	                String shortTip = it.badge.shortText();
+	                if (!it.flags.isEmpty()) {
+	                    shortTip += "  |  " + it.flags.stream().map(AlertFlag::shortText).reduce((a,b)->a+"  "+b).orElse("");
 	                }
-
-	                // Tooltips for the first column
-	                if (column == 0) {
-	                    if (teacher) {
-	                    	result.setToolTipText("👩‍🏫 Teacher (excluded from expected share)");
-	                    } else if (userChurn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f) {
-	                        result.setToolTipText("⛔ Very low / no contribution");
-	                    } else if (share >= expected * 1.25f) {
-	                        result.setToolTipText("🌟 High contribution");
-	                    } else if (share >= expected) {
-	                        result.setToolTipText("✅ Around expected contribution");
-	                    } else {
-	                        result.setToolTipText("⚠️ Below expected contribution");
-	                    }
-	                }
+	                label.setToolTipText(shortTip);
 	            }
-	        }
-
-	        // Selection colors
-	        if (isSelected) {
-	            result.setBackground(table.getSelectionBackground());
-	            result.setForeground(table.getSelectionForeground());
 	        } else {
-	            result.setBackground(table.getBackground());
+	            // Default appearance when no repo is selected (or row is out of range)
+	            label.setForeground(table.getForeground());
+	            label.setToolTipText(null);
 	        }
 
-	        result.setOpaque(true);
-	        return result;
+	        // 4) Selection always wins (ensures readability)
+	        if (isSelected) {
+	            label.setBackground(table.getSelectionBackground());
+	            label.setForeground(table.getSelectionForeground());
+	        } else {
+	            label.setBackground(table.getBackground());
+	        }
+
+	        return label;
 	    };
 
 	    // Header tooltips
@@ -510,9 +544,13 @@ public class MainWindow extends JFrame {
 	    jTableUserStats.addMouseMotionListener(new MouseMotionAdapter() {
 	        @Override
 	        public void mouseMoved(MouseEvent e) {
-	            if (lblStatus == null) return;
-	            String tip = jTableUserStats.getToolTipText(e);
-	            lblStatus.setText(tooltipForStatusBar(tip));
+	        	RepoStats repo = repoStatsMap.get(selectedRepo);
+	        	int row = jTableUserStats.rowAtPoint(e.getPoint());
+	        	if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
+	        	    lblStatus.setText(statusTextFor(repo.getUserStats().get(row), repo));
+	        	} else {
+	        	    lblStatus.setText(" ");
+	        	}
 	        }
 	    });
 
@@ -560,16 +598,17 @@ public class MainWindow extends JFrame {
 			tableModelUserStats.setRowCount(0);
 
 			int repoChurn = repoStats.getLinesChanged(); // churn java
-			int numContributors = Math.max(1, realContributorsExcludingTeacher(repoStats).size());
-			float expected = 1.0f / numContributors;
 			
 			repoStats.getUserStats().forEach(s -> {
 			    int churn = s.getAdded() + s.getDeleted();
 			    float pct = (repoChurn == 0) ? 0f : ((float) churn) / repoChurn;
 
-			    String displayName = String.format("%s %s", 
-			    		                           getContributionEmoji(repoStats, s, expected, repoChurn),
-			    		                           s.getUsername()); 
+			    Interpretation it = interpret(repoStats, s);
+			    String displayName = String.format(
+			    	    "<html><span style='font-size: 150%%;'>%s</span>&nbsp;%s</html>",
+			    	    it.badge.emoji,
+			    	    (s.getUsername() == null ? "" : s.getUsername())
+			    	);
 
 			    tableModelUserStats.addRow(new Object[] {
 			        displayName,
@@ -614,6 +653,38 @@ public class MainWindow extends JFrame {
 		return new ImageIcon(icon.getImage().getScaledInstance(22, 22, Image.SCALE_SMOOTH));
 	}
 	
+    /** Formats the cell value based on its type (dates, percentages, numbers). */
+    private String formatCellValue(Object v) {
+        if (v instanceof Long) {
+            long ts = (Long) v;
+            return (ts == -1L) ? "-" : dateFormat.format(new Date(ts));
+        }
+        if (v instanceof Float) {
+            return String.format("%.2f %%", ((Float) v) * 100f);
+        }
+        // Integer and other values
+        return String.valueOf(v);
+    }
+
+    /**
+     * Alignment rules:
+     * - Column 0 (username): left
+     * - Dates: centered (also force center for LAST/FIRST commit columns)
+     * - Numbers / percentages: right
+     * - Text: left
+     */
+    private int computeAlignment(Object v, int column) {
+        if (column == 0) return JLabel.LEFT;
+
+        // Commit date columns (LAST/FIRST COMMIT) are typically 7 and 8
+        if (v instanceof Long || column == 7 || column == 8) return JLabel.CENTER;
+
+        if (v instanceof Float) return JLabel.RIGHT;
+        if (v instanceof Integer) return JLabel.RIGHT;
+
+        return JLabel.LEFT;
+    }
+	
 	private boolean isTeacher(UserStats u) {
 	    String tUser = Configurator.getInstance().getTeacherUser();
 	    String tEmail = Configurator.getInstance().getTeacherEmail();
@@ -649,10 +720,14 @@ public class MainWindow extends JFrame {
 	        .filter(u -> !isTeacher(u))
 	        .filter(this::isRealContributor)
 	        .collect(java.util.stream.Collectors.toList());
-	}
+	}	
 	
-	private String buildInterpretationTooltip(RepoStats repo, UserStats u) {
-	    int repoChurn = repo.getLinesChanged(); // Java churn at repo level
+	private Interpretation interpret(RepoStats repo, UserStats u) {
+	    if (repo == null || u == null) return new Interpretation(ContributionBadge.BELOW, List.of());
+
+	    if (isTeacher(u)) return new Interpretation(ContributionBadge.TEACHER, List.of());
+
+	    int repoChurn = repo.getLinesChanged();
 	    int uChurn = userChurn(u);
 	    int commitsJava = u.getCommits();
 
@@ -661,178 +736,85 @@ public class MainWindow extends JFrame {
 	    float expected = 1f / n;
 
 	    float share = (repoChurn <= 0) ? 0f : (uChurn / (float) repoChurn);
-	    float churnPerCommit = (commitsJava <= 0) ? 0f : (uChurn / (float) commitsJava);
 
-	    // Relative thresholds
-	    float veryLow = expected * 0.5f;   // < 50% of expected
-	    float okMin   = expected * 0.8f;   // 80%
-	    float okMax   = expected * 1.2f;   // 120%
-	    float high    = expected * 1.25f;  // 125%
-	    float engine  = expected * 2.0f;   // 200%
+	    float veryLow = expected * 0.5f;
+	    float okMin   = expected * 0.8f;
+	    float okMax   = expected * 1.2f;
+	    float high    = expected * 1.25f;
+	    float engineT = expected * 2.0f;
 
-	    // Repo-average churn/commit for AI/paste-like signal
-	    float avgChurnPerCommit = 0f;
-	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
-	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
-	    if (totalCommitsJava > 0) avgChurnPerCommit = totalChurn / (float) totalCommitsJava;
+	    // Badge principal (única lógica)
+	    ContributionBadge badge;
+	    if (uChurn == 0 || commitsJava == 0 || share < veryLow) badge = ContributionBadge.VERY_LOW;
+	    else if (share >= high) badge = ContributionBadge.HIGH;
+	    else if (share >= okMin && share <= okMax) badge = ContributionBadge.BALANCED;
+	    else badge = ContributionBadge.BELOW;
 
-	    boolean aiPasteLike = commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f;
-	    boolean cleanup = false;
-	    
+	    // Flags adicionales
+	    List<AlertFlag> flags = new ArrayList<>();
+
+	    // Engine (si quieres que “motor” sea solo flag, no badge)
+	    if (share >= engineT) flags.add(AlertFlag.ENGINE);
+
+	    // Cleanup
 	    if (uChurn > 0) {
 	        float delRatio = u.getDeleted() / (float) uChurn;
-	        cleanup = (delRatio >= 0.55f && uChurn >= 200);
+	        if (delRatio >= 0.55f && uChurn >= 200) flags.add(AlertFlag.CLEANUP);
 	    }
 
-	    boolean irregularRhythm = false;
-	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1
-	            && repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
+	    // AI/paste-like
+	    float churnPerCommit = (commitsJava <= 0) ? 0f : (uChurn / (float) commitsJava);
+	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
+	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
+	    float avgChurnPerCommit = (totalCommitsJava > 0) ? totalChurn / (float) totalCommitsJava : 0f;
 
+	    if (commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f) {
+	        flags.add(AlertFlag.AI_PASTE);
+	    }
+
+	    // Rhythm
+	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1 && repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
 	        long repoSpan = repo.getLastCommit() - repo.getFirstCommit();
 	        long userLastOffset = u.getLastCommit() - repo.getFirstCommit();
-	        irregularRhythm = (repoSpan > 0 && (userLastOffset / (float) repoSpan) > 0.85f && uChurn >= 200);
+	        if (repoSpan > 0 && (userLastOffset / (float) repoSpan) > 0.85f && uChurn >= 200) {
+	            flags.add(AlertFlag.RHYTHM);
+	        }
 	    }
+
+	    return new Interpretation(badge, flags);
+	}
+
+	private String buildInterpretationTooltip(RepoStats repo, UserStats u) {
+	    Interpretation it = interpret(repo, u);
+
+	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
+	    int n = Math.max(1, contributors.size());
+	    float expected = 1f / n;
 
 	    StringBuilder sb = new StringBuilder("<html>");
 	    sb.append("<b>Teaching interpretation (indicators)</b><br>");
 	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
 
-	    // 1) Teacher
-	    if (isTeacher(u)) {
-	        sb.append("👩‍🏫 <b>Teacher account</b>: excluded from expected-share calculations.<br>");
-	        sb.append("</html>");
-	        return sb.toString();
-	    }
+	    // Línea principal SIEMPRE consistente con la celda
+	    sb.append(it.badge.emoji).append(" <b>").append(it.badge.shortLabel).append("</b>");
+	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");
 
-	    // 2) Very low / no contribution
-	    if (uChurn == 0 || commitsJava == 0 || share < veryLow) {
-	        sb.append("⛔ <b>Very low / no contribution</b>: below expected or near zero. Check additional evidence.<br>");
-	    }
-
-	    // 3) Team engine
-	    if (share >= engine) {
-	        sb.append("⚠️ <b>Team “engine”</b>: far above expected. Review task distribution and authorship.<br>");
-	    }
-
-	    // 4) High contribution
-	    if (share >= high) {
-	        sb.append("🌟 <b>High contribution</b>: above expected for the team size.<br>");
-	    }
-
-	    // 5) Balanced contribution (only if not already flagged as very low)
-	    if (share >= okMin && share <= okMax && commitsJava > 0) {
-	        sb.append("✅ <b>Balanced contribution</b>: close to expected for the team size.<br>");
-	    } else if (uChurn > 0 && commitsJava > 0 && share >= veryLow && share < okMin) {
-	        // Optional: keep your "below expected" hint in the tooltip body
-	        sb.append("⚠️ <b>Below expected contribution</b>: noticeable but under the expected share.<br>");
-	    }
-
-	    // 6) Cleanup/correction work
-	    if (cleanup) {
-	        sb.append("🔁 <b>Cleanup/correction work</b>: high deletion ratio. Verify context and continuity.<br>");
-	    }
-
-	    // 7) AI/paste-like pattern
-	    if (aiPasteLike) {
-	        sb.append("🧠 <b>AI/paste-like pattern</b>: very high churn per commit vs repo average. Ask for a defense.<br>");
-	    }
-
-	    // 8) Irregular rhythm
-	    if (irregularRhythm) {
-	        sb.append("⏱️ <b>Irregular rhythm</b>: activity concentrated near the end of the period.<br>");
-	    }
+	    // Flags en orden que tú quieras (aquí: engine, cleanup, AI, rhythm)
+	    for (AlertFlag f : it.flags) sb.append(f.htmlLine());
 
 	    sb.append("</html>");
 	    return sb.toString();
 	}
-	
-	private String getContributionEmoji(RepoStats repo, UserStats user, float expected, int repoChurn) {
-	    if (isTeacher(user)) return "👩‍🏫";
+		
+	private String statusTextFor(UserStats u, RepoStats repo) {
+	    if (repo == null || u == null) return " ";
+	    Interpretation it = interpret(repo, u);
 
-	    int churn = userChurn(user);
-	    float share = (repoChurn == 0) ? 0f : (churn / (float) repoChurn);
+	    List<String> parts = new ArrayList<>();
+	    parts.add(it.badge.emoji + " " + it.badge.shortLabel);
 
-	    if (churn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f) return "⛔";
-	    if (share >= expected * 1.25f) return "🌟";
-	    if (share >= expected) return "✅";
-	    return "⚠️";
-	}
-	
-	private String tooltipForStatusBar(String htmlTooltip) {
-	    if (htmlTooltip == null) return " ";
+	    for (AlertFlag f : it.flags) parts.add(f.shortText());
 
-	    String plain = htmlTooltip
-	            .replaceAll("(?i)<br\\s*/?>", "\n")
-	            .replaceAll("<[^>]*>", "")
-	            .replace("&nbsp;", " ")
-	            .trim();
-
-	    if (plain.isBlank()) return " ";
-
-	    String[] lines = plain.split("\\R+");
-	    List<String> candidates = new ArrayList<>();
-
-	    for (String line : lines) {
-	        String s = line.trim();
-	        if (s.isEmpty()) continue;
-
-	        String low = s.toLowerCase();
-	        if (low.startsWith("teaching interpretation")) continue;
-	        if (low.startsWith("active contributors")) continue;
-	        if (low.startsWith("contributors")) continue;
-
-	        candidates.add(s);
-	    }
-	    if (candidates.isEmpty()) return " ";
-
-	    java.util.function.Function<String, String> shortLine = (String s) -> {
-	        String t = s.trim();
-	        int cut = t.indexOf(':');
-	        if (cut < 0) cut = t.indexOf('–');
-	        if (cut < 0) cut = t.indexOf('-');
-	        if (cut > 0) t = t.substring(0, cut).trim();
-	        return t.replaceAll("\\s{2,}", " ");
-	    };
-
-	    // Contribution slot: teacher / very low / engine / high / balanced / below expected
-	    String contribution = null;
-	    String[] contributionPriority = new String[] { "👩‍🏫", "⛔", "⚠️", "🌟", "✅" };
-
-	    outer:
-	    for (String p : contributionPriority) {
-	        for (String c : candidates) {
-	            // ignore AI/rhythm/cleanup for the contribution slot
-	            if (c.contains(p) && !c.contains("🧠") && !c.contains("⏱️") && !c.contains("🔁")) {
-	                contribution = shortLine.apply(c);
-	                break outer;
-	            }
-	        }
-	    }
-
-	    // AI
-	    String ai = null;
-	    for (String c : candidates) {
-	        if (c.contains("🧠")) { ai = shortLine.apply(c); break; }
-	    }
-
-	    // Rhythm
-	    String rhythm = null;
-	    for (String c : candidates) {
-	        if (c.contains("⏱️")) { rhythm = shortLine.apply(c); break; }
-	    }
-
-	    // Cleanup
-	    String cleanup = null;
-	    for (String c : candidates) {
-	        if (c.contains("🔁")) { cleanup = shortLine.apply(c); break; }
-	    }
-
-	    List<String> out = new ArrayList<>();
-	    if (contribution != null && !contribution.isBlank()) out.add(contribution);
-	    if (ai != null && !ai.isBlank() && !out.contains(ai)) out.add(ai);
-	    if (rhythm != null && !rhythm.isBlank() && !out.contains(rhythm)) out.add(rhythm);
-	    if (cleanup != null && !cleanup.isBlank() && !out.contains(cleanup)) out.add(cleanup);
-
-	    return out.isEmpty() ? " " : String.join("   |   ", out);
+	    return String.join("   |   ", parts);
 	}
 }
