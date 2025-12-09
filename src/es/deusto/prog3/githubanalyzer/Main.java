@@ -21,13 +21,18 @@ public class Main {
 		}
 		
 		// Read cache
-		statsMap = DataManager.getInstance().loadData();		
+		statsMap = DataManager.getInstance().loadData();
+		
+		// Print number of cached repositories
+		System.out.format("- Loaded %d repositories from cache.\n", statsMap.size());
 		
     	if (Configurator.getInstance().isLoadFromGithub()) {
     		// Load data from GitHub
 	    	statsMap = GitHubDataLoader.getInstance().loadData(statsMap, false);		    	
 	    	// Store loaded data in the cache
-	    	DataManager.getInstance().storeData(statsMap);		    	
+	    	DataManager.getInstance().storeData(statsMap);
+	    	// Print number of repositories stored
+	    	System.out.format("- Stored %d repositories in cache.\n", statsMap.size());	    	
     	}	
     	
     	final List<RepoStats> list = statsMap;

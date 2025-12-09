@@ -31,7 +31,7 @@ public class DataManager {
     }
 
     @SuppressWarnings("unchecked")
-    public List<RepoStats> loadData() {
+    public synchronized List<RepoStats> loadData() {
         String file = Configurator.getInstance().getStatsFile();
         Path p = Paths.get(file);
 
@@ -43,16 +43,16 @@ public class DataManager {
         try (ObjectInputStream in = new ObjectInputStream(new BufferedInputStream(Files.newInputStream(p)))) {
             List<RepoStats> data = (List<RepoStats>) in.readObject();
             if (data == null) data = new ArrayList<>();
-            System.out.format("- %d RepoStats loaded from '%s'\n\n", data.size(), file);
             return data;
         } catch (Exception ex) {
             System.err.format("* Error reading binary file '%s': %s\n\n", file, ex.getMessage());
+            System.out.format("- No cache found at '%s' (starting empty)\n\n", file);
             return new ArrayList<>();
         }
     }
 
     /** Full save (thread-safe + atomic write). */
-    public void storeData(List<RepoStats> data) {
+    public synchronized void storeData(List<RepoStats> data) {
         if (data == null) data = new ArrayList<>();
 
         synchronized (ioLock) {
@@ -78,8 +78,7 @@ public class DataManager {
                 } catch (AtomicMoveNotSupportedException e) {
                     Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
                 }
-
-                System.out.format("- %d RepoStats stored in '%s'\n\n", data.size(), file);
+                
             } catch (Exception ex) {
                 System.err.format("* Error saving binary file '%s': %s\n\n", file, ex.getMessage());
                 // best-effort cleanup
@@ -92,7 +91,7 @@ public class DataManager {
      * Incremental update: insert/update a single RepoStats and persist safely.
      * Call this after finishing analysis of each repository.
      */
-    public void upsertRepoStats(RepoStats repoStats) {
+    public synchronized void upsertRepoStats(RepoStats repoStats) {
         if (repoStats == null || repoStats.getUrl() == null) return;
 
         synchronized (ioLock) {
@@ -119,7 +118,7 @@ public class DataManager {
         }
     }
 
-    public void storeCSV(List<RepoStats> data) {
+    public synchronized void storeCSV(List<RepoStats> data) {
         final String csvPath = Configurator.getInstance().getStatsCSV();
 
         try (PrintWriter out = new PrintWriter(
