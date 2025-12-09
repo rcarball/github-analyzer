@@ -74,31 +74,28 @@ public class MainWindow extends JFrame {
 	private String selectedRepo;
 
 	public MainWindow(List<RepoStats> data) {
-		// Se configura el JTree de repositorios
 		jTreeRepos.setRowHeight(23);
 
-		// Asignar un render personalizado como clase anónima
+		// Personalized renderer for the JTree of repositories
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
 			private static final long serialVersionUID = 1L;
 
 			@Override
 			public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected, boolean expanded,
 					boolean leaf, int row, boolean hasFocus) {
-				Component component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row,
-						hasFocus);
+				Component component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
 
 				String iconName = "resources/images/";
 				
-				// Obtener el nodo y su valor asociado
 				DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
 				Object userObject = node.getUserObject();				
 
-				// Verificar si el userObject es de tipo RepoStats
+				// Check if the node represents a RepoStats object
 				if (userObject instanceof RepoStats) {
 					RepoStats repoStats = (RepoStats) userObject;
 					iconName += repoStats.isPublic() ? "public.png" : "private.png";
 					
-					// Si el repositorio está vacío, cambiar el color de text a rojo
+					// If the repository is empty (no commits), change the text color to orange
 					if (repoStats.getCommits() == 0) {
 						component.setForeground(new Color(245, 143, 41));
 						setText(repoStats.getName() + " (empty)");
@@ -136,9 +133,9 @@ public class MainWindow extends JFrame {
 			}
 		});
 		
-		// Se cargan los datos iniciales de los repositorios
+		// Update the JTree with the initial data
 		updateReposJTree(data);
-		// Se inicializa la tabla de personas colaboradoras
+		// Initialize the user stats table
 		initTable();
 
 		JScrollPane reposJScrollPane = new JScrollPane(jTreeRepos);
@@ -157,25 +154,21 @@ public class MainWindow extends JFrame {
 		lblExternalRefs  = new JLabel("• External references:");
 		lblURL           = new JLabel("• Open repository:");
 		
-		lblCommits.setToolTipText("<html><b>Unique commits</b> across all branches (deduplicated by SHA).<br>"
-		                          + "This is a global activity indicator (not the same as “Java commits per person”).</html>");
+		lblCommits.setToolTipText("<html><b>Unique commits</b> across all branches (deduplicated by SHA).<br>This is a global activity indicator (not the same as “Java commits per person”).</html>");
 		lblCreationDate.setToolTipText("Repository creation date (from GitHub).");
 		lblFirstCommit.setToolTipText("Earliest commit date found in the analyzed history.");
 		lblLastCommit.setToolTipText("Latest commit date found in the analyzed history.");
-		lblColeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>"
-		                            + "It measures code size, not effort.</html>");
-		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>"
-		                               + "Computed from non-merge commits only.</html>");
-		lblExternalRefs.setToolTipText("<html>Occurrences of patterns <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files.<br>"
-		                               + "Useful to flag external/AI-assisted code references.</html>");
+		lblColeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>It measures code size, not effort.</html>");
+		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
+		lblExternalRefs.setToolTipText("<html>Occurrences of patterns <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files.<br>Useful to flag external/AI-assisted code references.</html>");
 		lblURL.setToolTipText("Click to open the repository in your browser.");
 		
-        // Añadir el MouseListener para capturar el clic
+        // MoseListener to open the URL when clicked
 		lblURL.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 try {
-                    // Abrir la URL en el navegador predeterminado
+                    // Use default browser to open the URL
                 	if (selectedRepo != null) {
                 		Desktop.getDesktop().browse(new URI(repoStatsMap.get(selectedRepo).getUrl()));
                 	}
@@ -187,14 +180,14 @@ public class MainWindow extends JFrame {
             @Override
             public void mouseEntered(MouseEvent e) {
             	if (selectedRepo != null) {
-            		lblURL.setCursor(new Cursor(Cursor.HAND_CURSOR));  // Cambiar a cursor de mano
+            		lblURL.setCursor(new Cursor(Cursor.HAND_CURSOR));
             	}
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
             	if (selectedRepo != null) {
-            		lblURL.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));  // Volver al cursor por defecto
+            		lblURL.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
             	}
             }
         });
@@ -237,39 +230,39 @@ public class MainWindow extends JFrame {
 
             @Override
             public void mouseEntered(MouseEvent e) {
-            	lblFooter.setCursor(new Cursor(Cursor.HAND_CURSOR));  // Cambiar a cursor de mano
+            	lblFooter.setCursor(new Cursor(Cursor.HAND_CURSOR));
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-            	lblFooter.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));  // Volver al cursor por defecto
+            	lblFooter.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
             }
         });
 
-		// Configuración del botón de refresco
+		// Refresh button action
 		btnRefresh.setToolTipText("Refresh (GitHub)");
 		btnRefresh.addActionListener(e -> {						
-			// SwingWorker para tareas largas en segundo plano
+			// SwingWorker to perform the refresh in the background
 	        SwingWorker<List<RepoStats>, String> worker = new SwingWorker<>() {
 	            
 	            @Override
 	            protected List<RepoStats> doInBackground() throws Exception {
-	                // Se obtienen las estadísticas desde GitHub
+	                // Load new data from GitHub
 	            	List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(null, true);
-	    	    	//Se guardan las estadísticas en un fichero binario
+	    	    	// Store the new data in the local cache
 	    	    	DataManager.getInstance().storeData(newStats);
-	    	    	// Se devuelve la nueva lista de estadísticas
+	    	    	// Return the new data
 	    	    	return newStats;
 	            }
 
 	            @Override
 	            protected void done() {
 	            	try {
-		            	// Se actualizan los datos en la interfaz cuando se obtienen los nuevos datos
+		            	// Update the UI with the new data
 		    	    	updateReposJTree(get());
 		    	    	
 		    	    	SwingUtilities.invokeLater(() -> {
-			            	// Se muestra un mensaje de confirmación
+			            	// Show a success message
 		    	    		JOptionPane.showMessageDialog(
 		    	    			    null,
 		    	    			    "Data refreshed successfully.",
@@ -289,7 +282,7 @@ public class MainWindow extends JFrame {
 	            }
 	        };
 
-	        // Iniciar el worker
+	        // Execute the worker
 	        worker.execute();
 		});
 		
@@ -315,22 +308,26 @@ public class MainWindow extends JFrame {
 		this.setSize(1200, 700);
 		this.setLocationRelativeTo(null);
 	
-		// Tooltips más “lentos” (en ms)
-		ToolTipManager.sharedInstance().setInitialDelay(300);   // aparece rápido
-		ToolTipManager.sharedInstance().setDismissDelay(20000); // 20 segundos visible
-		ToolTipManager.sharedInstance().setReshowDelay(100);    // al pasar entre celdas
+		// Changes to ToolTipManager settings
+		ToolTipManager.sharedInstance().setInitialDelay(300);   // appear after 0.3 segundos
+		ToolTipManager.sharedInstance().setDismissDelay(20000); // show for 20 segundos
+		ToolTipManager.sharedInstance().setReshowDelay(100);    // reshow after 0.1 segundos
 		
-		this.setVisible(true);		
+		this.setVisible(true);
 	}
 
 	private void updateReposJTree(List<RepoStats> data) {
 		repoStatsMap.clear();
+		
 		data.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
+		
 		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(String.format("%d Repositories", data.size()));
+		
 		data.forEach(repo -> {
-			DefaultMutableTreeNode repoNode = new DefaultMutableTreeNode(repo); // repo es de tipo RepoStats
+			DefaultMutableTreeNode repoNode = new DefaultMutableTreeNode(repo);
 			repoRootNode.add(repoNode);
 		});
+		
 		jTreeRepos.setModel(new DefaultTreeModel(repoRootNode));
 	}
 	
@@ -384,7 +381,7 @@ public class MainWindow extends JFrame {
 	        JLabel result = new JLabel(" " + safeValue.toString());
 	        result.setHorizontalAlignment(JLabel.CENTER);
 
-	        // Formato por tipo
+	        // Horizontal alignment by type
 	        if (value instanceof String) {
 	            result.setHorizontalAlignment(JLabel.LEFT);
 	        } else if (value instanceof Long) {
@@ -398,12 +395,13 @@ public class MainWindow extends JFrame {
 	            result.setHorizontalAlignment(JLabel.RIGHT);
 	        }
 
-	        // USERNAME a la izquierda
+	        // Username column: left align
 	        if (column == 0) result.setHorizontalAlignment(JLabel.LEFT);
 
-	        // Colorear por contribución (usando la MISMA lista que pinta la tabla)
+	        // Color coding based on contribution share
 	        if (selectedRepo != null) {
 	            RepoStats repo = repoStatsMap.get(selectedRepo);
+	            
 	            if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
 
 	                UserStats user = repo.getUserStats().get(row);
@@ -420,32 +418,33 @@ public class MainWindow extends JFrame {
 	                if (teacher) {
 	                    result.setForeground(Color.DARK_GRAY);
 	                } else if (userChurn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f) {
-	                    result.setForeground(new Color(234, 23, 68)); // muy bajo
+	                    result.setForeground(new Color(234, 23, 68)); // very low
 	                } else if (share >= expected * 1.25f) {
-	                    result.setForeground(new Color(54, 130, 127)); // alto
+	                    result.setForeground(new Color(54, 130, 127)); // high
 	                } else if (share >= expected) {
 	                    result.setForeground(new Color(54, 130, 127)); // ok
 	                } else {
-	                    result.setForeground(new Color(245, 143, 41)); // bajo
+	                    result.setForeground(new Color(245, 143, 41)); // below expected
 	                }
 
-	                // Tooltip corto por celda (opcional): dejamos que JTable.getToolTipText muestre el largo
-	                // pero para la col 0 damos un hint rápido
+	                // Tooltips for the first column
 	                if (column == 0) {
-	                    if (teacher) result.setToolTipText("👩‍🏫 Teacher (excluded from expected share)");
-	                    else if (userChurn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f)
+	                    if (teacher) {
+	                    	result.setToolTipText("👩‍🏫 Teacher (excluded from expected share)");
+	                    } else if (userChurn == 0 || user.getFirstCommit() == -1 || share < expected * 0.5f) {
 	                        result.setToolTipText("⛔ Very low / no contribution");
-	                    else if (share >= expected * 1.25f)
+	                    } else if (share >= expected * 1.25f) {
 	                        result.setToolTipText("🌟 High contribution");
-	                    else if (share >= expected)
+	                    } else if (share >= expected) {
 	                        result.setToolTipText("✅ Around expected contribution");
-	                    else
+	                    } else {
 	                        result.setToolTipText("⚠️ Below expected contribution");
+	                    }
 	                }
 	            }
 	        }
 
-	        // Fondo selección
+	        // Selection colors
 	        if (isSelected) {
 	            result.setBackground(table.getSelectionBackground());
 	            result.setForeground(table.getSelectionForeground());
@@ -457,6 +456,7 @@ public class MainWindow extends JFrame {
 	        return result;
 	    };
 
+	    // Header tooltips
 	    final String[] headerTooltips = new String[] {
 	    	    "GitHub login when available; otherwise derived from commit author info. Emoji = main contribution indicator.",
 	    	    "Java lines added (sum over non-merge commits).",
@@ -526,38 +526,37 @@ public class MainWindow extends JFrame {
 
 	private void loadRepoStats(RepoStats repoStats) {
 		if (repoStats != null) {
-			// Se actualizan las estadísticas generales del repo
-			lblCreationDate.setText(String.format("- Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));			
+			// Update labels with repository stats
+			lblCreationDate.setText(String.format("• Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));			
 			
 			if (repoStats.getFirstCommit() == -1) {
-                lblFirstCommit.setText("- First commit: -");
+                lblFirstCommit.setText("• First commit: -");
             } else {
-            	lblFirstCommit.setText(String.format("- First commit: %s", dateFormat.format(new Date(repoStats.getFirstCommit()))));
+            	lblFirstCommit.setText(String.format("• First commit: %s", dateFormat.format(new Date(repoStats.getFirstCommit()))));
             }
 
 			if (repoStats.getLastCommit() == -1) {
-				lblLastCommit.setText("- Last commit: -");
+				lblLastCommit.setText("• Last commit: -");
 			} else {			
-				lblLastCommit.setText(String.format("- Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
+				lblLastCommit.setText(String.format("• Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
 			}
 			
 			int javaCommitsSum = repoStats.getUserStats().stream().mapToInt(UserStats::getCommits).sum();
 
-			lblCommits.setText(String.format("- Total commits (unique): %d", repoStats.getCommits()));
+			lblCommits.setText(String.format("• Total commits (unique): %d", repoStats.getCommits()));
 			lblCommits.setToolTipText(String.format(
-			    "<html>Unique commits across all branches (deduplicated by SHA).<br>" +
-			    "Java commits (sum of users, non-merge commits touching .java): %d</html>",
+			    "<html>Unique commits across all branches (deduplicated by SHA).<br>Java commits (sum of users, non-merge commits touching .java): %d</html>",
 			    javaCommitsSum
 			));
 			
-			lblColeLines.setText(String.format("- Total lines of code: %d", repoStats.getCodeLines()));
-			lblLinesChanged.setText(String.format("- Java churn (added+deleted): %d", repoStats.getLinesChanged()));
+			lblColeLines.setText(String.format("• Total lines of code: %d", repoStats.getCodeLines()));
+			lblLinesChanged.setText(String.format("• Java churn (added+deleted): %d", repoStats.getLinesChanged()));
 			lblLinesChanged.setToolTipText(String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
-			lblExternalRefs.setText(String.format("- External references: %d", repoStats.getExternalReferences()));
-			lblURL.setText(String.format("<html>- <u><i>%s</i></u></html>", repoStats.getName()));			
+			lblExternalRefs.setText(String.format("• External references: %d", repoStats.getExternalReferences()));
+			lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repoStats.getName()));			
 			lblURL.setForeground(Color.BLUE);			
 
-			// Se actualiza la tabla de colaboradores
+			// Clear and populate the user stats table
 			tableModelUserStats.setRowCount(0);
 
 			int repoChurn = repoStats.getLinesChanged(); // churn java
@@ -592,14 +591,14 @@ public class MainWindow extends JFrame {
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
 		} else {
-			lblCreationDate.setText("- Creation date:");
-			lblFirstCommit.setText("- First commit:");
-			lblLastCommit.setText("- Last commit:");
-			lblCommits.setText("- Total commits:");
-			lblColeLines.setText("- Total lines of code:");
-			lblLinesChanged.setText("- Java churn (added+deleted):");
-			lblExternalRefs.setText("- External references:");
-			lblURL.setText("- URL:");
+			lblCreationDate.setText("• Creation date:");
+			lblFirstCommit.setText("• First commit:");
+			lblLastCommit.setText("• Last commit:");
+			lblCommits.setText("• Total commits:");
+			lblColeLines.setText("• Total lines of code:");
+			lblLinesChanged.setText("• Java churn (added+deleted):");
+			lblExternalRefs.setText("• External references:");
+			lblURL.setText("• URL:");
 
 			tableModelUserStats.setRowCount(0);
 			
@@ -678,8 +677,8 @@ public class MainWindow extends JFrame {
 	    if (totalCommitsJava > 0) avgChurnPerCommit = totalChurn / (float) totalCommitsJava;
 
 	    boolean aiPasteLike = commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f;
-
 	    boolean cleanup = false;
+	    
 	    if (uChurn > 0) {
 	        float delRatio = u.getDeleted() / (float) uChurn;
 	        cleanup = (delRatio >= 0.55f && uChurn >= 200);
@@ -696,10 +695,7 @@ public class MainWindow extends JFrame {
 
 	    StringBuilder sb = new StringBuilder("<html>");
 	    sb.append("<b>Teaching interpretation (indicators)</b><br>");
-	    sb.append(String.format(
-	        "Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>",
-	        n, expected * 100
-	    ));
+	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
 
 	    // 1) Teacher
 	    if (isTeacher(u)) {
@@ -798,7 +794,7 @@ public class MainWindow extends JFrame {
 	        return t.replaceAll("\\s{2,}", " ");
 	    };
 
-	    // Contribution slot: prefer teacher / very low / engine / high / balanced / below expected
+	    // Contribution slot: teacher / very low / engine / high / balanced / below expected
 	    String contribution = null;
 	    String[] contributionPriority = new String[] { "👩‍🏫", "⛔", "⚠️", "🌟", "✅" };
 
