@@ -94,28 +94,28 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 
 	@Override
 	public int compareTo(UserStats o) {
-	    if (o == null) return -1; // este va antes
+	    if (o == null) return -1;
 
 	    int thisChurn = this.added + this.deleted;
 	    int otherChurn = o.added + o.deleted;
 
-	    // 1) Mayor churn (aporte) primero
+	    // 1) Churn
 	    int c = Integer.compare(otherChurn, thisChurn);
 	    if (c != 0) return c;
 
-	    // 2) Mayor nº de commits primero
+	    // 2) Commits
 	    c = Integer.compare(o.commits, this.commits);
 	    if (c != 0) return c;
 
-	    // 3) Mayor nº de ficheros primero
+	    // 3) Files
 	    c = Integer.compare(o.javaFiles, this.javaFiles);
 	    if (c != 0) return c;
 
-	    // 4) Más reciente primero (si existe)
+	    // 4) Last Commit
 	    c = Long.compare(o.lastCommit, this.lastCommit);
 	    if (c != 0) return c;
 
-	    // 5) Username alfabético (null-safe)
+	    // 5) Username
 	    String u1 = (this.username == null) ? "" : this.username;
 	    String u2 = (o.username == null) ? "" : o.username;
 	    return u1.compareToIgnoreCase(u2);

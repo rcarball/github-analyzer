@@ -1,6 +1,5 @@
 package es.deusto.prog3.githubanalyzer.domain;
 
-import java.util.Locale;
 import java.util.Objects;
 
 public class SimpleGitUser {
@@ -18,7 +17,7 @@ public class SimpleGitUser {
     private static String norm(String s) {
         if (s == null) return "";
         s = s.trim();
-        return s.isEmpty() ? "" : s.toLowerCase(Locale.ROOT);
+        return s.isEmpty() ? "" : s.toLowerCase();
     }
 
     private static String localPart(String email) {

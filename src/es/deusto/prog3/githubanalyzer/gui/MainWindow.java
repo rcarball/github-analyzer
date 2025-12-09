@@ -92,8 +92,8 @@ public class MainWindow extends JFrame {
 
 	    final String emoji;
 	    final Color color;
-	    final String shortLabel;   // para status / tooltip corto
-	    final String longLine;     // para tooltip largo
+	    final String shortLabel;
+	    final String longLine;
 
 	    ContributionBadge(String emoji, Color color, String shortLabel, String longLine) {
 	        this.emoji = emoji;
@@ -455,7 +455,7 @@ public class MainWindow extends JFrame {
 	        // 2) Alignment rules (decided once, no redundant overrides)
 	        label.setHorizontalAlignment(computeAlignment(v, column));
 
-	        // 3) Color coding + short tooltip derived from the same interpretation used everywhere
+	        // 3) Color coding + short tooltip
 	        RepoStats repo = (selectedRepo == null) ? null : repoStatsMap.get(selectedRepo);
 	        if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
 	            UserStats user = repo.getUserStats().get(row);
@@ -465,21 +465,19 @@ public class MainWindow extends JFrame {
 	            // Apply row color (all columns)
 	            label.setForeground(it.badge.color);
 
-	            // Tooltip only on the first column.
-	            if (column == 0) {
-	                String shortTip = it.badge.shortText();
-	                if (!it.flags.isEmpty()) {
-	                    shortTip += "  |  " + it.flags.stream().map(AlertFlag::shortText).reduce((a,b)->a+"  "+b).orElse("");
-	                }
-	                label.setToolTipText(shortTip);
-	            }
+	            // Tooltip for all columns
+                String shortTip = it.badge.shortText();
+                if (!it.flags.isEmpty()) {
+                    shortTip += "  |  " + it.flags.stream().map(AlertFlag::shortText).reduce((a,b)->a+"  "+b).orElse("");
+                }
+                label.setToolTipText(shortTip);
 	        } else {
-	            // Default appearance when no repo is selected (or row is out of range)
+	            // Default appearance when no repo is selected
 	            label.setForeground(table.getForeground());
 	            label.setToolTipText(null);
 	        }
 
-	        // 4) Selection always wins (ensures readability)
+	        // 4) Selection 
 	        if (isSelected) {
 	            label.setBackground(table.getSelectionBackground());
 	            label.setForeground(table.getSelectionForeground());
@@ -653,7 +651,6 @@ public class MainWindow extends JFrame {
 		return new ImageIcon(icon.getImage().getScaledInstance(22, 22, Image.SCALE_SMOOTH));
 	}
 	
-    /** Formats the cell value based on its type (dates, percentages, numbers). */
     private String formatCellValue(Object v) {
         if (v instanceof Long) {
             long ts = (Long) v;
@@ -666,19 +663,10 @@ public class MainWindow extends JFrame {
         return String.valueOf(v);
     }
 
-    /**
-     * Alignment rules:
-     * - Column 0 (username): left
-     * - Dates: centered (also force center for LAST/FIRST commit columns)
-     * - Numbers / percentages: right
-     * - Text: left
-     */
     private int computeAlignment(Object v, int column) {
         if (column == 0) return JLabel.LEFT;
-
-        // Commit date columns (LAST/FIRST COMMIT) are typically 7 and 8
+        
         if (v instanceof Long || column == 7 || column == 8) return JLabel.CENTER;
-
         if (v instanceof Float) return JLabel.RIGHT;
         if (v instanceof Integer) return JLabel.RIGHT;
 
@@ -743,17 +731,18 @@ public class MainWindow extends JFrame {
 	    float high    = expected * 1.25f;
 	    float engineT = expected * 2.0f;
 
-	    // Badge principal (única lógica)
+	    // Badge
 	    ContributionBadge badge;
+	    
 	    if (uChurn == 0 || commitsJava == 0 || share < veryLow) badge = ContributionBadge.VERY_LOW;
 	    else if (share >= high) badge = ContributionBadge.HIGH;
 	    else if (share >= okMin && share <= okMax) badge = ContributionBadge.BALANCED;
 	    else badge = ContributionBadge.BELOW;
 
-	    // Flags adicionales
+	    // Flags
 	    List<AlertFlag> flags = new ArrayList<>();
 
-	    // Engine (si quieres que “motor” sea solo flag, no badge)
+	    // Engine
 	    if (share >= engineT) flags.add(AlertFlag.ENGINE);
 
 	    // Cleanup
@@ -794,15 +783,13 @@ public class MainWindow extends JFrame {
 	    StringBuilder sb = new StringBuilder("<html>");
 	    sb.append("<b>Teaching interpretation (indicators)</b><br>");
 	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
-
-	    // Línea principal SIEMPRE consistente con la celda
 	    sb.append(it.badge.emoji).append(" <b>").append(it.badge.shortLabel).append("</b>");
 	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");
 
-	    // Flags en orden que tú quieras (aquí: engine, cleanup, AI, rhythm)
 	    for (AlertFlag f : it.flags) sb.append(f.htmlLine());
 
 	    sb.append("</html>");
+	    
 	    return sb.toString();
 	}
 		

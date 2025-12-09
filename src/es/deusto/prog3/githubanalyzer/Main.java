@@ -14,19 +14,19 @@ public class Main {
     public static void main(String[] args) {    	
     	List<RepoStats> statsMap = null;
     	
-    	//Se confima que está configurado el username, el token y que existe al menos un repositorio
+    	// Check username, token an at least 1 repository
 		if (!Configurator.getInstance().isConfigured()) {
 			System.err.println("Check GitHub username and token in 'resources/config.properties'.");
 			System.exit(1);
 		}
 		
-		//Se leen las estadísticas desde un fichero binario
+		// Read cache
 		statsMap = DataManager.getInstance().loadData();		
 		
     	if (Configurator.getInstance().isLoadFromGithub()) {
-    		//Se obtienen las estadísticas desde GitHub
+    		// Load data from GitHub
 	    	statsMap = GitHubDataLoader.getInstance().loadData(statsMap, false);		    	
-	    	//Se guardan las estadísticas en un fichero binario
+	    	// Store loaded data in the cache
 	    	DataManager.getInstance().storeData(statsMap);		    	
     	}	
     	
