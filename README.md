@@ -160,14 +160,16 @@ With `expected = 1/n` and `share = userChurn/repoChurn`:
 - `veryLow = expected * 0.5`
 - `okMin   = expected * 0.8`
 - `okMax   = expected * 1.2`
-- `high    = expected * 1.25`
 
-Final badge:
+Final badge (contiguous ranges, no gaps):
 - **🎓 TEACHER** if the user matches `teacher.user` or `teacher.email`
 - **🛑 VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
-- **🟠 BELOW** otherwise (some contribution, but under expected share)
+- **🟠 BELOW** if `veryLow <= share < okMin`
 - **✅ BALANCED** if `okMin <= share <= okMax`
-- **🌟 HIGH** if `share >= high`
+- **🌟 HIGH** if `share > okMax`
+
+> Note: the GUI shows “% Java churn” with **2 decimals**. To avoid edge-case surprises, the app can round `share`
+> consistently with the UI (2 decimals in % ≙ 4 decimals in ratio) before applying the thresholds.
 
 ### Badge table
 
