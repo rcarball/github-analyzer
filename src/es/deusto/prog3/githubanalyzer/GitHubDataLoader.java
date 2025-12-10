@@ -169,18 +169,11 @@ public class GitHubDataLoader {
             Map<RawIdentity, List<GHCommit>> rawCommits = collectCommitsAllBranches(repository, branches, repoStats, buffer);
         	Map<SimpleGitUser, List<GHCommit>> commitsPerUser = resolveAndMergeAuthors(rawCommits);
         	        	
-        	buffer.append(String.format("\t* Authors raw=%d -> merged=%d\n", rawCommits.size(), commitsPerUser.size()));
-
         	fillUserStatsFromCommits(commitsPerUser, repoStats, buffer);
         	
             repoStats.setLinesAdded(repoStats.getUserStats().stream().mapToInt(UserStats::getAdded).sum());
             repoStats.setLinesDeleted(repoStats.getUserStats().stream().mapToInt(UserStats::getDeleted).sum());
-            repoStats.setLinesChanged(repoStats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());
-            
-        	int repoChurn = repoStats.getLinesChanged();
-        	long contributorsJava = repoStats.getUserStats().stream().filter(u -> u.getCommits() > 0).count();
-        	buffer.append(String.format("\t* Summary: javaContributors=%d | repoJavaChurn=%d\n", contributorsJava, repoChurn));
-            
+            repoStats.setLinesChanged(repoStats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());            
 
             DataManager.getInstance().upsertRepoStats(repoStats);
         } catch (Exception e) {

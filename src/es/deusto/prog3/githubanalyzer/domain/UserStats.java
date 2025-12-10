@@ -11,7 +11,9 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	private int added, deleted, changed;
 	private long firstCommit, lastCommit;
 	
-	public UserStats(String username, String email, int commits, int javaFiles, int added, int deleted, int changed, long firstCommit, long lastCommit) {		
+	public UserStats(String username, String email, int commits, 
+			         int javaFiles, int added, int deleted, 
+			         int changed, long firstCommit, long lastCommit) {		
 		this.username = username;
 		this.email = email;
 		this.commits = commits;
