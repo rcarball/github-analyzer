@@ -1,8 +1,8 @@
-# Configuración de Eclipse
+# Eclipse
 .classpath
 .project
 .settings/
 
-# Código compilado
+# Compiled Code
 bin/
 /.DS_Store
