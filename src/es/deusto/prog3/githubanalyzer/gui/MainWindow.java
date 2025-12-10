@@ -102,13 +102,15 @@ public class MainWindow extends JFrame {
 	        this.longLine = longLine;
 	    }
 
-	    String shortText() { return emoji + " " + shortLabel; }
+	    public String shortText() {
+	    	return String.format("%s %s", emoji, shortLabel);
+	    }
 	}
 	
 	private enum AlertFlag {
 	    ENGINE("🚀️", "Team “engine”", "Far above expected. Review task distribution and authorship."),
 	    CLEANUP("🧹", "Cleanup/correction work", "High deletion ratio. Verify context and continuity."),
-	    AI_PASTE("🧠", "AI/paste-like pattern", "Very high churn per commit vs repo average. Ask for a defense."),
+	    AI_PASTE("🧠", "AI/paste-like pattern", "Very high churn per commit vs repo average. Ask for a explanation."),
 	    RHYTHM("⏱️", "Irregular rhythm", "Activity concentrated near the end of the period.");
 
 	    final String emoji;
@@ -121,9 +123,11 @@ public class MainWindow extends JFrame {
 	        this.description = description;
 	    }
 
-	    String shortText() { return emoji + " " + title; }
+	    public String shortText() {
+	    	return String.format("%s %s", emoji, title);
+	    }
 
-	    String htmlLine() {
+	    public String htmlLine() {
 	        return emoji + " <b>" + title + "</b>: " + description + "<br>";
 	    }
 	}
@@ -132,7 +136,7 @@ public class MainWindow extends JFrame {
 	    final ContributionBadge badge;
 	    final List<AlertFlag> flags;
 
-	    Interpretation(ContributionBadge badge, List<AlertFlag> flags) {
+	    public Interpretation(ContributionBadge badge, List<AlertFlag> flags) {
 	        this.badge = badge;
 	        this.flags = flags;
 	    }
@@ -141,12 +145,12 @@ public class MainWindow extends JFrame {
 	public MainWindow(List<RepoStats> data) {
 		jTreeRepos.setRowHeight(23);
 
-		// Personalized renderer for the JTree of repositories
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
 			private static final long serialVersionUID = 1L;
 
 			@Override
-			public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected, boolean expanded,
+			public Component getTreeCellRendererComponent(JTree tree, Object value, 
+					boolean selected, boolean expanded,
 					boolean leaf, int row, boolean hasFocus) {
 				Component component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
 
@@ -373,7 +377,7 @@ public class MainWindow extends JFrame {
 		this.setSize(1200, 700);
 		this.setLocationRelativeTo(null);
 	
-		// Changes to ToolTipManager settings
+		// ToolTipManager personalized settings
 		ToolTipManager.sharedInstance().setInitialDelay(300);   // appear after 0.3 segundos
 		ToolTipManager.sharedInstance().setDismissDelay(20000); // show for 20 segundos
 		ToolTipManager.sharedInstance().setReshowDelay(100);    // reshow after 0.1 segundos
@@ -422,18 +426,19 @@ public class MainWindow extends JFrame {
 	        }
 
 	        @Override
-	        public String getToolTipText(java.awt.event.MouseEvent e) {
+	        public String getToolTipText(MouseEvent e) {
 	            if (selectedRepo == null) return super.getToolTipText(e);
 
-	            int row = rowAtPoint(e.getPoint());
-	            if (row < 0) return super.getToolTipText(e);
+	            int viewRow = rowAtPoint(e.getPoint());
+	            if (viewRow < 0) return super.getToolTipText(e);
+
+	            int modelRow = convertRowIndexToModel(viewRow);
 
 	            RepoStats repo = repoStatsMap.get(selectedRepo);
 	            if (repo == null) return super.getToolTipText(e);
+	            if (modelRow < 0 || modelRow >= repo.getUserStats().size()) return super.getToolTipText(e);
 
-	            if (row >= repo.getUserStats().size()) return super.getToolTipText(e);
-
-	            UserStats u = repo.getUserStats().get(row);
+	            UserStats u = repo.getUserStats().get(modelRow);
 	            return buildInterpretationTooltip(repo, u);
 	        }
 	    };
@@ -457,20 +462,24 @@ public class MainWindow extends JFrame {
 
 	        // 3) Color coding + short tooltip
 	        RepoStats repo = (selectedRepo == null) ? null : repoStatsMap.get(selectedRepo);
-	        if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
-	            UserStats user = repo.getUserStats().get(row);
-
-	            Interpretation it = interpret(repo, user);
+	       
+	        if (repo != null && row >= 0) {
+	            int modelRow = table.convertRowIndexToModel(row);
 	            
-	            // Apply row color (all columns)
-	            label.setForeground(it.badge.color);
-
-	            // Tooltip for all columns
-                String shortTip = it.badge.shortText();
-                if (!it.flags.isEmpty()) {
-                    shortTip += "  |  " + it.flags.stream().map(AlertFlag::shortText).reduce((a,b)->a+"  "+b).orElse("");
-                }
-                label.setToolTipText(shortTip);
+	            if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
+	                UserStats user = repo.getUserStats().get(modelRow);
+	                Interpretation it = interpret(repo, user);
+	                
+		            // Apply row color (all columns)
+		            label.setForeground(it.badge.color);
+	
+		            // Tooltip for all columns
+	                String shortTip = it.badge.shortText();	              
+	                if (!it.flags.isEmpty()) {
+	                    shortTip += "  |  " + it.flags.stream().map(AlertFlag::shortText).reduce((a,b)->a+"  "+b).orElse("");
+	                }
+	                label.setToolTipText(shortTip);
+	            }
 	        } else {
 	            // Default appearance when no repo is selected
 	            label.setForeground(table.getForeground());
@@ -543,9 +552,14 @@ public class MainWindow extends JFrame {
 	        @Override
 	        public void mouseMoved(MouseEvent e) {
 	        	RepoStats repo = repoStatsMap.get(selectedRepo);
-	        	int row = jTableUserStats.rowAtPoint(e.getPoint());
-	        	if (repo != null && row >= 0 && row < repo.getUserStats().size()) {
-	        	    lblStatus.setText(statusTextFor(repo.getUserStats().get(row), repo));
+	        	int viewRow = jTableUserStats.rowAtPoint(e.getPoint());
+	        	if (repo != null && viewRow >= 0) {
+	        	    int modelRow = jTableUserStats.convertRowIndexToModel(viewRow);
+	        	    if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
+	        	        lblStatus.setText(statusTextFor(repo.getUserStats().get(modelRow), repo));
+	        	    } else {
+	        	        lblStatus.setText(" ");
+	        	    }
 	        	} else {
 	        	    lblStatus.setText(" ");
 	        	}
@@ -711,61 +725,89 @@ public class MainWindow extends JFrame {
 	}	
 	
 	private Interpretation interpret(RepoStats repo, UserStats u) {
+	    // Defensive defaults
 	    if (repo == null || u == null) return new Interpretation(ContributionBadge.BELOW, List.of());
 
+	    // Teacher is always a special case (excluded from expected-share calculations)
 	    if (isTeacher(u)) return new Interpretation(ContributionBadge.TEACHER, List.of());
 
+	    // Repo-wide churn (Java added + deleted, as computed in RepoStats)
 	    int repoChurn = repo.getLinesChanged();
+
+	    // User churn (Java added + deleted) and "real Java commits" (non-merge commits touching .java)
 	    int uChurn = userChurn(u);
 	    int commitsJava = u.getCommits();
 
-	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
-	    int n = Math.max(1, contributors.size());
-	    float expected = 1f / n;
-
-	    float share = (repoChurn <= 0) ? 0f : (uChurn / (float) repoChurn);
-
-	    float veryLow = expected * 0.5f;
-	    float okMin   = expected * 0.8f;
-	    float okMax   = expected * 1.2f;
-	    float high    = expected * 1.25f;
-	    float engineT = expected * 2.0f;
-
-	    // Badge
-	    ContributionBadge badge;
-	    
-	    if (uChurn == 0 || commitsJava == 0 || share < veryLow) badge = ContributionBadge.VERY_LOW;
-	    else if (share >= high) badge = ContributionBadge.HIGH;
-	    else if (share >= okMin && share <= okMax) badge = ContributionBadge.BALANCED;
-	    else badge = ContributionBadge.BELOW;
-
-	    // Flags
-	    List<AlertFlag> flags = new ArrayList<>();
-
-	    // Engine
-	    if (share >= engineT) flags.add(AlertFlag.ENGINE);
-
-	    // Cleanup
-	    if (uChurn > 0) {
-	        float delRatio = u.getDeleted() / (float) uChurn;
-	        if (delRatio >= 0.55f && uChurn >= 200) flags.add(AlertFlag.CLEANUP);
+	    // Hard guardrail: if there is no real Java activity, classify as VERY_LOW
+	    // (prevents misleading shares when commits/lines are missing or repoChurn is small)
+	    if (uChurn == 0 || commitsJava == 0) {
+	        return new Interpretation(ContributionBadge.VERY_LOW, List.of());
 	    }
 
-	    // AI/paste-like
-	    float churnPerCommit = (commitsJava <= 0) ? 0f : (uChurn / (float) commitsJava);
+	    // Expected contribution share is computed over "real contributors" only (excluding teacher)
+	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
+	    int n = Math.max(1, contributors.size());
+	    double expected = 1.0 / n;
+
+	    // User share of repo Java churn (ratio in [0..1])
+	    double shareRaw = (repoChurn <= 0) ? 0.0 : (uChurn / (double) repoChurn);
+
+	    // Keep the classification consistent with the GUI:
+	    // the GUI shows share as a percentage with 2 decimals (e.g., 62.47%),
+	    // which corresponds to rounding the ratio to 4 decimals (0.6247).
+	    double share = Math.round(shareRaw * 10000.0) / 10000.0;
+
+	    // Thresholds around the expected share:
+	    // - veryLow: below 50% of expected (or near-zero)
+	    // - okMin/okMax: "balanced band" = expected ±20%
+	    double veryLow = expected * 0.5;
+	    double okMin   = expected * 0.8;
+	    double okMax   = expected * 1.2;
+
+	    // ENGINE is treated as an additional flag (not a badge)
+	    double engineT = expected * 2.0;
+
+	    // Badge selection using contiguous ranges (no gaps, no overlaps):
+	    // 1) share < veryLow  -> VERY_LOW
+	    // 2) share < okMin    -> BELOW
+	    // 3) share <= okMax   -> BALANCED
+	    // 4) otherwise        -> HIGH
+	    ContributionBadge badge;
+	    if (share < veryLow) badge = ContributionBadge.VERY_LOW;
+	    else if (share < okMin) badge = ContributionBadge.BELOW;
+	    else if (share <= okMax) badge = ContributionBadge.BALANCED;
+	    else badge = ContributionBadge.HIGH;
+
+	    // Additional alert flags (secondary indicators)
+	    List<AlertFlag> flags = new ArrayList<>();
+
+	    // ENGINE: user far above expected (may indicate uneven task distribution / authorship concentration)
+	    if (share >= engineT) flags.add(AlertFlag.ENGINE);
+
+	    // CLEANUP: high deletion ratio with a minimum churn to reduce false positives
+	    if (uChurn > 0) {
+	        double delRatio = u.getDeleted() / (double) uChurn;
+	        if (delRatio >= 0.55 && uChurn >= 200) flags.add(AlertFlag.CLEANUP);
+	    }
+
+	    // AI_PASTE: churn-per-commit much higher than repo average (heuristic indicator)
+	    double churnPerCommit = (commitsJava <= 0) ? 0.0 : (uChurn / (double) commitsJava);
 	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
 	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
-	    float avgChurnPerCommit = (totalCommitsJava > 0) ? totalChurn / (float) totalCommitsJava : 0f;
+	    double avgChurnPerCommit = (totalCommitsJava > 0) ? totalChurn / (double) totalCommitsJava : 0.0;
 
-	    if (commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5f) {
+	    if (commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5) {
 	        flags.add(AlertFlag.AI_PASTE);
 	    }
 
-	    // Rhythm
-	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1 && repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
+	    // RHYTHM: activity concentrated near the end of the repo timeline (heuristic indicator)
+	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1 &&
+	        repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
+
 	        long repoSpan = repo.getLastCommit() - repo.getFirstCommit();
 	        long userLastOffset = u.getLastCommit() - repo.getFirstCommit();
-	        if (repoSpan > 0 && (userLastOffset / (float) repoSpan) > 0.85f && uChurn >= 200) {
+
+	        if (repoSpan > 0 && (userLastOffset / (double) repoSpan) > 0.85 && uChurn >= 200) {
 	            flags.add(AlertFlag.RHYTHM);
 	        }
 	    }
