@@ -1,3 +1,7 @@
+/**
+ * This code is based on solutions provided by ChatGPT 5.1 and.
+ * It has been thoroughly reviewed and validated to ensure correctness.
+ */
 package es.deusto.prog3.githubanalyzer.gui;
 
 import java.awt.BorderLayout;
