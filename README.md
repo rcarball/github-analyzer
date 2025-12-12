@@ -163,8 +163,8 @@ With `expected = 1/n` and `share = userChurn/repoChurn`:
 
 Final badge (contiguous ranges, no gaps):
 - **🎓 TEACHER** if the user matches `teacher.user` or `teacher.email`
-- **🛑 VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
-- **🟠 BELOW** if `veryLow <= share < okMin`
+- **⛔ VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
+- **⚠️ BELOW** if `veryLow <= share < okMin`
 - **✅ BALANCED** if `okMin <= share <= okMax`
 - **🌟 HIGH** if `share > okMax`
 
@@ -176,8 +176,8 @@ Final badge (contiguous ranges, no gaps):
 | Badge | Label | Meaning |
 |------:|------|---------|
 | 🎓 | Teacher account | Instructor account; excluded from expected-share calculations |
-| 🛑 | Very low / no contribution | Very low or null Java contribution; check additional evidence |
-| 🟠 | Below expected contribution | Some Java work, but under the expected share |
+| ⛔ | Very low / no contribution | Very low or null Java contribution; check additional evidence |
+| ⚠️ | Below expected contribution | Some Java work, but under the expected share |
 | ✅ | Balanced contribution | Close to expected share for the team size |
 | 🌟 | High contribution | Above expected share; may indicate a strong role or imbalance |
 
@@ -201,7 +201,7 @@ Flags do not change the badge: they are **extra alerts** to inspect patterns.
 - **Suggests**: refactor, corrections, or restructuring.  
   Often legitimate—review continuity and context.
 
-### 🧠 AI_PASTE — “AI/paste-like pattern”
+### 📋 AI_PASTE — “AI/paste-like pattern”
 - **Triggers when**:
   - `churnPerCommit >= repoAvgChurnPerCommit * 2.5`
   - (with `javaCommits > 0` and `repoAvgChurnPerCommit > 0`)
@@ -235,8 +235,8 @@ Interpretation:
 ### Example 2 — Below expected but still contributing
 Row shows:
 
-- Username cell: `🟠 bob`
-- Status bar: `🟠 Below expected contribution`
+- Username cell: `⚠️ bob`
+- Status bar: `⚠️ Below expected contribution`
 
 Interpretation:
 - Bob contributes, but the Java churn share is below the expected range.
@@ -272,8 +272,8 @@ Interpretation:
 ### Example 5 — AI/paste-like burst pattern
 Row shows:
 
-- Username cell: `🟠 eva`
-- Status bar: `🟠 Below expected contribution | 🧠 AI/paste-like pattern`
+- Username cell: `⚠️ eva`
+- Status bar: `⚠️ Below expected contribution | 📋 AI/paste-like pattern`
 
 Interpretation:
 - Eva’s total share might be modest, but her commits have unusually high churn per commit.
@@ -317,7 +317,7 @@ This app uses a teaching-oriented definition:
 
 Goal: **consistency for teaching interpretation**, not to replicate GitHub UI.
 
-### A student shows 🛑 or 🟠 — does that mean they did nothing?
+### A student shows ⛔ or ⚠️ — does that mean they did nothing?
 Not necessarily. They may have:
 - contributed mostly in **non-Java** files
 - worked through PRs with merge commits excluded from the Java stats

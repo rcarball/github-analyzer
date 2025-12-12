@@ -78,21 +78,25 @@ public class MainWindow extends JFrame {
 	private String selectedRepo;
 
 	private enum ContributionBadge {
-	    TEACHER("🎓", Color.DARK_GRAY,
-	            "Teacher account",
-	            "Teacher account: excluded from expected-share calculations."),
-	    VERY_LOW("🛑", new Color(234, 23, 68),
-	            "Very low / no contribution",
-	            "Very low / no contribution: below expected or near zero. Check additional evidence."),
-	    BELOW("🟠️", new Color(245, 143, 41),
-	            "Below expected contribution",
-	            "Below expected contribution: noticeable but under the expected share."),
-	    BALANCED("✅", new Color(54, 130, 127),
-	            "Balanced contribution",
-	            "Balanced contribution: close to expected for the team size."),
-	    HIGH("🌟", new Color(54, 130, 127),
-	            "High contribution",
-	            "High contribution: above expected for the team size.");
+		TEACHER("🎓", Color.DARK_GRAY,
+		        "Teacher account",
+		        "Teacher account: excluded from expected-share calculations."),
+
+		VERY_LOW("⛔", new Color(234, 23, 68),
+		        "Very low / no contribution",
+		        "Very low / no contribution: below expected or near zero. Check additional evidence."),
+
+		BELOW("⚠", new Color(245, 143, 41),
+		        "Below expected contribution",
+		        "Below expected contribution: noticeable but under the expected share."),
+
+		BALANCED("✓", new Color(54, 130, 127),
+		        "Balanced contribution",
+		        "Balanced contribution: close to expected for the team size."),
+
+		HIGH("★", new Color(54, 130, 127),
+		        "High contribution",
+		        "High contribution: above expected for the team size.");
 
 	    final String emoji;
 	    final Color color;
@@ -114,7 +118,7 @@ public class MainWindow extends JFrame {
 	private enum AlertFlag {
 	    ENGINE("🚀️", "Team “engine”", "Far above expected. Review task distribution and authorship."),
 	    CLEANUP("🧹", "Cleanup/correction work", "High deletion ratio. Verify context and continuity."),
-	    AI_PASTE("🧠", "AI/paste-like pattern", "Very high churn per commit vs repo average. Ask for a explanation."),
+	    AI_PASTE("📋", "AI/paste-like pattern", "Very high churn per commit vs repo average. Ask for a explanation."),
 	    RHYTHM("⏱️", "Irregular rhythm", "Activity concentrated near the end of the period.");
 
 	    final String emoji;
@@ -621,7 +625,7 @@ public class MainWindow extends JFrame {
 
 			    Interpretation it = interpret(repoStats, s);
 			    String displayName = String.format(
-			    	    "<html><span style='font-size: 150%%;'>%s</span>&nbsp;%s</html>",
+			    	    "%s %s",
 			    	    it.badge.emoji,
 			    	    (s.getUsername() == null ? "" : s.getUsername())
 			    	);
