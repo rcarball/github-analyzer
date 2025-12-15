@@ -84,7 +84,7 @@ public class MainWindow extends JFrame {
 
 		VERY_LOW("⛔", new Color(234, 23, 68),
 		        "Very low / no contribution",
-		        "Very low / no contribution: below expected or near zero. Check additional evidence."),
+		        "Very low / no contribution: below expected or near zero."),
 
 		BELOW("⚠", new Color(245, 143, 41),
 		        "Below expected contribution",
@@ -116,10 +116,7 @@ public class MainWindow extends JFrame {
 	}
 	
 	private enum AlertFlag {
-	    ENGINE("🚀️", "Team “engine”", "Far above expected. Review task distribution and authorship."),
-	    CLEANUP("🧹", "Cleanup/correction work", "High deletion ratio. Verify context and continuity."),
-	    AI_PASTE("📋", "AI/paste-like pattern", "Very high churn per commit vs repo average. Ask for a explanation."),
-	    RHYTHM("⏱️", "Irregular rhythm", "Activity concentrated near the end of the period.");
+	    AI_PASTE("📋", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
 
 	    final String emoji;
 	    final String title;
@@ -772,9 +769,6 @@ public class MainWindow extends JFrame {
 	    double okMin   = expected * 0.8;
 	    double okMax   = expected * 1.2;
 
-	    // ENGINE is treated as an additional flag (not a badge)
-	    double engineT = expected * 2.0;
-
 	    // Badge selection using contiguous ranges (no gaps, no overlaps):
 	    // 1) share < veryLow  -> VERY_LOW
 	    // 2) share < okMin    -> BELOW
@@ -789,15 +783,6 @@ public class MainWindow extends JFrame {
 	    // Additional alert flags (secondary indicators)
 	    List<AlertFlag> flags = new ArrayList<>();
 
-	    // ENGINE: user far above expected (may indicate uneven task distribution / authorship concentration)
-	    if (share >= engineT) flags.add(AlertFlag.ENGINE);
-
-	    // CLEANUP: high deletion ratio with a minimum churn to reduce false positives
-	    if (uChurn > 0) {
-	        double delRatio = u.getDeleted() / (double) uChurn;
-	        if (delRatio >= 0.55 && uChurn >= 200) flags.add(AlertFlag.CLEANUP);
-	    }
-
 	    // AI_PASTE: churn-per-commit much higher than repo average (heuristic indicator)
 	    double churnPerCommit = (commitsJava <= 0) ? 0.0 : (uChurn / (double) commitsJava);
 	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
@@ -807,19 +792,7 @@ public class MainWindow extends JFrame {
 	    if (commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5) {
 	        flags.add(AlertFlag.AI_PASTE);
 	    }
-
-	    // RHYTHM: activity concentrated near the end of the repo timeline (heuristic indicator)
-	    if (u.getFirstCommit() != -1 && u.getLastCommit() != -1 &&
-	        repo.getFirstCommit() != -1 && repo.getLastCommit() != -1) {
-
-	        long repoSpan = repo.getLastCommit() - repo.getFirstCommit();
-	        long userLastOffset = u.getLastCommit() - repo.getFirstCommit();
-
-	        if (repoSpan > 0 && (userLastOffset / (double) repoSpan) > 0.85 && uChurn >= 200) {
-	            flags.add(AlertFlag.RHYTHM);
-	        }
-	    }
-
+	    
 	    return new Interpretation(badge, flags);
 	}
 
@@ -831,7 +804,7 @@ public class MainWindow extends JFrame {
 	    float expected = 1f / n;
 
 	    StringBuilder sb = new StringBuilder("<html>");
-	    sb.append("<b>Teaching interpretation (indicators)</b><br>");
+	    sb.append("<b>Interpretation</b><br>");
 	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
 	    sb.append(it.badge.emoji).append(" <b>").append(it.badge.shortLabel).append("</b>");
 	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");

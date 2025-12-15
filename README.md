@@ -1,6 +1,6 @@
 # 📊 GitHub Analyzer (Teaching-Oriented)
 
-Java (Swing) app to analyze GitHub repository activity for **team projects** (e.g., students). It supports **public** and **private** repositories (when the token has access).
+Java (Swing) app to analyze GitHub repository activity for **team projects** (e.g., students).
 
 > 🧭 Teaching focus: these metrics aim to approximate **hands-on coding activity** (especially in Java) in a learning context.  
 > Some values may **not match** GitHub *Insights → Contributors* (see “📐 Metrics” and “❓ FAQ”).
@@ -26,11 +26,6 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 
 ### Main class
 - `es.deusto.prog3.githubanalyzer.Main`
-
-### Running (no Maven/Gradle)
-- Import as a **Java Project**
-- Add `lib/` to the **Build Path**
-- Run the `Main` class
 
 ---
 
@@ -63,9 +58,6 @@ https://github.com/OWNER/REPO2
 ## 🔐 GitHub token
 
 For private repositories and to reduce throttling, use a token with **read** access to the repos.
-
-> Tip: refreshing many repos can trigger GitHub rate limits.  
-> Use offline mode (`update.from.github=no`) and refresh later.
 
 ---
 
@@ -168,8 +160,6 @@ Final badge (contiguous ranges, no gaps):
 - **✅ BALANCED** if `okMin <= share <= okMax`
 - **🌟 HIGH** if `share > okMax`
 
-> Note: the GUI shows “% Java churn” with **2 decimals**. To avoid edge-case surprises, the app can round `share`
-> consistently with the UI (2 decimals in % ≙ 4 decimals in ratio) before applying the thresholds.
 
 ### Badge table
 
@@ -187,33 +177,11 @@ Final badge (contiguous ranges, no gaps):
 
 Flags do not change the badge: they are **extra alerts** to inspect patterns.
 
-> Suggested order (GUI): `ENGINE → CLEANUP → AI_PASTE → RHYTHM`
-
-### 🚀 ENGINE — “Team engine”
-- **Triggers when**: `share >= expected * 2.0`  
-- **Suggests**: one person contributes far above expected.  
-  Review task distribution, roles, and authorship.
-
-### 🧹 CLEANUP — “Cleanup/correction work”
-- **Triggers when**:
-  - high deletion ratio: `deleted / (added+deleted) >= 0.55`
-  - and enough volume: `userChurn >= 200`
-- **Suggests**: refactor, corrections, or restructuring.  
-  Often legitimate—review continuity and context.
-
 ### 📋 AI_PASTE — “AI/paste-like pattern”
 - **Triggers when**:
   - `churnPerCommit >= repoAvgChurnPerCommit * 2.5`
   - (with `javaCommits > 0` and `repoAvgChurnPerCommit > 0`)
-- **Suggests**: large bursts per commit (mass paste / AI / templates / generated code).  
-  **Not proof**: ask for a code defense and understanding checks.
-
-### ⏱️ RHYTHM — “Irregular rhythm”
-- **Triggers when**:
-  - user activity is concentrated late: user last commit offset > `0.85` of repo time span
-  - and `userChurn >= 200`
-- **Suggests**: work is end-loaded.  
-  Useful for early interventions in future iterations.
+- **Suggests**: large bursts per commit (mass paste / AI / generated code).  
 
 ---
 
@@ -244,31 +212,6 @@ Interpretation:
 
 ---
 
-### Example 3 — Team engine (possible imbalance)
-Row shows:
-
-- Username cell: `🌟 carol`
-- Status bar: `🌟 High contribution | 🚀 Team “engine”`
-
-Interpretation:
-- Carol is above expected share (badge 🌟).
-- Additionally, she is **≥ 2× expected** (🚀 ENGINE), which may indicate task imbalance.
-- Next step: verify that roles and authored work match what the team reports.
-
----
-
-### Example 4 — Cleanup-heavy work
-Row shows:
-
-- Username cell: `✅ dan`
-- Status bar: `✅ Balanced contribution | 🧹 Cleanup/correction work`
-
-Interpretation:
-- Dan is within expected contribution, but with a **high deletion ratio** at non-trivial volume.
-- This can be healthy refactoring—inspect diffs for structure, tests, and commit messages.
-
----
-
 ### Example 5 — AI/paste-like burst pattern
 Row shows:
 
@@ -277,19 +220,6 @@ Row shows:
 
 Interpretation:
 - Eva’s total share might be modest, but her commits have unusually high churn per commit.
-- Next step: ask for a defense: explain code, reasoning, and where it came from.
-
----
-
-### Example 6 — Late activity spike
-Row shows:
-
-- Username cell: `✅ fran`
-- Status bar: `✅ Balanced contribution | ⏱️ Irregular rhythm`
-
-Interpretation:
-- Contribution level is okay, but it happened very late in the repo timespan.
-- Next step: review planning habits and encourage earlier incremental commits.
 
 ---
 
@@ -320,10 +250,7 @@ Goal: **consistency for teaching interpretation**, not to replicate GitHub UI.
 ### A student shows ⛔ or ⚠️ — does that mean they did nothing?
 Not necessarily. They may have:
 - contributed mostly in **non-Java** files
-- worked through PRs with merge commits excluded from the Java stats
-- split identity (different emails/logins)
-
-Use it as a signal to ask for evidence: commits, issues, PR reviews, walkthrough, oral defense.
+- merge commits excluded from the Java stats
 
 ### Does it reliably detect AI usage?
 No. It only flags patterns compatible with large pastes/AI/templates.  
@@ -345,9 +272,7 @@ Always confirm with code defense and understanding questions.
 ## 🧠 Limitations
 
 - Does not measure code quality (correctness, design, style).
-- Formatting/templates/generated code can inflate churn.
 - Commit habits differ (many small commits vs few large ones).
-- GitHub rate limits can affect refresh; offline mode helps.
 
 ---
 
