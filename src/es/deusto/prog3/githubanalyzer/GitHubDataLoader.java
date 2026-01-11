@@ -7,14 +7,33 @@ package es.deusto.prog3.githubanalyzer;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
-import org.kohsuke.github.*;
+import org.kohsuke.github.GHBranch;
+import org.kohsuke.github.GHCommit;
+import org.kohsuke.github.GHContent;
+import org.kohsuke.github.GHRepository;
+import org.kohsuke.github.GHUser;
+import org.kohsuke.github.GitHub;
+import org.kohsuke.github.GitHubBuilder;
+import org.kohsuke.github.GitUser;
+import org.kohsuke.github.PagedIterable;
 
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.SimpleGitUser;
@@ -25,6 +44,7 @@ import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 public class GitHubDataLoader {
 
     private static final GitHubDataLoader instance = new GitHubDataLoader();
+    private final Map<String, String> groupsRepoMap = new HashMap<>();
     private final List<String> repos;
 
     private static final Pattern EXTERNAL_PATTERN = Pattern.compile("IAG|FUENTE-EXTERNA");
@@ -40,17 +60,39 @@ public class GitHubDataLoader {
     private static final AtomicLong LAST_HEAVY_CALL_TS = new AtomicLong(0);
 
     private GitHubDataLoader() {
-        List<String> originalRepos = Configurator.getInstance().getRepositories();
+    	List<String> originalRepos = Configurator.getInstance().getRepositories();
 
-        if (originalRepos != null) {
-            this.repos = new ArrayList<>(originalRepos.stream()
-                    .filter(Objects::nonNull)
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .collect(Collectors.toCollection(LinkedHashSet::new)));
-        } else {
-            this.repos = Collections.emptyList();
-        }
+    	if (originalRepos != null) {
+
+    	    LinkedHashSet<String> uniqueRepos = new LinkedHashSet<>();
+
+    	    for (String line : originalRepos) {
+    	        if (line == null) continue;
+
+    	        String trimmed = line.trim();
+    	        if (trimmed.isEmpty()) continue;
+
+    	        String[] parts = trimmed.split(";", 2);
+    	        String repoUrl = parts[0].trim();
+
+    	        if (repoUrl.isEmpty()) continue;
+
+    	        uniqueRepos.add(repoUrl);
+
+    	        // Mapa: repoURL -> groupCode
+    	        if (parts.length == 2) {
+    	            String groupCode = parts[1].trim();
+    	            if (!groupCode.isEmpty()) {
+    	                groupsRepoMap.putIfAbsent(repoUrl, groupCode);
+    	            }
+    	        }
+    	    }
+
+    	    this.repos = new ArrayList<>(uniqueRepos);
+
+    	} else {
+    	    this.repos = Collections.emptyList();
+    	}
     }
 
     public static GitHubDataLoader getInstance() {
@@ -135,11 +177,28 @@ public class GitHubDataLoader {
             
             if (oldRepoStats != null && !forceRefresh && oldRepoStats.getLastPushTime() == lastPushTime) {
                 result.add(oldRepoStats);
+                
+                // Update group info if needed
+                String group = groupsRepoMap.get(repoUrl);
+                
+                if (group != null && !group.equals(oldRepoStats.getGroup())) {
+                	oldRepoStats.setGroup(group);
+					DataManager.getInstance().upsertRepoStats(oldRepoStats);
+                }
+                
                 buffer.append(String.format("\t* %s repository has not changed (using cache).\n", repoUrl));
                 return;
             }
 
             RepoStats repoStats = new RepoStats();
+            String group = groupsRepoMap.get(repoUrl);
+            
+            if (group != null) {
+            	repoStats.setGroup(groupsRepoMap.get(repoUrl));	
+			} else {
+				repoStats.setGroup("");
+			}
+            
             repoStats.setUrl(repoUrl);
             repoStats.setName(repoName);
             repoStats.setLastPushTime(lastPushTime);

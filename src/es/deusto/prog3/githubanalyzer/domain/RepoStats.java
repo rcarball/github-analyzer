@@ -13,6 +13,7 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 
 	private String url;
 	private String name;
+	private String group;
 	private List<UserStats> userStats = new ArrayList<>();
 	private long creationDate;
 	private long firstCommit = -1;
@@ -154,6 +155,14 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	
 	public void setPublic(boolean isPublic) {
 		this.isPublic = isPublic;
+	}
+	
+	public String getGroup() {
+		return group;
+	}
+	
+	public void setGroup(String group) {
+		this.group = group;
 	}
 
 	@Override

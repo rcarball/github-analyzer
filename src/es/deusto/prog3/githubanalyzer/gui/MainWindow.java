@@ -169,14 +169,17 @@ public class MainWindow extends JFrame {
 					RepoStats repoStats = (RepoStats) userObject;
 					iconName += repoStats.isPublic() ? "public.png" : "private.png";
 					
+					setText(repoStats.getGroup() != null && !repoStats.getGroup().isEmpty() ? repoStats.getGroup() : repoStats.getName());
+					
 					// If the repository is empty (no commits), change the text color to orange
 					if (repoStats.getCommits() == 0) {
 						component.setForeground(new Color(245, 143, 41));
-						setText(repoStats.getName() + " (empty)");
+						setText(getText() + " (empty repository)");
 					} else {
 						component.setForeground(new Color(54, 130, 127));						
-						setText(repoStats.getName() + " - " + repoStats.getBranches() + " branch(es)");
 					}
+					
+					setToolTipText(repoStats.getName());
 				} else {
 					iconName += "github.png";
 					component.setForeground(Color.BLACK);
