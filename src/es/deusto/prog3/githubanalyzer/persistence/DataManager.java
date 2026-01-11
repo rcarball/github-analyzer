@@ -40,7 +40,7 @@ public class DataManager {
         Path p = Paths.get(file);
 
         if (!Files.exists(p)) {
-            System.out.format("- No cache found at '%s' (starting empty)\n\n", file);
+            System.out.format("- No cache found at '%s' (starting empty)\n", file);
             return new ArrayList<>();
         }
 
