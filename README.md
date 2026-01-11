@@ -46,11 +46,11 @@ teacher.email=_TEACHER_EMAIL_
 ```
 
 ### 2) `resources/repositories.txt`
-One URL per line:
+One URL per line (GROUP-ID is optional):
 
 ```txt
-https://github.com/OWNER/REPO1
-https://github.com/OWNER/REPO2
+https://github.com/OWNER/REPO1;GROUP-ID1
+https://github.com/OWNER/REPO2;GROUP-ID2
 ```
 
 ---
