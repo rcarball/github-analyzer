@@ -65,6 +65,8 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 			userStats.add(user);
 			
 			linesAdded += user.getAdded();
+			linesDeleted += user.getDeleted();
+			linesChanged += user.getChanged();
 			commits += user.getCommits();
 			
 			if (lastCommit == -1 && user.getLastCommit() != -1) {
@@ -184,7 +186,10 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 
 	@Override
 	public int compareTo(RepoStats o) {
-		return this.name.compareTo(o.name);
+		if (o == null) return 1;
+		String thisName = this.name == null ? "" : this.name;
+		String oName = o.name == null ? "" : o.name;
+		return thisName.compareTo(oName);
 	}
 
 	public long getLastPushTime() {

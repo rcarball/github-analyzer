@@ -25,17 +25,8 @@ public class SimpleGitUser {
         return s.isEmpty() ? "" : s.toLowerCase();
     }
 
-    private static String localPart(String email) {
-        if (email == null) return "";
-        email = norm(email);
-        int at = email.indexOf('@');
-        if (at <= 0) return "";
-        return email.substring(0, at).trim();
-    }
-
     private String key() {
-        String lp = localPart(email);
-        if (!lp.isEmpty()) return "lp:" + lp;
+        if (!email.isEmpty()) return "e:" + email;
         if (!name.isEmpty()) return "n:" + name;
         return "unknown";
     }
