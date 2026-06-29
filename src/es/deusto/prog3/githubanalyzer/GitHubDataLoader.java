@@ -427,7 +427,6 @@ public class GitHubDataLoader {
         DSU dsu = new DSU(ids.size());
 
         Map<String, Integer> seenLogin = new HashMap<>();
-        Map<String, Integer> seenNoReplyLogin = new HashMap<>();
         Map<String, Integer> seenEmailLocal = new HashMap<>();
         Map<String, List<Integer>> byNormName = new HashMap<>();
 
@@ -437,11 +436,6 @@ public class GitHubDataLoader {
             String login = norm(id.login);
             if (!login.isEmpty()) {
                 seenLogin.merge("login:" + login, i, (oldI, newI) -> { dsu.union(oldI, newI); return oldI; });
-            }
-
-            String nr = loginFromNoReply(id.email);
-            if (!nr.isEmpty()) {
-                seenNoReplyLogin.merge("nr:" + nr, i, (oldI, newI) -> { dsu.union(oldI, newI); return oldI; });
             }
 
             String em = norm(id.email);

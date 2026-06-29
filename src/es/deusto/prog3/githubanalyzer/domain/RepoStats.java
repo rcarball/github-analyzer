@@ -2,7 +2,7 @@ package es.deusto.prog3.githubanalyzer.domain;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.TreeMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,7 +26,7 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private boolean isPublic;
 	private long lastPushTime;
 	
-	private Map<String, Integer> fileTypeMap = new HashMap<>();
+	private Map<String, Integer> fileTypeMap = new TreeMap<>();
 	
 	public int getBranches() {
 		return branches;
@@ -63,18 +63,6 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	public void addUserStats(UserStats user) {
 		if (user != null && !userStats.contains(user)) {
 			userStats.add(user);
-
-			if (lastCommit == -1 && user.getLastCommit() != -1) {
-				lastCommit = user.getLastCommit();
-			} else if (lastCommit != -1 && user.getLastCommit() != -1) {
-				lastCommit = Math.max(lastCommit, user.getLastCommit());
-			}
-
-			if (firstCommit == -1 && user.getFirstCommit() != -1) {
-				firstCommit = user.getFirstCommit();
-            } else if (firstCommit != -1 && user.getFirstCommit() != -1) {
-                firstCommit = Math.min(firstCommit, user.getFirstCommit());
-            }
 		}
 	}
 
@@ -179,8 +167,12 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	public int compareTo(RepoStats o) {
 		if (o == null) return 1;
 		String thisName = this.name == null ? "" : this.name;
-		String oName = o.name == null ? "" : o.name;
-		return thisName.compareTo(oName);
+		String oName    = o.name    == null ? "" : o.name;
+		int cmp = thisName.compareTo(oName);
+		if (cmp != 0) return cmp;
+		String thisUrl = this.url == null ? "" : this.url;
+		String oUrl    = o.url    == null ? "" : o.url;
+		return thisUrl.compareTo(oUrl);
 	}
 
 	public long getLastPushTime() {
