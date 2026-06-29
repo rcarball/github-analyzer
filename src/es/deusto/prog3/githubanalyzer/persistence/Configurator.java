@@ -9,7 +9,7 @@ import java.util.Properties;
 public class Configurator {
 	private static Configurator instance = new Configurator();
 	
-	private static Properties properties;
+	private Properties properties;
 	private static final String PROPERTIES_FILE = "resources/config.properties";
 	
 	private String githubUser = null;
@@ -27,7 +27,7 @@ public class Configurator {
 			properties.load(new FileReader(PROPERTIES_FILE));
 			githubUser = properties.getProperty("github.user");
 			githubToken = properties.getProperty("github.token");
-			loadFromGithub = properties.getProperty("update.from.github").equalsIgnoreCase("YES") ? true : false;
+			loadFromGithub = "YES".equalsIgnoreCase(properties.getProperty("update.from.github"));
 			statsFile = properties.getProperty("stats.file");
 			repositoriesFile = properties.getProperty("repositories.file");
 			statsCSV = properties.getProperty("stats.csv");

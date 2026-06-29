@@ -1,6 +1,5 @@
 /**
- * This code is based on solutions provided by ChatGPT 5.1 and.
- * It has been thoroughly reviewed and validated to ensure correctness.
+ * This code was developed with AI assistance (ChatGPT) and has been reviewed and validated for correctness.
  */
 package es.deusto.prog3.githubanalyzer.persistence;
 
@@ -26,7 +25,6 @@ import es.deusto.prog3.githubanalyzer.domain.UserStats;
 public class DataManager {
 
     private static final DataManager instance = new DataManager();
-    private final Object ioLock = new Object();  // lock interno para I/O
 
     private DataManager() { }
 
@@ -59,35 +57,33 @@ public class DataManager {
     public synchronized void storeData(List<RepoStats> data) {
         if (data == null) data = new ArrayList<>();
 
-        synchronized (ioLock) {
-            String file = Configurator.getInstance().getStatsFile();
-            Path target = Paths.get(file);
-            Path tmp = Paths.get(file + ".tmp");
+        String file = Configurator.getInstance().getStatsFile();
+        Path target = Paths.get(file);
+        Path tmp = Paths.get(file + ".tmp");
 
-            try {
-                // Write tmp
-                try (ObjectOutputStream out = new ObjectOutputStream(
-                        new BufferedOutputStream(Files.newOutputStream(tmp,
-                                StandardOpenOption.CREATE,
-                                StandardOpenOption.TRUNCATE_EXISTING,
-                                StandardOpenOption.WRITE)))) {
-                    out.writeObject(data);
-                }
-
-                // Atomic replace
-                try {
-                    Files.move(tmp, target,
-                            StandardCopyOption.REPLACE_EXISTING,
-                            StandardCopyOption.ATOMIC_MOVE);
-                } catch (AtomicMoveNotSupportedException e) {
-                    Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-                
-            } catch (Exception ex) {
-                System.err.format("* Error saving binary file '%s': %s\n\n", file, ex.getMessage());
-                // best-effort cleanup
-                try { Files.deleteIfExists(tmp); } catch (Exception ignore) {}
+        try {
+            // Write tmp
+            try (ObjectOutputStream out = new ObjectOutputStream(
+                    new BufferedOutputStream(Files.newOutputStream(tmp,
+                            StandardOpenOption.CREATE,
+                            StandardOpenOption.TRUNCATE_EXISTING,
+                            StandardOpenOption.WRITE)))) {
+                out.writeObject(data);
             }
+
+            // Atomic replace
+            try {
+                Files.move(tmp, target,
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+        } catch (Exception ex) {
+            System.err.format("* Error saving binary file '%s': %s\n\n", file, ex.getMessage());
+            // best-effort cleanup
+            try { Files.deleteIfExists(tmp); } catch (Exception ignore) {}
         }
     }
 
@@ -98,28 +94,26 @@ public class DataManager {
     public synchronized void upsertRepoStats(RepoStats repoStats) {
         if (repoStats == null || repoStats.getUrl() == null) return;
 
-        synchronized (ioLock) {
-            List<RepoStats> data = loadData(); // load current cache
+        List<RepoStats> data = loadData(); // load current cache
 
-            boolean replaced = false;
-            for (int i = 0; i < data.size(); i++) {
-                RepoStats r = data.get(i);
-                if (r != null && repoStats.getUrl().equals(r.getUrl())) {
-                    data.set(i, repoStats);
-                    replaced = true;
-                    break;
-                }
+        boolean replaced = false;
+        for (int i = 0; i < data.size(); i++) {
+            RepoStats r = data.get(i);
+            if (r != null && repoStats.getUrl().equals(r.getUrl())) {
+                data.set(i, repoStats);
+                replaced = true;
+                break;
             }
-            if (!replaced) data.add(repoStats);
-
-            // Keep cache ordered and consistent
-            Collections.sort(data);
-            data.forEach(r -> {
-                if (r != null && r.getUserStats() != null) Collections.sort(r.getUserStats());
-            });
-
-            storeData(data); // atomic persist
         }
+        if (!replaced) data.add(repoStats);
+
+        // Keep cache ordered and consistent
+        Collections.sort(data);
+        data.forEach(r -> {
+            if (r != null && r.getUserStats() != null) Collections.sort(r.getUserStats());
+        });
+
+        storeData(data); // atomic persist
     }
 
     public synchronized void storeCSV(List<RepoStats> data) {
@@ -149,7 +143,7 @@ public class DataManager {
 
                     out.format(java.util.Locale.ROOT,
                             "%s;%s;%s;%s;%d;%d;%d;%.6f;%d;%d;%s;%s%n",
-                            "",                         // GROUP (kept for backward compatibility)
+                            nullSafe(repo.getGroup()),
                             nullSafe(repo.getUrl()),
                             nullSafe(u.getUsername()),
                             nullSafe(u.getEmail()),

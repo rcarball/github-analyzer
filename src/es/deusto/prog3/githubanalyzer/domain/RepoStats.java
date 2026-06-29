@@ -63,18 +63,13 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	public void addUserStats(UserStats user) {
 		if (user != null && !userStats.contains(user)) {
 			userStats.add(user);
-			
-			linesAdded += user.getAdded();
-			linesDeleted += user.getDeleted();
-			linesChanged += user.getChanged();
-			commits += user.getCommits();
-			
+
 			if (lastCommit == -1 && user.getLastCommit() != -1) {
 				lastCommit = user.getLastCommit();
 			} else if (lastCommit != -1 && user.getLastCommit() != -1) {
 				lastCommit = Math.max(lastCommit, user.getLastCommit());
-			}			
-			
+			}
+
 			if (firstCommit == -1 && user.getFirstCommit() != -1) {
 				firstCommit = user.getFirstCommit();
             } else if (firstCommit != -1 && user.getFirstCommit() != -1) {
@@ -147,10 +142,6 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 		this.fileTypeMap = fileTypeMap;
 	}
 
-	public static long getSerialversionuid() {
-		return serialVersionUID;
-	}
-	
 	public boolean isPublic() {
 		return isPublic;
 	}

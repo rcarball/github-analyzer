@@ -1,6 +1,5 @@
 /**
- * This code is based on solutions provided by ChatGPT 5.1 and.
- * It has been thoroughly reviewed and validated to ensure correctness.
+ * This code was developed with AI assistance (ChatGPT) and has been reviewed and validated for correctness.
  */
 package es.deusto.prog3.githubanalyzer.gui;
 
@@ -76,6 +75,11 @@ public class MainWindow extends JFrame {
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
+
+	private static final double THRESHOLD_VERY_LOW     = 0.50; // < 50 % del share esperado
+	private static final double THRESHOLD_BELOW        = 0.80; // < 80 % del share esperado
+	private static final double THRESHOLD_HIGH         = 1.20; // > 120 % del share esperado
+	private static final double AI_PASTE_MULTIPLIER    = 2.50; // churn/commit vs. media del equipo
 
 	private enum ContributionBadge {
 		TEACHER("🎓", Color.DARK_GRAY,
@@ -451,7 +455,6 @@ public class MainWindow extends JFrame {
 	        }
 	    };
 	    
-	    jTableUserStats.setRowHeight(28);
 	    JTableHeader header = jTableUserStats.getTableHeader();
 	    header.setPreferredSize(new Dimension(header.getPreferredSize().width, 35));
 
@@ -768,9 +771,9 @@ public class MainWindow extends JFrame {
 	    // Thresholds around the expected share:
 	    // - veryLow: below 50% of expected (or near-zero)
 	    // - okMin/okMax: "balanced band" = expected ±20%
-	    double veryLow = expected * 0.5;
-	    double okMin   = expected * 0.8;
-	    double okMax   = expected * 1.2;
+	    double veryLow = expected * THRESHOLD_VERY_LOW;
+	    double okMin   = expected * THRESHOLD_BELOW;
+	    double okMax   = expected * THRESHOLD_HIGH;
 
 	    // Badge selection using contiguous ranges (no gaps, no overlaps):
 	    // 1) share < veryLow  -> VERY_LOW
@@ -792,7 +795,7 @@ public class MainWindow extends JFrame {
 	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
 	    double avgChurnPerCommit = (totalCommitsJava > 0) ? totalChurn / (double) totalCommitsJava : 0.0;
 
-	    if (commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * 2.5) {
+	    if (commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * AI_PASTE_MULTIPLIER) {
 	        flags.add(AlertFlag.AI_PASTE);
 	    }
 	    

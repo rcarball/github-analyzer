@@ -102,10 +102,6 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	}
 
 	
-	/**
-	 * This code is based on solutions provided by ChatGPT 5.1 and.
-	 * It has been thoroughly reviewed and validated to ensure correctness.
-	 */
 	@Override
 	public int compareTo(UserStats o) {
 	    if (o == null) return -1;

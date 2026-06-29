@@ -1,6 +1,5 @@
 /**
- * This code is based on solutions provided by ChatGPT 5.1 and.
- * It has been thoroughly reviewed and validated to ensure correctness.
+ * This code was developed with AI assistance (ChatGPT) and has been reviewed and validated for correctness.
  */
 
 package es.deusto.prog3.githubanalyzer;
@@ -192,17 +191,16 @@ public class GitHubDataLoader {
 
             RepoStats repoStats = new RepoStats();
             String group = groupsRepoMap.get(repoUrl);
-            
+
             if (group != null) {
-            	repoStats.setGroup(groupsRepoMap.get(repoUrl));	
+            	repoStats.setGroup(groupsRepoMap.get(repoUrl));
 			} else {
 				repoStats.setGroup("");
 			}
-            
+
             repoStats.setUrl(repoUrl);
             repoStats.setName(repoName);
             repoStats.setLastPushTime(lastPushTime);
-            result.add(repoStats);
 
             Map<String, GHBranch> branches = repository.getBranches();
             repoStats.setBranches(branches.size());
@@ -219,6 +217,8 @@ public class GitHubDataLoader {
                 repoStats.setCommits(0);
                 repoStats.setFirstCommit(-1);
                 repoStats.setLastCommit(-1);
+                result.add(repoStats);
+                DataManager.getInstance().upsertRepoStats(repoStats);
                 return;
             }
 
@@ -239,6 +239,7 @@ public class GitHubDataLoader {
             repoStats.setLinesDeleted(repoStats.getUserStats().stream().mapToInt(UserStats::getDeleted).sum());
             repoStats.setLinesChanged(repoStats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());            
 
+            result.add(repoStats);
             DataManager.getInstance().upsertRepoStats(repoStats);
         } catch (Exception e) {
             System.err.printf("\t* Error analyzing '%s': %s\n\n", repoUrl, e.getMessage());
@@ -376,15 +377,26 @@ public class GitHubDataLoader {
     }
 
     private static class DSU {
-        int[] p, r;
-        DSU(int n){ p=new int[n]; r=new int[n]; for(int i=0;i<n;i++) p[i]=i; }
-        int find(int x){ return p[x]==x?x:(p[x]=find(p[x])); }
-        void union(int a,int b){
-            a=find(a); b=find(b);
-            if(a==b) return;
-            if(r[a]<r[b]) p[a]=b;
-            else if(r[a]>r[b]) p[b]=a;
-            else { p[b]=a; r[a]++; }
+        int[] parent;
+        int[] rank;
+
+        DSU(int n) {
+            parent = new int[n];
+            rank = new int[n];
+            for (int i = 0; i < n; i++) parent[i] = i;
+        }
+
+        int find(int x) {
+            return parent[x] == x ? x : (parent[x] = find(parent[x]));
+        }
+
+        void union(int nodeA, int nodeB) {
+            nodeA = find(nodeA);
+            nodeB = find(nodeB);
+            if (nodeA == nodeB) return;
+            if (rank[nodeA] < rank[nodeB]) parent[nodeA] = nodeB;
+            else if (rank[nodeA] > rank[nodeB]) parent[nodeB] = nodeA;
+            else { parent[nodeB] = nodeA; rank[nodeA]++; }
         }
     }
 
