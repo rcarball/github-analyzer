@@ -16,7 +16,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
@@ -85,35 +84,6 @@ public class DataManager {
             // best-effort cleanup
             try { Files.deleteIfExists(tmp); } catch (Exception ignore) {}
         }
-    }
-
-    /**
-     * Incremental update: insert/update a single RepoStats and persist safely.
-     * Call this after finishing analysis of each repository.
-     */
-    public synchronized void upsertRepoStats(RepoStats repoStats) {
-        if (repoStats == null || repoStats.getUrl() == null) return;
-
-        List<RepoStats> data = loadData(); // load current cache
-
-        boolean replaced = false;
-        for (int i = 0; i < data.size(); i++) {
-            RepoStats r = data.get(i);
-            if (r != null && repoStats.getUrl().equals(r.getUrl())) {
-                data.set(i, repoStats);
-                replaced = true;
-                break;
-            }
-        }
-        if (!replaced) data.add(repoStats);
-
-        // Keep cache ordered and consistent
-        Collections.sort(data);
-        data.forEach(r -> {
-            if (r != null && r.getUserStats() != null) Collections.sort(r.getUserStats());
-        });
-
-        storeData(data); // atomic persist
     }
 
     public synchronized void storeCSV(List<RepoStats> data) {

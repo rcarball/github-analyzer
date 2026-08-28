@@ -130,8 +130,12 @@ public class GitHubDataLoader {
                 catch (Exception e) { System.err.println("\t* Error waiting for task: " + e.getMessage()); }
             }
             
-            List<RepoStats> finalData = DataManager.getInstance().loadData();
-            DataManager.getInstance().storeCSV(finalData);
+            // Persist the CSV once, from the in-memory result (sorted for stable output).
+            // The binary cache is written once by the caller (Main / refresh worker), so
+            // we no longer rewrite the whole cache file once per repository (was O(n^2)).
+            Collections.sort(result);
+            result.forEach(r -> Collections.sort(r.getUserStats()));
+            DataManager.getInstance().storeCSV(result);
 
             System.out.printf("- %d repositories successfully analyzed\n\n", result.size());
 
@@ -182,7 +186,6 @@ public class GitHubDataLoader {
                 
                 if (group != null && !group.equals(oldRepoStats.getGroup())) {
                 	oldRepoStats.setGroup(group);
-					DataManager.getInstance().upsertRepoStats(oldRepoStats);
                 }
                 
                 buffer.append(String.format("\t* %s repository has not changed (using cache).\n", repoUrl));
@@ -218,7 +221,6 @@ public class GitHubDataLoader {
                 repoStats.setFirstCommit(-1);
                 repoStats.setLastCommit(-1);
                 result.add(repoStats);
-                DataManager.getInstance().upsertRepoStats(repoStats);
                 return;
             }
 
@@ -240,7 +242,6 @@ public class GitHubDataLoader {
             repoStats.setLinesChanged(repoStats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());            
 
             result.add(repoStats);
-            DataManager.getInstance().upsertRepoStats(repoStats);
         } catch (Exception e) {
             System.err.printf("\t* Error analyzing '%s': %s\n\n", repoUrl, e.getMessage());
             e.printStackTrace();
