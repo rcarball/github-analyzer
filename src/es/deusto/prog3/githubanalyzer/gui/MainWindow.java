@@ -90,6 +90,11 @@ public class MainWindow extends JFrame {
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
 
+	// Per-user interpretation cache for the currently loaded repo, so the table
+	// renderers/tooltips don't recompute it (with streams) on every cell repaint.
+	// Rebuilt whenever a repository is loaded. Keyed by identity (per-repo instances).
+	private final java.util.Map<UserStats, Interpretation> interpretationCache = new java.util.IdentityHashMap<>();
+
 	private static final double THRESHOLD_VERY_LOW     = 0.50; // < 50 % del share esperado
 	private static final double THRESHOLD_BELOW        = 0.80; // < 80 % del share esperado
 	private static final double THRESHOLD_HIGH         = 1.20; // > 120 % del share esperado
@@ -557,7 +562,7 @@ public class MainWindow extends JFrame {
 	            
 	            if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
 	                UserStats user = repo.getUserStats().get(modelRow);
-	                Interpretation it = interpret(repo, user);
+	                Interpretation it = interpretationFor(repo, user);
 	                
 		            // Apply row color (all columns)
 		            label.setForeground(it.badge.color);
@@ -689,6 +694,9 @@ public class MainWindow extends JFrame {
 	}
 
 	private void loadRepoStats(RepoStats repoStats) {
+		// Precompute interpretations once for this repo; renderers/tooltips reuse them.
+		rebuildInterpretationCache(repoStats);
+
 		if (repoStats != null) {
 			// Update labels with repository stats
 			lblCreationDate.setText(String.format("• Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));			
@@ -735,7 +743,7 @@ public class MainWindow extends JFrame {
 			    // Share of the team churn (excluding teacher). NaN for the teacher row (shown as "-").
 			    float pct = ContributionMetrics.teamShare(repoStats, s);
 
-			    Interpretation it = interpret(repoStats, s);
+			    Interpretation it = interpretationFor(repoStats, s);
 			    String displayName = String.format(
 			    	    "%s %s",
 			    	    it.badge.emoji,
@@ -868,7 +876,7 @@ public class MainWindow extends JFrame {
 			if (repo != null && row >= 0) {
 				int modelRow = table.convertRowIndexToModel(row);
 				if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
-					badge = interpret(repo, repo.getUserStats().get(modelRow)).badge.color;
+					badge = interpretationFor(repo, repo.getUserStats().get(modelRow)).badge.color;
 				}
 			}
 
@@ -941,6 +949,22 @@ public class MainWindow extends JFrame {
 	    return ContributionMetrics.activeContributors(repo);
 	}
 	
+	/** Returns the cached interpretation for a user, computing it on a cache miss. */
+	private Interpretation interpretationFor(RepoStats repo, UserStats u) {
+	    Interpretation cached = interpretationCache.get(u);
+	    return (cached != null) ? cached : interpret(repo, u);
+	}
+
+	/** Rebuilds the interpretation cache for the users of the given repo (null clears it). */
+	private void rebuildInterpretationCache(RepoStats repo) {
+	    interpretationCache.clear();
+	    if (repo != null && repo.getUserStats() != null) {
+	        for (UserStats u : repo.getUserStats()) {
+	            if (u != null) interpretationCache.put(u, interpret(repo, u));
+	        }
+	    }
+	}
+
 	private Interpretation interpret(RepoStats repo, UserStats u) {
 	    // Defensive defaults
 	    if (repo == null || u == null) return new Interpretation(ContributionBadge.BELOW, List.of());
@@ -1022,7 +1046,7 @@ public class MainWindow extends JFrame {
 	}
 
 	private String buildInterpretationTooltip(RepoStats repo, UserStats u) {
-	    Interpretation it = interpret(repo, u);
+	    Interpretation it = interpretationFor(repo, u);
 
 	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
 	    int n = Math.max(1, contributors.size());
@@ -1043,7 +1067,7 @@ public class MainWindow extends JFrame {
 		
 	private String statusTextFor(UserStats u, RepoStats repo) {
 	    if (repo == null || u == null) return " ";
-	    Interpretation it = interpret(repo, u);
+	    Interpretation it = interpretationFor(repo, u);
 
 	    List<String> parts = new ArrayList<>();
 	    parts.add(it.badge.emoji + " " + it.badge.shortLabel);
