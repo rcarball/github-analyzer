@@ -64,7 +64,10 @@ public class MainWindow extends JFrame {
 	private JLabel lblExternalRefs;
 	private JLabel lblURL;
 	private JLabel lblStatus = new JLabel(" ");
-	private SimpleDateFormat dateFormat = new SimpleDateFormat("MMM-dd");
+	// Locale-independent, year-aware, sortable date format. "MMM-dd" hid the year
+	// (a course spanning e.g. Oct→Jan could not tell 2025 from 2026) and localized
+	// the month name ("ene"/"Jan"), making the UI inconsistent across systems.
+	private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
 	private JTable jTableUserStats;
 	private DefaultTableModel tableModelUserStats;
 	private JTree jTreeFileType;
@@ -563,8 +566,8 @@ public class MainWindow extends JFrame {
 	    jTableUserStats.getColumnModel().getColumn(4).setPreferredWidth(55);  // % churn
 	    jTableUserStats.getColumnModel().getColumn(5).setPreferredWidth(55);  // java files
 	    jTableUserStats.getColumnModel().getColumn(6).setPreferredWidth(55);  // java commits
-	    jTableUserStats.getColumnModel().getColumn(7).setPreferredWidth(75);  // last
-	    jTableUserStats.getColumnModel().getColumn(8).setPreferredWidth(75);  // first
+	    jTableUserStats.getColumnModel().getColumn(7).setPreferredWidth(90);  // last  (yyyy-MM-dd)
+	    jTableUserStats.getColumnModel().getColumn(8).setPreferredWidth(90);  // first (yyyy-MM-dd)
 
 	    jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
 	    
