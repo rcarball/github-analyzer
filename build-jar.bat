@@ -21,7 +21,7 @@ mkdir "%OUT%\images"
 
 REM Compile application sources (tests excluded) against the libraries.
 dir /s /b src\*.java > "%TEMP%\ga-src.txt"
-javac -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-src.txt"
+javac --release 17 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-src.txt"
 del "%TEMP%\ga-src.txt"
 
 REM Bundle the icons on the classpath (loaded as /images/<name> at runtime).

@@ -12,7 +12,7 @@ mkdir "%OUT%"
 
 REM Collect application + test sources and compile them against the bundled libs.
 dir /s /b src\*.java test\*.java > "%TEMP%\ga-sources.txt"
-javac -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-sources.txt"
+javac --release 17 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-sources.txt"
 del "%TEMP%\ga-sources.txt"
 
 REM Run every test on the classpath (headless: no GUI window pops up).

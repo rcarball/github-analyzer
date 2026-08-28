@@ -11,7 +11,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # Compile application + test sources against the bundled libraries.
-javac -cp "lib/*" -d "$OUT" $(find src test -name '*.java')
+javac --release 17 -cp "lib/*" -d "$OUT" $(find src test -name '*.java')
 
 # Run every test on the classpath (headless: no GUI window pops up).
 java -Djava.awt.headless=true -jar "$JUNIT" execute \

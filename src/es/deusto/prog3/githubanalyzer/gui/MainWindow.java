@@ -1,5 +1,5 @@
 /**
- * This code was developed with AI assistance (ChatGPT) and has been reviewed and validated for correctness.
+ * This code was developed with AI assistance (ChatGPT) and reviewed by the author (see the unit tests for the validated parts).
  */
 package es.deusto.prog3.githubanalyzer.gui;
 
@@ -69,7 +69,7 @@ public class MainWindow extends JFrame {
 	private JLabel lblFirstCommit;
 	private JLabel lblLastCommit;
 	private JLabel lblCommits;
-	private JLabel lblColeLines;
+	private JLabel lblCodeLines;
 	private JLabel lblLinesChanged;
 	private JLabel lblExternalRefs;
 	private JLabel lblURL;
@@ -256,7 +256,7 @@ public class MainWindow extends JFrame {
 		lblCreationDate  = new JLabel("• Created:");
 		lblFirstCommit   = new JLabel("• First commit:");
 		lblLastCommit    = new JLabel("• Last commit:");
-		lblColeLines     = new JLabel("• Java LOC (snapshot):");
+		lblCodeLines     = new JLabel("• Java LOC (snapshot):");
 		lblLinesChanged  = new JLabel("• Java churn (added+deleted):");
 		lblExternalRefs  = new JLabel("• External references:");
 		lblURL           = new JLabel("• Open repository:");
@@ -265,7 +265,7 @@ public class MainWindow extends JFrame {
 		lblCreationDate.setToolTipText("Repository creation date (from GitHub).");
 		lblFirstCommit.setToolTipText("Earliest commit date found in the analyzed history.");
 		lblLastCommit.setToolTipText("Latest commit date found in the analyzed history.");
-		lblColeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>It measures code size, not effort.</html>");
+		lblCodeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>It measures code size, not effort.</html>");
 		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
 		lblExternalRefs.setToolTipText("<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
 		lblURL.setToolTipText("Click to open the repository in your browser.");
@@ -296,7 +296,7 @@ public class MainWindow extends JFrame {
 
 		panelDetails.add(lblCommits);
 		panelDetails.add(lblCreationDate);
-		panelDetails.add(lblColeLines);
+		panelDetails.add(lblCodeLines);
 		panelDetails.add(lblFirstCommit);
 		panelDetails.add(lblLinesChanged);
 		panelDetails.add(lblLastCommit);
@@ -720,7 +720,7 @@ public class MainWindow extends JFrame {
 			    javaCommitsSum
 			));
 			
-			lblColeLines.setText(String.format("• Total lines of code: %d", repoStats.getCodeLines()));
+			lblCodeLines.setText(String.format("• Java LOC (snapshot): %d", repoStats.getCodeLines()));
 			lblLinesChanged.setText(String.format("• Java churn (added+deleted): %d", repoStats.getLinesChanged()));
 			lblLinesChanged.setToolTipText(String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
 			lblExternalRefs.setText(String.format("• External references: %d", repoStats.getExternalReferences()));
@@ -766,7 +766,7 @@ public class MainWindow extends JFrame {
 			lblFirstCommit.setText("• First commit:");
 			lblLastCommit.setText("• Last commit:");
 			lblCommits.setText("• Total commits:");
-			lblColeLines.setText("• Total lines of code:");
+			lblCodeLines.setText("• Java LOC (snapshot):");
 			lblLinesChanged.setText("• Java churn (added+deleted):");
 			lblExternalRefs.setText("• External references:");
 			lblURL.setText("• URL:");

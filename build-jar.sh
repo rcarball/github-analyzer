@@ -22,7 +22,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT/images"
 
 # Compile application sources (tests excluded) against the libraries.
-javac -cp "lib/*" -d "$OUT" $(find src -name '*.java')
+javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
 
 # Bundle the icons on the classpath (loaded as /images/<name> at runtime).
 cp resources/images/*.png "$OUT/images/"

@@ -256,6 +256,30 @@ Interpretation:
 
 ---
 
+### Example 3 — Very low / no Java contribution
+Row shows:
+
+- Username cell: `⛔ carol`
+- Status bar: `⛔ Very low / no contribution`
+
+Interpretation:
+- Carol has no Java churn or no Java commits, or a share well below half the expected one.
+- Next step: confirm with the code defense — she may have worked only on non-Java parts, or contributed little.
+
+---
+
+### Example 4 — High contribution
+Row shows:
+
+- Username cell: `🌟 dave`
+- Status bar: `🌟 High contribution`
+
+Interpretation:
+- Dave’s Java churn share is clearly above the expected share for the team size.
+- This can mean a strong role — or an imbalance worth discussing with the team.
+
+---
+
 ### Example 5 — AI/paste-like burst pattern
 Row shows:
 
@@ -299,6 +323,13 @@ Not necessarily. They may have:
 ### Does it reliably detect AI usage?
 No. It only flags patterns compatible with large pastes/AI/templates.  
 Always confirm with code defense and understanding questions.
+
+### Why did a refresh only analyze some repositories?
+GitHub enforces API **rate limits** (roughly 5,000 requests/hour with a token, and
+only ~60/hour without one). Analyzing many repositories — or repos with lots of
+commits/branches — can hit that limit, and private repos need a token with access.
+When fewer repos come back than configured, the app warns you; retry later, use a
+token, or work offline with the cached `stats.dat`.
 
 ---
 
