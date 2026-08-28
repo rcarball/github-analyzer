@@ -132,17 +132,18 @@ public class DataManager {
             for (RepoStats repo : (data == null ? java.util.Collections.<RepoStats>emptyList() : data)) {
                 if (repo == null || repo.getUserStats() == null) continue;
 
-                // Repo-level Java churn used for computing the share
-                final int repoChurn = repo.getLinesChanged();
-
                 for (UserStats u : repo.getUserStats()) {
                     if (u == null) continue;
 
-                    int churn = u.getAdded() + u.getDeleted();
-                    float share = (repoChurn <= 0) ? 0f : (churn / (float) repoChurn);
+                    int churn = u.getChurn();
+                    // Share of the team churn (excluding teacher); same denominator as the GUI.
+                    float share = ContributionMetrics.teamShare(repo, u);
+                    String shareStr = Float.isNaN(share)
+                            ? "-"                                                       // teacher row
+                            : String.format(java.util.Locale.ROOT, "%.6f", share);      // 0..1 fraction
 
                     out.format(java.util.Locale.ROOT,
-                            "%s;%s;%s;%s;%d;%d;%d;%.6f;%d;%d;%s;%s%n",
+                            "%s;%s;%s;%s;%d;%d;%d;%s;%d;%d;%s;%s%n",
                             nullSafe(repo.getGroup()),
                             nullSafe(repo.getUrl()),
                             nullSafe(u.getUsername()),
@@ -150,7 +151,7 @@ public class DataManager {
                             u.getAdded(),
                             u.getDeleted(),
                             churn,
-                            share,                      // 0..1 fraction (GUI shows it as percentage)
+                            shareStr,
                             u.getJavaFiles(),
                             u.getCommits(),
                             fmtDateOrDash(sdf, u.getLastCommit()),

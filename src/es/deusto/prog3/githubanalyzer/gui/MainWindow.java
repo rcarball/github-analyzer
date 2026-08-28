@@ -50,7 +50,7 @@ import javax.swing.tree.DefaultTreeModel;
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader;
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
-import es.deusto.prog3.githubanalyzer.persistence.Configurator;
+import es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics;
 import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
@@ -620,11 +620,10 @@ public class MainWindow extends JFrame {
 			// Clear and populate the user stats table
 			tableModelUserStats.setRowCount(0);
 
-			int repoChurn = repoStats.getLinesChanged(); // churn java
-			
 			repoStats.getUserStats().forEach(s -> {
-			    int churn = s.getAdded() + s.getDeleted();
-			    float pct = (repoChurn == 0) ? 0f : ((float) churn) / repoChurn;
+			    int churn = s.getChurn();
+			    // Share of the team churn (excluding teacher). NaN for the teacher row (shown as "-").
+			    float pct = ContributionMetrics.teamShare(repoStats, s);
 
 			    Interpretation it = interpret(repoStats, s);
 			    String displayName = String.format(
@@ -682,7 +681,9 @@ public class MainWindow extends JFrame {
             return (ts == -1L) ? "-" : dateFormat.format(new Date(ts));
         }
         if (v instanceof Float) {
-            return String.format("%.2f %%", ((Float) v) * 100f);
+            float f = (Float) v;
+            if (Float.isNaN(f)) return "-";   // e.g. teacher row: excluded from the share model
+            return String.format("%.2f %%", f * 100f);
         }
         // Integer and other values
         return String.valueOf(v);
@@ -698,42 +699,20 @@ public class MainWindow extends JFrame {
         return JLabel.LEFT;
     }
 	
+	// Teacher / contributor / team-churn logic lives in ContributionMetrics so
+	// the GUI and the CSV export always agree. These thin wrappers keep the
+	// existing call sites readable.
 	private boolean isTeacher(UserStats u) {
-	    String tUser = Configurator.getInstance().getTeacherUser();
-	    String tEmail = Configurator.getInstance().getTeacherEmail();
-
-	    String user = (u.getUsername() == null) ? "" : u.getUsername().trim().toLowerCase();
-	    String email = (u.getEmail() == null) ? "" : u.getEmail().trim().toLowerCase();
-
-	    if (tUser != null && !tUser.isBlank() && user.equals(tUser.trim().toLowerCase())) return true;
-
-	    if (tEmail != null && !tEmail.isBlank()) {
-	        String te = tEmail.trim().toLowerCase();
-	        if (!email.isBlank() && email.equals(te)) return true;
-
-	        int at1 = email.indexOf('@');
-	        int at2 = te.indexOf('@');
-	        String lp1 = at1 > 0 ? email.substring(0, at1) : email;
-	        String lp2 = at2 > 0 ? te.substring(0, at2) : te;
-	        if (!lp1.isBlank() && lp1.equals(lp2)) return true;
-	    }
-	    return false;
+	    return ContributionMetrics.isTeacher(u);
 	}
 
 	private int userChurn(UserStats u) {
-	    return u.getAdded() + u.getDeleted();
-	}
-
-	private boolean isRealContributor(UserStats u) {
-	    return userChurn(u) > 0 || u.getCommits() > 0;
+	    return u.getChurn();
 	}
 
 	private List<UserStats> realContributorsExcludingTeacher(RepoStats repo) {
-	    return repo.getUserStats().stream()
-	        .filter(u -> !isTeacher(u))
-	        .filter(this::isRealContributor)
-	        .collect(java.util.stream.Collectors.toList());
-	}	
+	    return ContributionMetrics.activeContributors(repo);
+	}
 	
 	private Interpretation interpret(RepoStats repo, UserStats u) {
 	    // Defensive defaults
@@ -742,14 +721,16 @@ public class MainWindow extends JFrame {
 	    // Teacher is always a special case (excluded from expected-share calculations)
 	    if (isTeacher(u)) return new Interpretation(ContributionBadge.TEACHER, List.of());
 
-	    // Expected contribution share is computed over "real contributors" only (excluding teacher)
+	    // Expected contribution share is computed over "real contributors" only (excluding teacher).
+	    // The share denominator is the SAME population's churn (team churn), so
+	    // share and expected=1/n are directly comparable and shares sum to 1.
 	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
 
-	    int repoChurn = repo.getLinesChanged();
+	    int teamChurn = contributors.stream().mapToInt(UserStats::getChurn).sum();
 	    int uChurn = userChurn(u);
 	    int commitsJava = u.getCommits();
 
-	    ContributionBadge badge = classifyBadge(uChurn, commitsJava, repoChurn, contributors.size());
+	    ContributionBadge badge = classifyBadge(uChurn, commitsJava, teamChurn, contributors.size());
 
 	    // Additional alert flags (secondary indicators)
 	    List<AlertFlag> flags = new ArrayList<>();
@@ -767,15 +748,16 @@ public class MainWindow extends JFrame {
 	 * the caller decides). Package-visible for unit testing.
 	 *
 	 * <p>With {@code expected = 1/n} (n = active contributors, min 1) and
-	 * {@code share = round(userChurn/repoChurn, 4)}, the badge is chosen over
+	 * {@code share = round(userChurn/teamChurn, 4)} where {@code teamChurn} is the
+	 * total churn of those same active contributors, the badge is chosen over
 	 * contiguous ranges: {@code share < 0.5*expected} → VERY_LOW,
 	 * {@code < 0.8*expected} → BELOW, {@code <= 1.2*expected} → BALANCED,
 	 * otherwise HIGH. As a hard guardrail, a user with no Java churn or no Java
 	 * commits is always VERY_LOW.
 	 */
-	static ContributionBadge classifyBadge(int userChurn, int commitsJava, int repoChurn, int contributorCount) {
+	static ContributionBadge classifyBadge(int userChurn, int commitsJava, int teamChurn, int contributorCount) {
 	    // Hard guardrail: if there is no real Java activity, classify as VERY_LOW
-	    // (prevents misleading shares when commits/lines are missing or repoChurn is small)
+	    // (prevents misleading shares when commits/lines are missing or teamChurn is small)
 	    if (userChurn == 0 || commitsJava == 0) {
 	        return ContributionBadge.VERY_LOW;
 	    }
@@ -783,8 +765,8 @@ public class MainWindow extends JFrame {
 	    int n = Math.max(1, contributorCount);
 	    double expected = 1.0 / n;
 
-	    // User share of repo Java churn (ratio in [0..1]).
-	    double shareRaw = (repoChurn <= 0) ? 0.0 : (userChurn / (double) repoChurn);
+	    // User share of the team Java churn (ratio in [0..1]).
+	    double shareRaw = (teamChurn <= 0) ? 0.0 : (userChurn / (double) teamChurn);
 
 	    // Keep the classification consistent with the GUI: the GUI shows share as
 	    // a percentage with 2 decimals (e.g., 62.47%), i.e. the ratio rounded to 4.

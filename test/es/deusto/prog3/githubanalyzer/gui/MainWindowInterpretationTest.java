@@ -12,33 +12,33 @@ import es.deusto.prog3.githubanalyzer.gui.MainWindow.ContributionBadge;
  * {@link MainWindow#isAiPasteLike(int, int, int, int)}.
  *
  * <p>With 4 contributors, expected = 0.25, so the thresholds are:
- * veryLow = 0.125, okMin = 0.20, okMax = 0.30 (of the repo churn share).
+ * veryLow = 0.125, okMin = 0.20, okMax = 0.30 (of the team churn share).
  */
 public class MainWindowInterpretationTest {
 
-    private static final int REPO_CHURN = 1000;
+    private static final int TEAM_CHURN = 1000;
     private static final int N = 4;               // expected share = 0.25
     private static final int COMMITS = 5;         // any positive number of Java commits
 
     private static ContributionBadge badge(int userChurn) {
-        return MainWindow.classifyBadge(userChurn, COMMITS, REPO_CHURN, N);
+        return MainWindow.classifyBadge(userChurn, COMMITS, TEAM_CHURN, N);
     }
 
     // ---------------- classifyBadge: guardrails ----------------
 
     @Test
     public void zeroChurnIsAlwaysVeryLow() {
-        assertEquals(ContributionBadge.VERY_LOW, MainWindow.classifyBadge(0, COMMITS, REPO_CHURN, N));
+        assertEquals(ContributionBadge.VERY_LOW, MainWindow.classifyBadge(0, COMMITS, TEAM_CHURN, N));
     }
 
     @Test
     public void zeroJavaCommitsIsAlwaysVeryLow() {
-        assertEquals(ContributionBadge.VERY_LOW, MainWindow.classifyBadge(500, 0, REPO_CHURN, N));
+        assertEquals(ContributionBadge.VERY_LOW, MainWindow.classifyBadge(500, 0, TEAM_CHURN, N));
     }
 
     @Test
-    public void zeroRepoChurnYieldsVeryLow() {
-        // Division guardrail: repoChurn <= 0 => share = 0 => VERY_LOW.
+    public void zeroTeamChurnYieldsVeryLow() {
+        // Division guardrail: teamChurn <= 0 => share = 0 => VERY_LOW.
         assertEquals(ContributionBadge.VERY_LOW, MainWindow.classifyBadge(50, COMMITS, 0, N));
     }
 

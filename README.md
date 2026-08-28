@@ -108,7 +108,8 @@ For private repositories and to reduce throttling, use a token with **read** acc
   ✅ Better than “added only” because it accounts for refactors and fixes.
 
 - **📊 % Java churn**  
-  The user share of the repository Java churn.
+  The user's share of the **team churn** — the total Java churn of the active contributors, **excluding the teacher account**.  
+  Team shares sum to 100%. The teacher row shows `-` (excluded from the share model).
 
 - **🧩 Java files**  
   Number of distinct `.java` files modified by the user.
@@ -122,16 +123,21 @@ For private repositories and to reduce throttling, use a token with **read** acc
 
 The GUI adds a quick interpretation per person based on two concepts:
 
-1) **Churn share**: how much Java churn of the repo is attributed to that person  
+1) **Churn share**: the person's share of the **team churn** (active contributors, excluding the teacher)  
    \[
-   share = \frac{userChurn}{repoChurn}
+   share = \frac{userChurn}{teamChurn}
    \]
+   where `teamChurn` is the total Java churn of the active contributors (excluding the teacher).
 
 2) **Expected share**: what a balanced split would look like among active contributors (excluding the teacher account)  
    \[
    expected = \frac{1}{n}
    \]
    where `n` is the number of “real” contributors: `userChurn > 0` OR `javaCommits > 0`, excluding teacher.
+
+> Both `share` and `expected` are computed over the **same** population (active
+> contributors, excluding the teacher), so they are directly comparable and the
+> team shares add up to 100%.
 
 > Important: these are **indicators**, not an automatic grading system.  
 > Use them to guide review, interviews, and code defense.
@@ -147,7 +153,8 @@ Badges are the **main** interpretation result. They appear:
 
 ### How the badge is computed (rules)
 
-With `expected = 1/n` and `share = userChurn/repoChurn`:
+With `expected = 1/n` and `share = userChurn/teamChurn` (both over the same
+population — active contributors excluding the teacher):
 
 - `veryLow = expected * 0.5`
 - `okMin   = expected * 0.8`
@@ -227,7 +234,7 @@ Interpretation:
 
 - **LOC (Lines of Code)**: Number of lines in files (here, `.java`). This is a *size snapshot*, not effort.
 - **Churn**: `added + deleted` lines. Used as a proxy for “how much code was edited”.
-- **Share (churn share)**: A user’s churn divided by the repo churn. Used to compare relative contribution within a repo.
+- **Share (churn share)**: A user’s churn divided by the **team churn** (active contributors, excluding the teacher). Team shares sum to 100%; used to compare relative contribution within a team.
 - **Expected share**: `1/n`, where `n` is the number of active contributors (excluding teacher). A baseline for “balanced” teams.
 - **Non-merge commit**: A commit that is not a merge commit. This app focuses on non-merge commits to better approximate authored edits.
 - **Deletion ratio**: `deleted / (added + deleted)`. High ratios often indicate refactoring or cleanup.
