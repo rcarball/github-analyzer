@@ -16,6 +16,8 @@ import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.Image;
 import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
@@ -36,8 +38,10 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
@@ -100,63 +104,85 @@ public class MainWindow extends JFrame {
 	private static final double THRESHOLD_HIGH         = 1.20; // > 120 % del share esperado
 	private static final double AI_PASTE_MULTIPLIER    = 2.50; // churn/commit vs. media del equipo
 
+	// Some systems (certain Windows/Linux setups) lack a font with color emoji, so
+	// badge emojis would render as ▯. Fall back to an ASCII marker when the UI font
+	// cannot display the emoji.
+	private static final Font BADGE_FONT = new JLabel().getFont();
+	static String emojiOr(String emoji, String fallback) {
+		return (BADGE_FONT != null && BADGE_FONT.canDisplayUpTo(emoji) == -1) ? emoji : fallback;
+	}
+
 	enum ContributionBadge {
-		TEACHER("🎓", Color.DARK_GRAY,
+		TEACHER("🎓", "T", Color.DARK_GRAY,
 		        "Teacher account",
 		        "Teacher account: excluded from expected-share calculations."),
 
-		VERY_LOW("⛔", new Color(234, 23, 68),
+		VERY_LOW("⛔", "X", new Color(234, 23, 68),
 		        "Very low / no contribution",
 		        "Very low / no contribution: below expected or near zero."),
 
-		BELOW("⚠", new Color(245, 143, 41),
+		BELOW("⚠", "!", new Color(245, 143, 41),
 		        "Below expected contribution",
 		        "Below expected contribution: noticeable but under the expected share."),
 
-		BALANCED("✓", new Color(54, 130, 127),
+		BALANCED("✓", "OK", new Color(54, 130, 127),
 		        "Balanced contribution",
 		        "Balanced contribution: close to expected for the team size."),
 
-		HIGH("★", new Color(54, 130, 127),
+		HIGH("★", "*", new Color(54, 130, 127),
 		        "High contribution",
 		        "High contribution: above expected for the team size.");
 
 	    final String emoji;
+	    final String fallback;
 	    final Color color;
 	    final String shortLabel;
 	    final String longLine;
 
-	    ContributionBadge(String emoji, Color color, String shortLabel, String longLine) {
+	    ContributionBadge(String emoji, String fallback, Color color, String shortLabel, String longLine) {
 	        this.emoji = emoji;
+	        this.fallback = fallback;
 	        this.color = color;
 	        this.shortLabel = shortLabel;
 	        this.longLine = longLine;
 	    }
 
+	    /** Emoji when the UI font can render it, otherwise an ASCII fallback (▯-proof). */
+	    public String marker() {
+	        return emojiOr(emoji, fallback);
+	    }
+
 	    public String shortText() {
-	    	return String.format("%s %s", emoji, shortLabel);
+	    	return String.format("%s %s", marker(), shortLabel);
 	    }
 	}
 	
 	enum AlertFlag {
-	    AI_PASTE("📋", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
+	    AI_PASTE("📋", "[AI]", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
 
 	    final String emoji;
+	    final String fallback;
 	    final String title;
 	    final String description;
 
-	    AlertFlag(String emoji, String title, String description) {
+	    AlertFlag(String emoji, String fallback, String title, String description) {
 	        this.emoji = emoji;
+	        this.fallback = fallback;
 	        this.title = title;
 	        this.description = description;
 	    }
 
+	    /** Emoji when the UI font can render it, otherwise an ASCII fallback. */
+	    public String marker() {
+	        return emojiOr(emoji, fallback);
+	    }
+
 	    public String shortText() {
-	    	return String.format("%s %s", emoji, title);
+	    	return String.format("%s %s", marker(), title);
 	    }
 
 	    public String htmlLine() {
-	        return emoji + " <b>" + title + "</b>: " + description + "<br>";
+	        return marker() + " <b>" + title + "</b>: " + description + "<br>";
 	    }
 	}
 
@@ -273,14 +299,35 @@ public class MainWindow extends JFrame {
 		lblCodeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>It measures code size, not effort.</html>");
 		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
 		lblExternalRefs.setToolTipText("<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
-		lblURL.setToolTipText("Click to open the repository in your browser.");
-		
+		lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
+
+		// Right-click menu: open or copy the full repository URL.
+		final JPopupMenu urlPopup = new JPopupMenu();
+		JMenuItem openItem = new JMenuItem("Open in browser");
+		openItem.addActionListener(a -> { if (selectedRepo != null) openInBrowser(selectedRepo); });
+		JMenuItem copyItem = new JMenuItem("Copy URL");
+		copyItem.addActionListener(a -> copyToClipboard(selectedRepo));
+		urlPopup.add(openItem);
+		urlPopup.add(copyItem);
+
         // MouseListener to open the URL when clicked
 		lblURL.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (selectedRepo != null) {
+                if (selectedRepo != null && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
                     openInBrowser(selectedRepo);
+                }
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) { maybeShowPopup(e); }
+
+            @Override
+            public void mouseReleased(MouseEvent e) { maybeShowPopup(e); }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (selectedRepo != null && e.isPopupTrigger()) {
+                    urlPopup.show(e.getComponent(), e.getX(), e.getY());
                 }
             }
 
@@ -732,8 +779,11 @@ public class MainWindow extends JFrame {
 			lblLinesChanged.setText(String.format("• Java churn (added+deleted): %d", repoStats.getLinesChanged()));
 			lblLinesChanged.setToolTipText(String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
 			lblExternalRefs.setText(String.format("• External references: %d", repoStats.getExternalReferences()));
-			lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repoStats.getName()));			
-			lblURL.setForeground(Color.BLUE);			
+			lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repoStats.getName()));
+			lblURL.setForeground(Color.BLUE);
+			lblURL.setToolTipText(repoStats.getUrl() == null
+					? "Left-click to open in your browser; right-click to copy the URL."
+					: repoStats.getUrl() + "  (left-click to open · right-click to copy)");
 
 			// Clear and populate the user stats table
 			tableModelUserStats.setRowCount(0);
@@ -746,7 +796,7 @@ public class MainWindow extends JFrame {
 			    Interpretation it = interpretationFor(repoStats, s);
 			    String displayName = String.format(
 			    	    "%s %s",
-			    	    it.badge.emoji,
+			    	    it.badge.marker(),
 			    	    (s.getUsername() == null ? "" : s.getUsername())
 			    	);
 
@@ -778,6 +828,8 @@ public class MainWindow extends JFrame {
 			lblLinesChanged.setText("• Java churn (added+deleted):");
 			lblExternalRefs.setText("• External references:");
 			lblURL.setText("• URL:");
+			lblURL.setForeground(lblCommits.getForeground());
+			lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
 
 			tableModelUserStats.setRowCount(0);
 			
@@ -838,6 +890,18 @@ public class MainWindow extends JFrame {
 						+ "\n\nYou can copy the address and open it manually.",
 				"Open link",
 				JOptionPane.WARNING_MESSAGE);
+	}
+
+	/** Copies text to the system clipboard and shows a brief status confirmation. */
+	private void copyToClipboard(String text) {
+		if (text == null || text.isBlank()) return;
+		try {
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
+			lblStatus.setText("Copied: " + text);
+		} catch (Exception ex) {
+			JOptionPane.showMessageDialog(this, "Could not copy to clipboard:\n" + text,
+					"Copy URL", JOptionPane.WARNING_MESSAGE);
+		}
 	}
 
 	private void showRefreshFailedDialog() {
@@ -1055,7 +1119,7 @@ public class MainWindow extends JFrame {
 	    StringBuilder sb = new StringBuilder("<html>");
 	    sb.append("<b>Interpretation</b><br>");
 	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
-	    sb.append(it.badge.emoji).append(" <b>").append(it.badge.shortLabel).append("</b>");
+	    sb.append(it.badge.marker()).append(" <b>").append(it.badge.shortLabel).append("</b>");
 	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");
 
 	    for (AlertFlag f : it.flags) sb.append(f.htmlLine());
@@ -1070,7 +1134,7 @@ public class MainWindow extends JFrame {
 	    Interpretation it = interpretationFor(repo, u);
 
 	    List<String> parts = new ArrayList<>();
-	    parts.add(it.badge.emoji + " " + it.badge.shortLabel);
+	    parts.add(it.badge.marker() + " " + it.badge.shortLabel);
 
 	    for (AlertFlag f : it.flags) parts.add(f.shortText());
 
