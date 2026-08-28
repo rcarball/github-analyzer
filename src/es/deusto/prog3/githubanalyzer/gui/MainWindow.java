@@ -10,8 +10,12 @@ import java.awt.Cursor;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.Image;
+import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
@@ -29,16 +33,22 @@ import java.util.concurrent.ExecutionException;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 import javax.swing.JTree;
+import javax.swing.RowSorter;
+import javax.swing.SortOrder;
 import javax.swing.SwingWorker;
 import javax.swing.ToolTipManager;
 import javax.swing.border.TitledBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
@@ -72,7 +82,9 @@ public class MainWindow extends JFrame {
 	private DefaultTableModel tableModelUserStats;
 	private JTree jTreeFileType;
 	private JTree jTreeRepos = new JTree();
-	
+	private JTextField repoFilter = new JTextField();
+	private List<RepoStats> allRepos = new ArrayList<>();
+
 	private JButton btnRefresh = new JButton("Refresh from GitHub");
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
@@ -222,7 +234,19 @@ public class MainWindow extends JFrame {
 		initTable();
 
 		JScrollPane reposJScrollPane = new JScrollPane(jTreeRepos);
-		reposJScrollPane.setBorder(new TitledBorder("Repositories"));
+
+		// Filter box above the repository tree (matches group / name / URL).
+		repoFilter.setToolTipText("Filter repositories by group, name or URL");
+		repoFilter.getDocument().addDocumentListener(new DocumentListener() {
+			@Override public void insertUpdate(DocumentEvent e) { rebuildRepoTree(); }
+			@Override public void removeUpdate(DocumentEvent e) { rebuildRepoTree(); }
+			@Override public void changedUpdate(DocumentEvent e) { rebuildRepoTree(); }
+		});
+
+		JPanel reposPanel = new JPanel(new BorderLayout(0, 4));
+		reposPanel.setBorder(new TitledBorder("Repositories"));
+		reposPanel.add(repoFilter, BorderLayout.NORTH);
+		reposPanel.add(reposJScrollPane, BorderLayout.CENTER);
 
 		JPanel panelDetails = new JPanel();
 		panelDetails.setBorder(new TitledBorder("Repository overview"));
@@ -395,7 +419,7 @@ public class MainWindow extends JFrame {
 		this.setLayout(new BorderLayout(0, 0));	
 		this.add(topPanel, BorderLayout.NORTH);
 		this.add(centralPanel, BorderLayout.CENTER);
-		this.add(reposJScrollPane, BorderLayout.WEST);		
+		this.add(reposPanel, BorderLayout.WEST);
 		this.add(bottomPanel, BorderLayout.SOUTH);
 
 		this.setSize(1200, 700);
@@ -411,17 +435,40 @@ public class MainWindow extends JFrame {
 
 	private void updateReposJTree(List<RepoStats> data) {
 		repoStatsMap.clear();
-		
-		data.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
-		
-		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(String.format("%d Repositories", data.size()));
-		
-		data.forEach(repo -> {
-			DefaultMutableTreeNode repoNode = new DefaultMutableTreeNode(repo);
-			repoRootNode.add(repoNode);
-		});
-		
+
+		allRepos = (data == null) ? new ArrayList<>() : data;
+		allRepos.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
+
+		rebuildRepoTree();
+	}
+
+	/** Rebuilds the repository tree, honoring the current filter text. */
+	private void rebuildRepoTree() {
+		String query = (repoFilter == null) ? "" : repoFilter.getText().trim().toLowerCase();
+
+		List<RepoStats> shown = new ArrayList<>();
+		for (RepoStats repo : allRepos) {
+			if (matchesFilter(repo, query)) shown.add(repo);
+		}
+
+		String rootLabel = query.isEmpty()
+				? String.format("%d Repositories", shown.size())
+				: String.format("%d / %d Repositories", shown.size(), allRepos.size());
+
+		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(rootLabel);
+		shown.forEach(repo -> repoRootNode.add(new DefaultMutableTreeNode(repo)));
+
 		jTreeRepos.setModel(new DefaultTreeModel(repoRootNode));
+		for (int i = 0; i < jTreeRepos.getRowCount(); i++) jTreeRepos.expandRow(i);
+	}
+
+	/** A repo matches when the (case-insensitive) query is contained in its group, name or URL. */
+	private boolean matchesFilter(RepoStats repo, String query) {
+		if (query == null || query.isEmpty()) return true;
+		String group = (repo.getGroup() == null) ? "" : repo.getGroup().toLowerCase();
+		String name  = (repo.getName()  == null) ? "" : repo.getName().toLowerCase();
+		String url   = (repo.getUrl()   == null) ? "" : repo.getUrl().toLowerCase();
+		return group.contains(query) || name.contains(query) || url.contains(query);
 	}
 	
 	private void initTable() {
@@ -439,7 +486,26 @@ public class MainWindow extends JFrame {
 	        )
 	    );
 
-	    tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera);
+	    tableModelUserStats = new DefaultTableModel(new Vector<Vector<Object>>(), cabecera) {
+	        private static final long serialVersionUID = 1L;
+
+	        @Override
+	        public boolean isCellEditable(int row, int col) {
+	            return false;
+	        }
+
+	        // Real column types so the row sorter compares numbers as numbers
+	        // (and dates chronologically), not as strings.
+	        @Override
+	        public Class<?> getColumnClass(int columnIndex) {
+	            switch (columnIndex) {
+	                case 0:        return String.class;   // username
+	                case 4:        return Float.class;    // % churn
+	                case 7: case 8:return Long.class;     // last / first commit (timestamps)
+	                default:       return Integer.class;  // added, deleted, churn, files, commits
+	            }
+	        }
+	    };
 
 	    jTableUserStats = new JTable(tableModelUserStats) {
 	        private static final long serialVersionUID = 1L;
@@ -534,7 +600,26 @@ public class MainWindow extends JFrame {
 	    };
 	    
 	    TableCellRenderer headerRenderer = (table, value, isSelected, hasFocus, row, column) -> {
-	        JLabel result = new JLabel(value == null ? "" : value.toString());
+	        String base = (value == null) ? "" : value.toString();
+
+	        // Show the active sort direction on the sorted column.
+	        String arrow = "";
+	        RowSorter<?> sorter = table.getRowSorter();
+	        if (sorter != null) {
+	            for (RowSorter.SortKey key : sorter.getSortKeys()) {
+	                if (key.getColumn() == table.convertColumnIndexToModel(column)) {
+	                    if (key.getSortOrder() == SortOrder.ASCENDING) arrow = "▲";       // ▲
+	                    else if (key.getSortOrder() == SortOrder.DESCENDING) arrow = "▼"; // ▼
+	                }
+	            }
+	        }
+	        if (!arrow.isEmpty()) {
+	            base = base.endsWith("</html>")
+	                    ? base.substring(0, base.length() - "</html>".length()) + " " + arrow + "</html>"
+	                    : base + " " + arrow;
+	        }
+
+	        JLabel result = new JLabel(base);
 
 	        if (column == 0) result.setHorizontalAlignment(JLabel.LEFT);
 	        else if (column >= 7) result.setHorizontalAlignment(JLabel.CENTER);
@@ -555,7 +640,7 @@ public class MainWindow extends JFrame {
 	    jTableUserStats.setShowGrid(false);
 	    jTableUserStats.getTableHeader().setReorderingAllowed(false);
 	    jTableUserStats.getTableHeader().setResizingAllowed(false);
-	    jTableUserStats.setAutoCreateRowSorter(false);
+	    jTableUserStats.setAutoCreateRowSorter(true);   // click a header to sort
 	    jTableUserStats.setFillsViewportHeight(true);
 	    jTableUserStats.getTableHeader().setDefaultRenderer(headerRenderer);
 
@@ -569,8 +654,14 @@ public class MainWindow extends JFrame {
 	    jTableUserStats.getColumnModel().getColumn(7).setPreferredWidth(90);  // last  (yyyy-MM-dd)
 	    jTableUserStats.getColumnModel().getColumn(8).setPreferredWidth(90);  // first (yyyy-MM-dd)
 
+	    // Register for both Object and Number so our renderer (colors + date/%
+	    // formatting) wins over JTable's built-in Number/Float renderers, which the
+	    // typed getColumnClass() would otherwise select for the numeric columns.
 	    jTableUserStats.setDefaultRenderer(Object.class, cellRenderer);
-	    
+	    jTableUserStats.setDefaultRenderer(Number.class, cellRenderer);
+	    // "% churn" column: draw a proportional bar behind the percentage.
+	    jTableUserStats.getColumnModel().getColumn(4).setCellRenderer(new PercentBarRenderer());
+
 	    jTableUserStats.addMouseMotionListener(new MouseMotionAdapter() {
 	        @Override
 	        public void mouseMoved(MouseEvent e) {
@@ -748,6 +839,67 @@ public class MainWindow extends JFrame {
 						+ "Try again later or use offline mode (cached data).",
 				"Refresh failed",
 				JOptionPane.WARNING_MESSAGE);
+	}
+
+	/**
+	 * Cell renderer for the "% churn" column: paints a horizontal bar proportional
+	 * to the value (in the person's badge color) with the percentage on top, so the
+	 * contribution split is readable at a glance. The teacher row (NaN) shows "-".
+	 */
+	private class PercentBarRenderer extends JComponent implements TableCellRenderer {
+		private static final long serialVersionUID = 1L;
+
+		private float fraction;      // 0..1, or NaN
+		private String text = "";
+		private Color barColor = new Color(0, 0, 0, 0);
+		private Color textColor = Color.BLACK;
+		private Color background = Color.WHITE;
+
+		@Override
+		public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+				boolean hasFocus, int row, int column) {
+			setFont(table.getFont());
+
+			fraction = (value instanceof Float) ? (Float) value : Float.NaN;
+			text = Float.isNaN(fraction) ? "-" : String.format("%.2f %%", fraction * 100f);
+
+			Color badge = table.getForeground();
+			RepoStats repo = (selectedRepo == null) ? null : repoStatsMap.get(selectedRepo);
+			if (repo != null && row >= 0) {
+				int modelRow = table.convertRowIndexToModel(row);
+				if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
+					badge = interpret(repo, repo.getUserStats().get(modelRow)).badge.color;
+				}
+			}
+
+			textColor = isSelected ? table.getSelectionForeground() : badge;
+			background = isSelected ? table.getSelectionBackground() : table.getBackground();
+			barColor = new Color(badge.getRed(), badge.getGreen(), badge.getBlue(), 55); // translucent
+			return this;
+		}
+
+		@Override
+		protected void paintComponent(Graphics g) {
+			int w = getWidth();
+			int h = getHeight();
+
+			g.setColor(background);
+			g.fillRect(0, 0, w, h);
+
+			if (!Float.isNaN(fraction) && fraction > 0f) {
+				int barW = Math.round(Math.min(1f, fraction) * (w - 6));
+				g.setColor(barColor);
+				g.fillRoundRect(3, 4, Math.max(1, barW), h - 8, 6, 6);
+			}
+
+			Graphics2D g2 = (Graphics2D) g;
+			g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+			g2.setColor(textColor);
+			FontMetrics fm = g2.getFontMetrics(getFont());
+			int tx = w - fm.stringWidth(text) - 6;               // right-aligned like the other numbers
+			int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+			g2.drawString(text, tx, ty);
+		}
 	}
 	
     private String formatCellValue(Object v) {
