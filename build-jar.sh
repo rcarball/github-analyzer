@@ -1,40 +1,46 @@
 #!/usr/bin/env sh
-# Build a runnable JAR (macOS / Linux).
+# Build a SELF-CONTAINED runnable JAR (macOS / Linux).
 #
-# Produces ./github-analyzer.jar containing the application classes and the tree
-# icons (bundled at /images/). The third-party libraries are NOT copied in: the
-# manifest's Class-Path points to the lib/ folder, so keep lib/ next to the jar.
+# Produces ./github-analyzer.jar with the application classes, the tree icons AND
+# all third-party libraries bundled inside — no lib/ folder needed at runtime.
 #
-# Run it with:   java -jar github-analyzer.jar
-# from a folder that also contains lib/ and a resources/ folder with your
-# config.properties and repositories.txt (these stay external and editable).
+# Run it (from any directory) with:
+#     java -jar github-analyzer.jar
+# Keep a `resources/` folder (with your config.properties and repositories.txt)
+# next to the jar — those files stay EXTERNAL and editable (never bundled, since
+# they hold your token and student data).
 set -e
 cd "$(dirname "$0")"
 
 OUT=build/jar-classes
+STAGE=build/fat
 JAR=github-analyzer.jar
 MAIN=es.deusto.prog3.githubanalyzer.Main
+LIB="$(pwd)/lib"
 
-# Runtime dependencies (relative to the jar location, via the Class-Path header).
-LIBS="lib/commons-io-2.20.0.jar lib/commons-lang3-3.19.0.jar lib/github-api-1.330.jar lib/jackson-annotations-2.20.jar lib/jackson-core-2.20.1.jar lib/jackson-databind-2.20.1.jar"
+rm -rf "$OUT" "$STAGE"
+mkdir -p "$OUT" "$STAGE"
 
-rm -rf "$OUT"
-mkdir -p "$OUT/images"
-
-# Compile application sources (tests excluded) against the libraries.
+# 1) Compile application sources (tests excluded).
 javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
 
-# Bundle the icons on the classpath (loaded as /images/<name> at runtime).
-cp resources/images/*.png "$OUT/images/"
+# 2) Unpack the runtime dependencies into the staging dir (the JUnit runner is
+#    a test-only tool and is intentionally excluded).
+( cd "$STAGE" && for j in "$LIB"/commons-io-*.jar "$LIB"/commons-lang3-*.jar \
+                          "$LIB"/github-api-*.jar "$LIB"/jackson-*.jar; do
+      jar xf "$j"
+  done )
 
-# Write the manifest.
-MF=build/MANIFEST.MF
-mkdir -p build
-{
-  echo "Main-Class: $MAIN"
-  echo "Class-Path: $LIBS"
-} > "$MF"
+# 3) Drop artifacts that don't belong in a merged, non-modular classpath jar.
+rm -f "$STAGE/META-INF/MANIFEST.MF" "$STAGE/module-info.class"
+rm -f "$STAGE/META-INF/"*.SF "$STAGE/META-INF/"*.DSA "$STAGE/META-INF/"*.RSA "$STAGE/META-INF/"*.EC 2>/dev/null || true
 
-jar cfm "$JAR" "$MF" -C "$OUT" .
-echo "Built $JAR"
-echo "Run with: java -jar $JAR   (keep lib/ and resources/ alongside it)"
+# 4) Add our compiled classes and the tree icons (loaded as /images/<name>).
+cp -R "$OUT/." "$STAGE/"
+mkdir -p "$STAGE/images"
+cp resources/images/*.png "$STAGE/images/"
+
+# 5) Package a single self-contained runnable jar (Main-Class via -e).
+jar cfe "$JAR" "$MAIN" -C "$STAGE" .
+echo "Built self-contained $JAR ($(du -h "$JAR" | cut -f1))"
+echo "Run with: java -jar $JAR   (only a resources/ folder needs to sit next to it)"

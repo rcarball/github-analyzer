@@ -21,7 +21,8 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 
 ### Requirements
 - ☕ Java 17+ (recommended)
-- 🗂️ Libraries included under `lib/` (no Maven/Gradle required)
+- 🗂️ Libraries included under `lib/` for compiling (no Maven/Gradle required); the
+  runnable JAR bundles them, so nothing extra is needed to *run* it
 - 🔑 GitHub token (recommended; required for private repos)
 
 ### First, configure
@@ -40,10 +41,13 @@ Run the main class `es.deusto.prog3.githubanalyzer.Main`.
 ./build-jar.sh          # Windows: build-jar.bat
 java -jar github-analyzer.jar
 ```
-This builds `github-analyzer.jar` (icons bundled inside). Keep `lib/` and a
-`resources/` folder (with your `config.properties` and `repositories.txt`) **next
-to the jar**; you can then launch it from any directory — paths are resolved
-relative to the jar's location. Those files stay external and editable.
+This builds a **self-contained** `github-analyzer.jar`: the application, the icons
+**and all third-party libraries are bundled inside** — no `lib/` folder is needed
+to run it. The only thing that must sit next to the jar is a `resources/` folder
+with your `config.properties` and `repositories.txt`; you can launch the jar from
+any directory (paths resolve relative to the jar's location). Those files stay
+**external and editable** and are never bundled, since they hold your token and
+student data.
 
 ### Option C — Compile and run from source (CLI)
 ```bash

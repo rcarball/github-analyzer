@@ -1,39 +1,49 @@
 @echo off
-REM Build a runnable JAR (Windows).
+REM Build a SELF-CONTAINED runnable JAR (Windows).
 REM
-REM Produces github-analyzer.jar with the application classes and the tree icons
-REM (bundled at /images/). Third-party libraries are NOT copied in: the manifest's
-REM Class-Path points to the lib/ folder, so keep lib/ next to the jar.
+REM Produces github-analyzer.jar with the application classes, the tree icons AND
+REM all third-party libraries bundled inside — no lib\ folder needed at runtime.
 REM
-REM Run it with:  java -jar github-analyzer.jar
-REM from a folder that also contains lib\ and a resources\ folder with your
-REM config.properties and repositories.txt (these stay external and editable).
+REM Run it (from any directory) with:
+REM     java -jar github-analyzer.jar
+REM Keep a resources\ folder (with your config.properties and repositories.txt)
+REM next to the jar — those files stay EXTERNAL and editable (never bundled).
 setlocal
 cd /d "%~dp0"
 
 set OUT=build\jar-classes
+set STAGE=build\fat
 set JAR=github-analyzer.jar
 set MAIN=es.deusto.prog3.githubanalyzer.Main
-set LIBS=lib/commons-io-2.20.0.jar lib/commons-lang3-3.19.0.jar lib/github-api-1.330.jar lib/jackson-annotations-2.20.jar lib/jackson-core-2.20.1.jar lib/jackson-databind-2.20.1.jar
+set LIB=%CD%\lib
 
 if exist "%OUT%" rmdir /s /q "%OUT%"
-mkdir "%OUT%\images"
+if exist "%STAGE%" rmdir /s /q "%STAGE%"
+mkdir "%OUT%"
+mkdir "%STAGE%"
 
-REM Compile application sources (tests excluded) against the libraries.
+REM 1) Compile application sources (tests excluded).
 dir /s /b src\*.java > "%TEMP%\ga-src.txt"
 javac --release 17 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-src.txt"
 del "%TEMP%\ga-src.txt"
 
-REM Bundle the icons on the classpath (loaded as /images/<name> at runtime).
-copy resources\images\*.png "%OUT%\images\" >nul
+REM 2) Unpack the runtime dependencies into the staging dir (JUnit excluded).
+pushd "%STAGE%"
+for %%J in ("%LIB%\commons-io-*.jar" "%LIB%\commons-lang3-*.jar" "%LIB%\github-api-*.jar" "%LIB%\jackson-*.jar") do jar xf "%%J"
+popd
 
-REM Write the manifest.
-if not exist build mkdir build
-> build\MANIFEST.MF echo Main-Class: %MAIN%
->> build\MANIFEST.MF echo Class-Path: %LIBS%
+REM 3) Drop artifacts that don't belong in a merged, non-modular classpath jar.
+del /q "%STAGE%\META-INF\MANIFEST.MF" "%STAGE%\module-info.class" 2>nul
+del /q "%STAGE%\META-INF\*.SF" "%STAGE%\META-INF\*.DSA" "%STAGE%\META-INF\*.RSA" "%STAGE%\META-INF\*.EC" 2>nul
 
-jar cfm "%JAR%" build\MANIFEST.MF -C "%OUT%" .
-echo Built %JAR%
-echo Run with: java -jar %JAR%   (keep lib\ and resources\ alongside it)
+REM 4) Add our compiled classes and the tree icons.
+xcopy /e /i /y /q "%OUT%\*" "%STAGE%\" >nul
+mkdir "%STAGE%\images" 2>nul
+copy /y resources\images\*.png "%STAGE%\images\" >nul
+
+REM 5) Package a single self-contained runnable jar (Main-Class via -e).
+jar cfe "%JAR%" "%MAIN%" -C "%STAGE%" .
+echo Built self-contained %JAR%
+echo Run with: java -jar %JAR%   (only a resources\ folder needs to sit next to it)
 
 endlocal
