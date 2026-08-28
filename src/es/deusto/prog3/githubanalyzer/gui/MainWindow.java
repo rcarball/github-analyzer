@@ -36,7 +36,6 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTree;
-import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.ToolTipManager;
 import javax.swing.border.TitledBorder;
@@ -244,17 +243,12 @@ public class MainWindow extends JFrame {
 		lblExternalRefs.setToolTipText("<html>Occurrences of patterns <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files.<br>Useful to flag external/AI-assisted code references.</html>");
 		lblURL.setToolTipText("Click to open the repository in your browser.");
 		
-        // MoseListener to open the URL when clicked
+        // MouseListener to open the URL when clicked
 		lblURL.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                try {
-                    // Use default browser to open the URL
-                	if (selectedRepo != null) {
-                	    Desktop.getDesktop().browse(new URI(selectedRepo));
-                	}
-                } catch (Exception ex) {
-                    ex.printStackTrace();
+                if (selectedRepo != null) {
+                    openInBrowser(selectedRepo);
                 }
             }
 
@@ -302,11 +296,7 @@ public class MainWindow extends JFrame {
 		lblFooter.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                try {
-                	Desktop.getDesktop().browse(new URI("https://www.flaticon.com/authors/pixel-perfect"));
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
+                openInBrowser("https://www.flaticon.com/authors/pixel-perfect");
             }
 
             @Override
@@ -322,10 +312,15 @@ public class MainWindow extends JFrame {
 
 		// Refresh button action
 		btnRefresh.setToolTipText("Refresh (GitHub)");
-		btnRefresh.addActionListener(e -> {						
+		btnRefresh.addActionListener(e -> {
+			// Give immediate feedback and prevent overlapping refreshes.
+			btnRefresh.setEnabled(false);
+			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+			lblStatus.setText("Refreshing from GitHub…");
+
 			// SwingWorker to perform the refresh in the background
 	        SwingWorker<List<RepoStats>, String> worker = new SwingWorker<>() {
-	            
+
 	            @Override
 	            protected List<RepoStats> doInBackground() throws Exception {
 	                // Load new data from GitHub
@@ -339,26 +334,40 @@ public class MainWindow extends JFrame {
 	            @Override
 	            protected void done() {
 	            	try {
-		            	// Update the UI with the new data
-		    	    	updateReposJTree(get());
-		    	    	
-		    	    	SwingUtilities.invokeLater(() -> {
-			            	// Show a success message
+	            		List<RepoStats> newStats = get();
+		    	    	updateReposJTree(newStats);
+
+		    	    	int expected = GitHubDataLoader.getInstance().getConfiguredRepositoryCount();
+		    	    	int analyzed = newStats.size();
+
+		    	    	if (analyzed < expected) {
 		    	    		JOptionPane.showMessageDialog(
-		    	    			    null,
-		    	    			    "Data refreshed successfully.",
+		    	    			    MainWindow.this,
+		    	    			    String.format(
+		    	    			        "Refresh finished, but only %d of %d repositories could be analyzed.\n\n"
+		    	    			        + "Some were skipped (private / no access, GitHub rate limits, or an "
+		    	    			        + "invalid token). See the console log for details.",
+		    	    			        analyzed, expected),
+		    	    			    "Refresh completed with warnings",
+		    	    			    JOptionPane.WARNING_MESSAGE
+		    	    			);
+		    	    	} else {
+		    	    		JOptionPane.showMessageDialog(
+		    	    			    MainWindow.this,
+		    	    			    String.format("Data refreshed successfully (%d repositories).", analyzed),
 		    	    			    "Refresh completed",
 		    	    			    JOptionPane.INFORMATION_MESSAGE
 		    	    			);
-		    	    	});		    	    	
-					} catch (InterruptedException | ExecutionException e) {
-						JOptionPane.showMessageDialog(
-							    null,
-							    "Refresh failed.\n\nTip: GitHub may throttle requests when refreshing many repositories.\n"
-							    + "Try again later or use offline mode (cached data).",
-							    "Refresh failed",
-							    JOptionPane.WARNING_MESSAGE
-							);
+		    	    	}
+					} catch (InterruptedException ex) {
+						Thread.currentThread().interrupt();
+						showRefreshFailedDialog();
+					} catch (ExecutionException ex) {
+						showRefreshFailedDialog();
+					} finally {
+						setCursor(Cursor.getDefaultCursor());
+						btnRefresh.setEnabled(true);
+						lblStatus.setText(" ");
 					}
 	            }
 	        };
@@ -691,6 +700,44 @@ public class MainWindow extends JFrame {
 
 	private ImageIcon scaleIcon(ImageIcon icon) {
 		return new ImageIcon(icon.getImage().getScaledInstance(22, 22, Image.SCALE_SMOOTH));
+	}
+
+	/**
+	 * Opens a URL in the system browser, giving the user visible feedback (a
+	 * dialog with the address to copy) when it cannot be done — unsupported
+	 * platform, no default browser, malformed URL — instead of failing silently
+	 * on the console.
+	 */
+	private void openInBrowser(String uri) {
+		if (uri == null || uri.isBlank()) return;
+
+		String problem;
+		try {
+			if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+				Desktop.getDesktop().browse(new URI(uri));
+				return;
+			}
+			problem = "Opening a browser is not supported on this system.";
+		} catch (Exception ex) {
+			problem = ex.getMessage();
+		}
+
+		JOptionPane.showMessageDialog(
+				this,
+				"Could not open the link automatically.\n\n" + uri
+						+ (problem == null ? "" : "\n\n(" + problem + ")")
+						+ "\n\nYou can copy the address and open it manually.",
+				"Open link",
+				JOptionPane.WARNING_MESSAGE);
+	}
+
+	private void showRefreshFailedDialog() {
+		JOptionPane.showMessageDialog(
+				this,
+				"Refresh failed.\n\nTip: GitHub may throttle requests when refreshing many repositories.\n"
+						+ "Try again later or use offline mode (cached data).",
+				"Refresh failed",
+				JOptionPane.WARNING_MESSAGE);
 	}
 	
     private String formatCellValue(Object v) {

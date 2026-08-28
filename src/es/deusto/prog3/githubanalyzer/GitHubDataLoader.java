@@ -98,6 +98,11 @@ public class GitHubDataLoader {
         return instance;
     }
 
+    /** Number of distinct repositories configured for analysis. */
+    public int getConfiguredRepositoryCount() {
+        return repos.size();
+    }
+
     public List<RepoStats> loadData(List<RepoStats> statsMap) {
         return loadData(statsMap, false);
     }
@@ -244,7 +249,6 @@ public class GitHubDataLoader {
             result.add(repoStats);
         } catch (Exception e) {
             System.err.printf("\t* Error analyzing '%s': %s\n\n", repoUrl, e.getMessage());
-            e.printStackTrace();
         } finally {
             if (buffer != null) System.out.println(buffer);
         }
