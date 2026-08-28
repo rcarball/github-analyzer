@@ -540,6 +540,7 @@ public class GitHubDataLoader {
 
         long repoFirstCommitDate = Long.MAX_VALUE;
         long repoLastCommitDate = Long.MIN_VALUE;
+        int mergeCommits = 0;
 
         for (Map.Entry<String, GHBranch> branchEntry : branches.entrySet()) {
             GHBranch branch = branchEntry.getValue();
@@ -557,6 +558,12 @@ public class GitHubDataLoader {
                         repoLastCommitDate = Math.max(repoLastCommitDate, t);
                     } catch (Exception ignore) {}
 
+                    // A merge commit has more than one parent. These inflate the total
+                    // commit count but are excluded from the per-user Java stats.
+                    try {
+                        if (c.getParents() != null && c.getParents().size() > 1) mergeCommits++;
+                    } catch (Exception ignore) {}
+
                     RawIdentity author = resolveAuthorRaw(c);
                     result.computeIfAbsent(author, k -> new ArrayList<>()).add(c);
                 }
@@ -568,6 +575,7 @@ public class GitHubDataLoader {
         }
 
         repoStats.setCommits(processedCommits.size());
+        repoStats.setMergeCommits(mergeCommits);
         repoStats.setFirstCommit(repoFirstCommitDate == Long.MAX_VALUE ? -1 : repoFirstCommitDate);
         repoStats.setLastCommit(repoLastCommitDate == Long.MIN_VALUE ? -1 : repoLastCommitDate);
 

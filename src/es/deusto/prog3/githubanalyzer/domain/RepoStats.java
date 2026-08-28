@@ -20,6 +20,7 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private long lastCommit = -1;
 	private int branches;
 	private int commits;
+	private int mergeCommits;
 	private int codeLines;
 	private int linesAdded, linesDeleted, linesChanged;
 	private int externalReferences;
@@ -96,6 +97,20 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 
 	public void setCommits(int commits) {
 		this.commits = commits;
+	}
+
+	/** Number of unique merge commits (parents &gt; 1) among the analyzed commits. */
+	public int getMergeCommits() {
+		return mergeCommits;
+	}
+
+	public void setMergeCommits(int mergeCommits) {
+		this.mergeCommits = mergeCommits;
+	}
+
+	/** Non-merge commits = total unique commits minus merge commits (never negative). */
+	public int getNonMergeCommits() {
+		return Math.max(0, commits - mergeCommits);
 	}
 
 	public int getCodeLines() {

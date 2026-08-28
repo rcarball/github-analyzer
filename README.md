@@ -97,7 +97,14 @@ For private repositories and to reduce throttling, use a token with **read** acc
 - **🧱 Total commits (unique)**  
   Number of **unique** commits found (deduplicated by SHA), across analyzed history and known branches.  
   ✅ Global activity indicator.  
-  ⚠️ Not the same as “Java commits per person” (see the table).
+  ⚠️ Not the same as “Java commits per person” (see the table). Hover the label to see the breakdown:
+  **total = merge commits + non-merge commits**, and the per-person **Java commits** only count
+  non-merge commits that changed `.java`.
+
+  > **Why the numbers don’t “add up”** — Example: a repo shows **150** total commits.
+  > If **12** are merges, there are **138** non-merge commits. The per-person *Java commits*
+  > sum to some value **≤ 138** (e.g. 95), because commits that touched only non-`.java` files
+  > (docs, configs, resources) or that were merges are excluded from the Java stats.
 
 - **📅 Creation date**  
   Repository creation date from GitHub.

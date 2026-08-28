@@ -618,7 +618,14 @@ public class MainWindow extends JFrame {
 
 			lblCommits.setText(String.format("• Total commits (unique): %d", repoStats.getCommits()));
 			lblCommits.setToolTipText(String.format(
-			    "<html>Unique commits across all branches (deduplicated by SHA).<br>Java commits (sum of users, non-merge commits touching .java): %d</html>",
+			    "<html>Unique commits across all branches (deduplicated by SHA): <b>%d</b><br>"
+			    + "&nbsp;&nbsp;• Merge commits: %d<br>"
+			    + "&nbsp;&nbsp;• Non-merge commits: %d<br>"
+			    + "&nbsp;&nbsp;• Java commits (sum of users, non-merge touching .java): %d<br>"
+			    + "<i>Per-person Java commits sum to ≤ non-merge commits: they only count commits that changed .java.</i></html>",
+			    repoStats.getCommits(),
+			    repoStats.getMergeCommits(),
+			    repoStats.getNonMergeCommits(),
 			    javaCommitsSum
 			));
 			

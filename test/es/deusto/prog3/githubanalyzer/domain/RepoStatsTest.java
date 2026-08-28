@@ -67,6 +67,24 @@ public class RepoStatsTest {
     }
 
     @Test
+    public void testMergeAndNonMergeCommitAccounting() {
+        RepoStats r = new RepoStats();
+        assertEquals(0, r.getCommits());
+        assertEquals(0, r.getMergeCommits());
+        assertEquals(0, r.getNonMergeCommits());
+
+        r.setCommits(150);
+        r.setMergeCommits(12);
+        assertEquals(150, r.getCommits());
+        assertEquals(12, r.getMergeCommits());
+        assertEquals(138, r.getNonMergeCommits(), "non-merge = total - merges");
+
+        // Never negative, even with inconsistent inputs.
+        r.setMergeCommits(200);
+        assertEquals(0, r.getNonMergeCommits());
+    }
+
+    @Test
     public void testCompareTo() {
         RepoStats r1 = new RepoStats();
         r1.setName("Alpha");
