@@ -1,6 +1,8 @@
 /**
- * This code was developed with AI assistance (ChatGPT) and reviewed by the author (see the unit tests for the validated parts).
+ * This code was developed with AI assistance (ChatGPT and Claude) and reviewed by the author 
+ * (see the unit tests for the validated parts).
  */
+
 package es.deusto.prog3.githubanalyzer.gui;
 
 import java.awt.BorderLayout;
@@ -314,9 +316,9 @@ public class MainWindow extends JFrame {
 		// Right-click menu: open or copy the full repository URL.
 		final JPopupMenu urlPopup = new JPopupMenu();
 		JMenuItem openItem = new JMenuItem("Open in browser");
-		openItem.addActionListener(a -> { if (selectedRepo != null) openInBrowser(selectedRepo); });
+		openItem.addActionListener(_ -> { if (selectedRepo != null) openInBrowser(selectedRepo); });
 		JMenuItem copyItem = new JMenuItem("Copy URL");
-		copyItem.addActionListener(a -> copyToClipboard(selectedRepo));
+		copyItem.addActionListener(_ -> copyToClipboard(selectedRepo));
 		urlPopup.add(openItem);
 		urlPopup.add(copyItem);
 
@@ -401,11 +403,11 @@ public class MainWindow extends JFrame {
 
 		// Config button action
 		btnConfig.setToolTipText("Edit configuration and repositories");
-		btnConfig.addActionListener(e -> showConfigDialog());
+		btnConfig.addActionListener(_ -> showConfigDialog());
 
 		// Refresh button action
 		btnRefresh.setToolTipText("Re-read the config files and fetch fresh data from GitHub");
-		btnRefresh.addActionListener(e -> {
+		btnRefresh.addActionListener(_ -> {
 			// Give immediate feedback and prevent overlapping refreshes.
 			btnRefresh.setEnabled(false);
 			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
@@ -957,7 +959,7 @@ public class MainWindow extends JFrame {
 		JPasswordField tokenField = new JPasswordField(nzs(cfg.getGithubToken()), 28);
 		char echo = tokenField.getEchoChar();
 		JCheckBox showToken = new JCheckBox("show");
-		showToken.addActionListener(a -> tokenField.setEchoChar(showToken.isSelected() ? (char) 0 : echo));
+		showToken.addActionListener(_ -> tokenField.setEchoChar(showToken.isSelected() ? (char) 0 : echo));
 		JCheckBox onlineBox = new JCheckBox("Fetch from GitHub (online)", cfg.isLoadFromGithub());
 		JTextField teacherUserField = new JTextField(nzs(cfg.getTeacherUser()), 28);
 		JTextField teacherEmailField = new JTextField(nzs(cfg.getTeacherEmail()), 28);
@@ -998,8 +1000,8 @@ public class MainWindow extends JFrame {
 		buttons.add(cancel);
 		dialog.getContentPane().add(buttons, BorderLayout.SOUTH);
 
-		cancel.addActionListener(a -> dialog.dispose());
-		save.addActionListener(a -> {
+		cancel.addActionListener(_ -> dialog.dispose());
+		save.addActionListener(_ -> {
 			cfg.save(userField.getText().trim(),
 					new String(tokenField.getPassword()).trim(),
 					onlineBox.isSelected(),

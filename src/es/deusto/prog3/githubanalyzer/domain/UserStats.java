@@ -1,3 +1,8 @@
+/**
+ * This code was developed with AI assistance (ChatGPT and Claude) and reviewed by the author 
+ * (see the unit tests for the validated parts).
+ */
+
 package es.deusto.prog3.githubanalyzer.domain;
 
 import java.io.Serializable;
