@@ -116,7 +116,8 @@ For private repositories and to reduce throttling, use a token with **read** acc
   ⚠️ Can be inflated by formatting, generated code, or large pastes.
 
 - **🔗 External references**  
-  Occurrences of patterns `IAG` or `FUENTE-EXTERNA` inside `.java` files.  
+  Occurrences of the standalone markers `IAG` or `FUENTE-EXTERNA` inside `.java` files
+  (matched as whole words, so they are **not** counted inside identifiers like `DIAGNOSTIC`).  
   📌 Useful as a “reference/AI mention” signal (not proof).
 
 ---

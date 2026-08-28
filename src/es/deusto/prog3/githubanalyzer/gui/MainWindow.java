@@ -243,7 +243,7 @@ public class MainWindow extends JFrame {
 		lblLastCommit.setToolTipText("Latest commit date found in the analyzed history.");
 		lblColeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>It measures code size, not effort.</html>");
 		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
-		lblExternalRefs.setToolTipText("<html>Occurrences of patterns <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files.<br>Useful to flag external/AI-assisted code references.</html>");
+		lblExternalRefs.setToolTipText("<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
 		lblURL.setToolTipText("Click to open the repository in your browser.");
 		
         // MouseListener to open the URL when clicked

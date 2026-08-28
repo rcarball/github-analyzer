@@ -155,4 +155,31 @@ public class GitHubDataLoaderTest {
         assertSame(longName, GitHubDataLoader.pickBetterRep(shortName, longName),
                 "With all else equal, the longer display name wins");
     }
+
+    // ---------------- countExternalMarkers: external/AI reference markers ----------------
+
+    @Test
+    public void countsStandaloneMarkers() {
+        assertEquals(1, GitHubDataLoader.countExternalMarkers("// IAG"));
+        assertEquals(1, GitHubDataLoader.countExternalMarkers("(IAG)"));
+        assertEquals(1, GitHubDataLoader.countExternalMarkers("// FUENTE-EXTERNA: https://example.com"));
+        assertEquals(2, GitHubDataLoader.countExternalMarkers("IAG and FUENTE-EXTERNA on one line"));
+        assertEquals(2, GitHubDataLoader.countExternalMarkers("IAG ... IAG again"));
+    }
+
+    @Test
+    public void ignoresMarkersEmbeddedInIdentifiers() {
+        // These would all be false positives without word boundaries.
+        assertEquals(0, GitHubDataLoader.countExternalMarkers("int DIAGNOSTIC = 0;"));
+        assertEquals(0, GitHubDataLoader.countExternalMarkers("drawDIAGRAM();"));
+        assertEquals(0, GitHubDataLoader.countExternalMarkers("String iagValue; // lowercase, not a marker"));
+        assertEquals(0, GitHubDataLoader.countExternalMarkers("IAGENERATIVA"));
+    }
+
+    @Test
+    public void countExternalMarkersHandlesNullAndEmpty() {
+        assertEquals(0, GitHubDataLoader.countExternalMarkers(null));
+        assertEquals(0, GitHubDataLoader.countExternalMarkers(""));
+        assertEquals(0, GitHubDataLoader.countExternalMarkers("nothing to see here"));
+    }
 }

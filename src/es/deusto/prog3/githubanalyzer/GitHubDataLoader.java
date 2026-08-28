@@ -46,7 +46,10 @@ public class GitHubDataLoader {
     private final Map<String, String> groupsRepoMap = new HashMap<>();
     private final List<String> repos;
 
-    private static final Pattern EXTERNAL_PATTERN = Pattern.compile("IAG|FUENTE-EXTERNA");
+    // Standalone markers students place in comments to flag external / AI-assisted
+    // code. Word boundaries (\b) avoid false positives inside identifiers, e.g. the
+    // "IAG" in "DIAGNOSTIC" or "DIAGRAM".
+    private static final Pattern EXTERNAL_PATTERN = Pattern.compile("\\bIAG\\b|\\bFUENTE-EXTERNA\\b");
     private static final String LINES_KEY = "LINES";
     private static final String REF_KEY = "REF";
     private static final String JAVA_EXTENSION = ".java";
@@ -314,11 +317,7 @@ public class GitHubDataLoader {
                     String line;
                     while ((line = in.readLine()) != null) {
                         counters.put(LINES_KEY, counters.get(LINES_KEY) + 1);
-
-                        Matcher matcher = EXTERNAL_PATTERN.matcher(line);
-                        while (matcher.find()) {
-                            counters.put(REF_KEY, counters.get(REF_KEY) + 1);
-                        }
+                        counters.put(REF_KEY, counters.get(REF_KEY) + countExternalMarkers(line));
                     }
                 } catch (Exception ex) {
                     buffer.append(String.format("\t* Error processing file '%s': %s\n", name, ex.getMessage()));
@@ -333,6 +332,20 @@ public class GitHubDataLoader {
     private String safeContentName(GHContent c) {
         try { return (c == null) ? "null" : c.getName(); }
         catch (Exception e) { return "unknown"; }
+    }
+
+    /**
+     * Counts standalone external/AI-reference markers ({@code IAG},
+     * {@code FUENTE-EXTERNA}) in a single line. Uses word boundaries, so markers
+     * embedded in longer identifiers (e.g. {@code DIAGNOSTIC}) are not counted.
+     * Package-visible for testing.
+     */
+    static int countExternalMarkers(String line) {
+        if (line == null) return 0;
+        int count = 0;
+        Matcher matcher = EXTERNAL_PATTERN.matcher(line);
+        while (matcher.find()) count++;
+        return count;
     }
 
     // Package-visible for unit testing of the identity-merging logic.
