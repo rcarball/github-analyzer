@@ -45,7 +45,12 @@ public class DataManager {
                     + "java.util.*;java.lang.*;!*");
 
     public synchronized List<RepoStats> loadData() {
-        return loadData(Paths.get(Configurator.getInstance().getStatsFile()));
+        String file = Configurator.getInstance().getStatsFile();
+        if (file == null || file.isBlank()) {
+            System.out.format("- No cache file configured (starting empty)\n");
+            return new ArrayList<>();
+        }
+        return loadData(Paths.get(file));
     }
 
     /** Package-visible for testing: load and deserialize the cache from a specific path. */
@@ -91,6 +96,10 @@ public class DataManager {
         if (data == null) data = new ArrayList<>();
 
         String file = Configurator.getInstance().getStatsFile();
+        if (file == null || file.isBlank()) {
+            System.err.format("* No cache file configured; data not saved.\n\n");
+            return;
+        }
         Path target = Paths.get(file);
         Path tmp = Paths.get(file + ".tmp");
 
@@ -122,6 +131,10 @@ public class DataManager {
 
     public synchronized void storeCSV(List<RepoStats> data) {
         final String csvPath = Configurator.getInstance().getStatsCSV();
+        if (csvPath == null || csvPath.isBlank()) {
+            System.err.format("* No CSV file configured; CSV not written.%n%n");
+            return;
+        }
 
         try (PrintWriter out = new PrintWriter(
                 new java.io.OutputStreamWriter(

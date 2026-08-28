@@ -416,6 +416,13 @@ public class MainWindow extends JFrame {
 	            		List<RepoStats> newStats = get();
 		    	    	updateReposJTree(newStats);
 
+		    	    	// The refreshed data replaced repoStatsMap; clear the stale selection
+		    	    	// and detail view so the table/labels/colors never show a mix of old
+		    	    	// and new data. The user reselects a repo to see fresh details.
+		    	    	jTreeRepos.clearSelection();
+		    	    	selectedRepo = null;
+		    	    	loadRepoStats(null);
+
 		    	    	int expected = GitHubDataLoader.getInstance().getConfiguredRepositoryCount();
 		    	    	int analyzed = newStats.size();
 
