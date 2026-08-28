@@ -1,0 +1,6 @@
+# Copy this file to "repositories.txt" and add one repository URL per line.
+# Optionally append ";GROUP-ID" to label each repo with its team/group code.
+# NOTE: repositories.txt is git-ignored because student repo URLs are personal data.
+
+https://github.com/OWNER/REPO1;GROUP-ID1
+https://github.com/OWNER/REPO2;GROUP-ID2

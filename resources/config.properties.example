@@ -1,0 +1,15 @@
+# Copy this file to "config.properties" and fill in your own values.
+# IMPORTANT: config.properties is git-ignored on purpose. NEVER commit a real token.
+# Create a token with the minimum scope needed (read access to the repos) at:
+#   https://github.com/settings/tokens
+
+github.user=_USERNAME_                         # Your GitHub username (informational)
+github.token=_TOKEN_                           # Personal Access Token (read-only). Keep it secret.
+update.from.github=yes                         # yes: online refresh | no: offline (use stats.dat)
+repositories.file=resources/repositories.txt   # Repo list (see repositories.txt.example)
+stats.file=resources/stats.dat                 # Binary cache of the last refresh
+stats.csv=resources/stats.csv                  # CSV export (may contain personal data: do not commit)
+
+# (Optional) Exclude the teacher account from expected-share calculations
+teacher.user=_TEACHER_USERNAME_
+teacher.email=_TEACHER_EMAIL_

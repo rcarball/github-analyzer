@@ -1,1 +1,11 @@
+# Local runtime data and secrets — never commit these.
+# Use the *.example templates as a reference to create your own copies.
+
+/config.properties
+/repositories.txt
 /stats.dat
+/stats.csv
+
+# Keep the templates tracked
+!/config.properties.example
+!/repositories.txt.example
