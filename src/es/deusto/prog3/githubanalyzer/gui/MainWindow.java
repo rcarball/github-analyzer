@@ -13,8 +13,11 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Image;
+import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
@@ -35,19 +38,24 @@ import java.util.concurrent.ExecutionException;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComponent;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JTree;
 import javax.swing.RowSorter;
 import javax.swing.SortOrder;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.ToolTipManager;
 import javax.swing.border.TitledBorder;
@@ -63,6 +71,7 @@ import javax.swing.tree.DefaultTreeModel;
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader;
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
+import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 import es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics;
 import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
@@ -90,6 +99,7 @@ public class MainWindow extends JFrame {
 	private List<RepoStats> allRepos = new ArrayList<>();
 
 	private JButton btnRefresh = new JButton("Refresh from GitHub");
+	private JButton btnConfig = new JButton("⚙ Config");
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
@@ -389,8 +399,12 @@ public class MainWindow extends JFrame {
             }
         });
 
+		// Config button action
+		btnConfig.setToolTipText("Edit configuration and repositories");
+		btnConfig.addActionListener(e -> showConfigDialog());
+
 		// Refresh button action
-		btnRefresh.setToolTipText("Refresh (GitHub)");
+		btnRefresh.setToolTipText("Re-read the config files and fetch fresh data from GitHub");
 		btnRefresh.addActionListener(e -> {
 			// Give immediate feedback and prevent overlapping refreshes.
 			btnRefresh.setEnabled(false);
@@ -402,6 +416,10 @@ public class MainWindow extends JFrame {
 
 	            @Override
 	            protected List<RepoStats> doInBackground() throws Exception {
+	                // Re-read config.properties and repositories.txt so external edits
+	                // (new token / repos) take effect without restarting the app.
+	                Configurator.getInstance().reload();
+	                GitHubDataLoader.getInstance().reloadRepositories();
 	                // Load new data from GitHub
 	            	List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(null, true);
 	    	    	// Store the new data in the local cache
@@ -469,8 +487,11 @@ public class MainWindow extends JFrame {
 		bottomPanel.add(lblStatus, BorderLayout.WEST);
 		bottomPanel.add(lblFooter, BorderLayout.EAST);
 				
+		JPanel topButtons = new JPanel();
+		topButtons.add(btnConfig);
+		topButtons.add(btnRefresh);
 		JPanel topPanel = new JPanel(new BorderLayout());
-		topPanel.add(btnRefresh, BorderLayout.EAST);
+		topPanel.add(topButtons, BorderLayout.EAST);
 		
 		this.setTitle("GitHub Repository Analyzer");
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -490,6 +511,14 @@ public class MainWindow extends JFrame {
 		ToolTipManager.sharedInstance().setReshowDelay(100);    // reshow after 0.1 segundos
 		
 		this.setVisible(true);
+
+		// First run / not configured yet: prompt the user to set things up.
+		if (!Configurator.getInstance().isConfigured()) {
+			SwingUtilities.invokeLater(() -> {
+				lblStatus.setText("Not configured yet — fill in your GitHub user and token.");
+				showConfigDialog();
+			});
+		}
 	}
 
 	private void updateReposJTree(List<RepoStats> data) {
@@ -909,6 +938,89 @@ public class MainWindow extends JFrame {
 			JOptionPane.showMessageDialog(this, "Could not copy to clipboard:\n" + text,
 					"Copy URL", JOptionPane.WARNING_MESSAGE);
 		}
+	}
+
+	private static String nzs(String s) {
+		return (s == null) ? "" : s;
+	}
+
+	/**
+	 * Opens a modal dialog to edit the configuration (user, token, online mode,
+	 * teacher) and the repository list. On save it writes both files via
+	 * {@link Configurator}, reloads the repo list, and offers to fetch right away.
+	 * The same files can still be edited by hand outside the app.
+	 */
+	private void showConfigDialog() {
+		Configurator cfg = Configurator.getInstance();
+
+		JTextField userField = new JTextField(nzs(cfg.getGithubUser()), 28);
+		JPasswordField tokenField = new JPasswordField(nzs(cfg.getGithubToken()), 28);
+		char echo = tokenField.getEchoChar();
+		JCheckBox showToken = new JCheckBox("show");
+		showToken.addActionListener(a -> tokenField.setEchoChar(showToken.isSelected() ? (char) 0 : echo));
+		JCheckBox onlineBox = new JCheckBox("Fetch from GitHub (online)", cfg.isLoadFromGithub());
+		JTextField teacherUserField = new JTextField(nzs(cfg.getTeacherUser()), 28);
+		JTextField teacherEmailField = new JTextField(nzs(cfg.getTeacherEmail()), 28);
+		JTextArea reposArea = new JTextArea(cfg.readRepositoriesText(), 8, 40);
+		reposArea.setToolTipText("One repository URL per line. Optionally append ;GROUP-ID. Lines starting with # are ignored.");
+
+		JPanel tokenPanel = new JPanel(new BorderLayout(4, 0));
+		tokenPanel.add(tokenField, BorderLayout.CENTER);
+		tokenPanel.add(showToken, BorderLayout.EAST);
+
+		JPanel form = new JPanel(new GridBagLayout());
+		GridBagConstraints c = new GridBagConstraints();
+		c.insets = new Insets(4, 6, 4, 6);
+		c.anchor = GridBagConstraints.WEST;
+		c.fill = GridBagConstraints.HORIZONTAL;
+
+		c.gridx = 0; c.gridy = 0; form.add(new JLabel("GitHub user:"), c);
+		c.gridx = 1; form.add(userField, c);
+		c.gridx = 0; c.gridy = 1; form.add(new JLabel("Token:"), c);
+		c.gridx = 1; form.add(tokenPanel, c);
+		c.gridx = 1; c.gridy = 2; form.add(onlineBox, c);
+		c.gridx = 0; c.gridy = 3; form.add(new JLabel("Teacher user:"), c);
+		c.gridx = 1; form.add(teacherUserField, c);
+		c.gridx = 0; c.gridy = 4; form.add(new JLabel("Teacher email:"), c);
+		c.gridx = 1; form.add(teacherEmailField, c);
+		c.gridx = 0; c.gridy = 5; c.anchor = GridBagConstraints.NORTHWEST;
+		form.add(new JLabel("<html>Repositories<br>(one URL/line,<br>optional ;GROUP):</html>"), c);
+		c.gridx = 1; c.fill = GridBagConstraints.BOTH; c.weightx = 1; c.weighty = 1;
+		form.add(new JScrollPane(reposArea), c);
+
+		JDialog dialog = new JDialog(this, "Configuration", true);
+		dialog.getContentPane().add(form, BorderLayout.CENTER);
+
+		JButton save = new JButton("Save");
+		JButton cancel = new JButton("Cancel");
+		JPanel buttons = new JPanel();
+		buttons.add(save);
+		buttons.add(cancel);
+		dialog.getContentPane().add(buttons, BorderLayout.SOUTH);
+
+		cancel.addActionListener(a -> dialog.dispose());
+		save.addActionListener(a -> {
+			cfg.save(userField.getText().trim(),
+					new String(tokenField.getPassword()).trim(),
+					onlineBox.isSelected(),
+					teacherUserField.getText().trim(),
+					teacherEmailField.getText().trim());
+			cfg.saveRepositories(reposArea.getText());
+			GitHubDataLoader.getInstance().reloadRepositories();
+			dialog.dispose();
+			lblStatus.setText("Configuration saved.");
+
+			if (cfg.isConfigured() && onlineBox.isSelected()) {
+				int ans = JOptionPane.showConfirmDialog(this,
+						"Configuration saved. Fetch data from GitHub now?",
+						"Refresh", JOptionPane.YES_NO_OPTION);
+				if (ans == JOptionPane.YES_OPTION) btnRefresh.doClick();
+			}
+		});
+
+		dialog.pack();
+		dialog.setLocationRelativeTo(this);
+		dialog.setVisible(true);
 	}
 
 	private void showRefreshFailedDialog() {

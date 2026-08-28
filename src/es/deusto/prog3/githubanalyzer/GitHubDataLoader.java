@@ -44,7 +44,7 @@ public class GitHubDataLoader {
 
     private static final GitHubDataLoader instance = new GitHubDataLoader();
     private final Map<String, String> groupsRepoMap = new HashMap<>();
-    private final List<String> repos;
+    private volatile List<String> repos = Collections.emptyList();
 
     // Standalone markers students place in comments to flag external / AI-assisted
     // code. Word boundaries (\b) avoid false positives inside identifiers, e.g. the
@@ -62,17 +62,27 @@ public class GitHubDataLoader {
     private static final AtomicLong LAST_HEAVY_CALL_TS = new AtomicLong(0);
 
     private GitHubDataLoader() {
+    	reloadRepositories();
+    }
+
+    /**
+     * (Re)reads {@code repositories.txt} via {@link Configurator} and rebuilds the
+     * de-duplicated repo list and the repo→group map. Called at startup and again
+     * by the Refresh button / config dialog so file edits take effect without a restart.
+     */
+    public synchronized void reloadRepositories() {
     	List<String> originalRepos = Configurator.getInstance().getRepositories();
 
+    	groupsRepoMap.clear();
+    	LinkedHashSet<String> uniqueRepos = new LinkedHashSet<>();
+
     	if (originalRepos != null) {
-
-    	    LinkedHashSet<String> uniqueRepos = new LinkedHashSet<>();
-
     	    for (String line : originalRepos) {
     	        if (line == null) continue;
 
     	        String trimmed = line.trim();
-    	        if (trimmed.isEmpty()) continue;
+    	        // Skip blank lines and comments (lines starting with '#').
+    	        if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
 
     	        String[] parts = trimmed.split(";", 2);
     	        String repoUrl = parts[0].trim();
@@ -89,12 +99,9 @@ public class GitHubDataLoader {
     	            }
     	        }
     	    }
-
-    	    this.repos = new ArrayList<>(uniqueRepos);
-
-    	} else {
-    	    this.repos = Collections.emptyList();
     	}
+
+    	this.repos = new ArrayList<>(uniqueRepos);
     }
 
     public static GitHubDataLoader getInstance() {
