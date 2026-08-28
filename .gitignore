@@ -6,4 +6,5 @@
 # Compiled Code
 bin/
 build/
+/github-analyzer.jar
 /.DS_Store

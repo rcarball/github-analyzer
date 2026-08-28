@@ -163,29 +163,28 @@ public class MainWindow extends JFrame {
 					boolean leaf, int row, boolean hasFocus) {
 				Component component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
 
-				String iconName = "resources/images/";
-				
+				String iconFile = "github.png";
+
 				DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
-				Object userObject = node.getUserObject();				
+				Object userObject = node.getUserObject();
 
 				// Check if the node represents a RepoStats object
 				if (userObject instanceof RepoStats) {
 					RepoStats repoStats = (RepoStats) userObject;
-					iconName += repoStats.isPublic() ? "public.png" : "private.png";
-					
+					iconFile = repoStats.isPublic() ? "public.png" : "private.png";
+
 					setText(repoStats.getGroup() != null && !repoStats.getGroup().isEmpty() ? repoStats.getGroup() : repoStats.getName());
-					
+
 					// If the repository is empty (no commits), change the text color to orange
 					if (repoStats.getCommits() == 0) {
 						component.setForeground(new Color(245, 143, 41));
 						setText(getText() + " (empty repository)");
 					} else {
-						component.setForeground(new Color(54, 130, 127));						
+						component.setForeground(new Color(54, 130, 127));
 					}
-					
+
 					setToolTipText(repoStats.getName());
 				} else {
-					iconName += "github.png";
 					component.setForeground(Color.BLACK);
 				}
 
@@ -193,8 +192,9 @@ public class MainWindow extends JFrame {
 				    setForeground(Color.WHITE);
 				    setBackgroundSelectionColor(new Color(0, 120, 215));
 				}
-				
-				this.setIcon(scaleIcon(new ImageIcon(iconName)));
+
+				ImageIcon icon = loadIcon(iconFile);
+				if (icon != null) this.setIcon(scaleIcon(icon));
 
 				return component;
 			}
@@ -671,6 +671,24 @@ public class MainWindow extends JFrame {
 		}
 	}
 	
+	/**
+	 * Loads a tree icon by file name. Tries the classpath first ({@code /images/<name>},
+	 * which is how the icons are bundled inside the runnable JAR), then falls back to
+	 * the {@code resources/images/} folder (handy when running from the project dir in
+	 * the IDE). Returns {@code null} if the icon cannot be found, so callers can skip it.
+	 */
+	private ImageIcon loadIcon(String fileName) {
+		java.net.URL url = MainWindow.class.getResource("/images/" + fileName);
+		if (url != null) {
+			return new ImageIcon(url);
+		}
+		java.io.File file = new java.io.File("resources/images/" + fileName);
+		if (file.isFile()) {
+			return new ImageIcon(file.getPath());
+		}
+		return null;
+	}
+
 	private ImageIcon scaleIcon(ImageIcon icon) {
 		return new ImageIcon(icon.getImage().getScaledInstance(22, 22, Image.SCALE_SMOOTH));
 	}
