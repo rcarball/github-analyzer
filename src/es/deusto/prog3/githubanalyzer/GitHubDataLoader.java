@@ -330,7 +330,8 @@ public class GitHubDataLoader {
         catch (Exception e) { return "unknown"; }
     }
 
-    private static class RawIdentity {
+    // Package-visible for unit testing of the identity-merging logic.
+    static class RawIdentity {
         final String name;
         final String email;
         final String login;
@@ -400,7 +401,8 @@ public class GitHubDataLoader {
         }
     }
 
-    private static RawIdentity pickBetterRep(RawIdentity a, RawIdentity b) {
+    // Package-visible for unit testing of the representative-selection rules.
+    static RawIdentity pickBetterRep(RawIdentity a, RawIdentity b) {
         boolean aLogin = a.login != null && !a.login.isBlank();
         boolean bLogin = b.login != null && !b.login.isBlank();
         if (aLogin && !bLogin) return a;
@@ -424,6 +426,43 @@ public class GitHubDataLoader {
 
     private Map<SimpleGitUser, List<GHCommit>> resolveAndMergeAuthors(Map<RawIdentity, List<GHCommit>> rawMap) {
         List<RawIdentity> ids = new ArrayList<>(rawMap.keySet());
+        int[] root = clusterIdentities(ids);
+
+        Map<Integer, List<GHCommit>> commitsByRoot = new HashMap<>();
+        Map<Integer, RawIdentity> repByRoot = new HashMap<>();
+
+        for (int i = 0; i < ids.size(); i++) {
+            int r = root[i];
+            commitsByRoot.computeIfAbsent(r, k -> new ArrayList<>()).addAll(rawMap.get(ids.get(i)));
+            repByRoot.merge(r, ids.get(i), GitHubDataLoader::pickBetterRep);
+        }
+
+        Map<SimpleGitUser, List<GHCommit>> out = new HashMap<>();
+        for (Map.Entry<Integer, List<GHCommit>> e : commitsByRoot.entrySet()) {
+            RawIdentity rep = repByRoot.get(e.getKey());
+            String bestName = (rep.login != null && !rep.login.isBlank()) ? rep.login : rep.name;
+            String bestEmail = rep.email;
+            out.put(new SimpleGitUser(bestName, bestEmail), e.getValue());
+        }
+
+        return out;
+    }
+
+    /**
+     * Clusters raw identities that (very likely) belong to the same person and
+     * returns, for each identity, the index of its cluster representative root.
+     * Two identities are merged when they share a GitHub login, share a
+     * non-noreply email local-part, or share a normalized display name that is
+     * anchored by at least one "strong" identity (has a login or a resolvable
+     * email). This is the pure, side-effect-free core of
+     * {@link #resolveAndMergeAuthors(Map)} and is package-visible for testing.
+     *
+     * @param ids the raw identities (order defines the returned indices)
+     * @return an array {@code root} where {@code root[i]} is the cluster id of
+     *         {@code ids.get(i)}; two identities share a cluster iff their roots
+     *         are equal
+     */
+    static int[] clusterIdentities(List<RawIdentity> ids) {
         DSU dsu = new DSU(ids.size());
 
         Map<String, Integer> seenLogin = new HashMap<>();
@@ -466,24 +505,9 @@ public class GitHubDataLoader {
             for (int idx : idxs) dsu.union(anchor, idx);
         }
 
-        Map<Integer, List<GHCommit>> commitsByRoot = new HashMap<>();
-        Map<Integer, RawIdentity> repByRoot = new HashMap<>();
-
-        for (int i = 0; i < ids.size(); i++) {
-            int root = dsu.find(i);
-            commitsByRoot.computeIfAbsent(root, k -> new ArrayList<>()).addAll(rawMap.get(ids.get(i)));
-            repByRoot.merge(root, ids.get(i), GitHubDataLoader::pickBetterRep);
-        }
-
-        Map<SimpleGitUser, List<GHCommit>> out = new HashMap<>();
-        for (Map.Entry<Integer, List<GHCommit>> e : commitsByRoot.entrySet()) {
-            RawIdentity rep = repByRoot.get(e.getKey());
-            String bestName = (rep.login != null && !rep.login.isBlank()) ? rep.login : rep.name;
-            String bestEmail = rep.email;
-            out.put(new SimpleGitUser(bestName, bestEmail), e.getValue());
-        }
-        
-        return out;
+        int[] root = new int[ids.size()];
+        for (int i = 0; i < ids.size(); i++) root[i] = dsu.find(i);
+        return root;
     }
 
     

@@ -81,7 +81,7 @@ public class MainWindow extends JFrame {
 	private static final double THRESHOLD_HIGH         = 1.20; // > 120 % del share esperado
 	private static final double AI_PASTE_MULTIPLIER    = 2.50; // churn/commit vs. media del equipo
 
-	private enum ContributionBadge {
+	enum ContributionBadge {
 		TEACHER("🎓", Color.DARK_GRAY,
 		        "Teacher account",
 		        "Teacher account: excluded from expected-share calculations."),
@@ -119,7 +119,7 @@ public class MainWindow extends JFrame {
 	    }
 	}
 	
-	private enum AlertFlag {
+	enum AlertFlag {
 	    AI_PASTE("📋", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
 
 	    final String emoji;
@@ -742,64 +742,74 @@ public class MainWindow extends JFrame {
 	    // Teacher is always a special case (excluded from expected-share calculations)
 	    if (isTeacher(u)) return new Interpretation(ContributionBadge.TEACHER, List.of());
 
-	    // Repo-wide churn (Java added + deleted, as computed in RepoStats)
-	    int repoChurn = repo.getLinesChanged();
+	    // Expected contribution share is computed over "real contributors" only (excluding teacher)
+	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
 
-	    // User churn (Java added + deleted) and "real Java commits" (non-merge commits touching .java)
+	    int repoChurn = repo.getLinesChanged();
 	    int uChurn = userChurn(u);
 	    int commitsJava = u.getCommits();
 
-	    // Hard guardrail: if there is no real Java activity, classify as VERY_LOW
-	    // (prevents misleading shares when commits/lines are missing or repoChurn is small)
-	    if (uChurn == 0 || commitsJava == 0) {
-	        return new Interpretation(ContributionBadge.VERY_LOW, List.of());
+	    ContributionBadge badge = classifyBadge(uChurn, commitsJava, repoChurn, contributors.size());
+
+	    // Additional alert flags (secondary indicators)
+	    List<AlertFlag> flags = new ArrayList<>();
+	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
+	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
+	    if (isAiPasteLike(uChurn, commitsJava, totalChurn, totalCommitsJava)) {
+	        flags.add(AlertFlag.AI_PASTE);
 	    }
 
-	    // Expected contribution share is computed over "real contributors" only (excluding teacher)
-	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
-	    int n = Math.max(1, contributors.size());
+	    return new Interpretation(badge, flags);
+	}
+
+	/**
+	 * Pure contribution-badge classification (excluding the TEACHER case, which
+	 * the caller decides). Package-visible for unit testing.
+	 *
+	 * <p>With {@code expected = 1/n} (n = active contributors, min 1) and
+	 * {@code share = round(userChurn/repoChurn, 4)}, the badge is chosen over
+	 * contiguous ranges: {@code share < 0.5*expected} → VERY_LOW,
+	 * {@code < 0.8*expected} → BELOW, {@code <= 1.2*expected} → BALANCED,
+	 * otherwise HIGH. As a hard guardrail, a user with no Java churn or no Java
+	 * commits is always VERY_LOW.
+	 */
+	static ContributionBadge classifyBadge(int userChurn, int commitsJava, int repoChurn, int contributorCount) {
+	    // Hard guardrail: if there is no real Java activity, classify as VERY_LOW
+	    // (prevents misleading shares when commits/lines are missing or repoChurn is small)
+	    if (userChurn == 0 || commitsJava == 0) {
+	        return ContributionBadge.VERY_LOW;
+	    }
+
+	    int n = Math.max(1, contributorCount);
 	    double expected = 1.0 / n;
 
-	    // User share of repo Java churn (ratio in [0..1])
-	    double shareRaw = (repoChurn <= 0) ? 0.0 : (uChurn / (double) repoChurn);
+	    // User share of repo Java churn (ratio in [0..1]).
+	    double shareRaw = (repoChurn <= 0) ? 0.0 : (userChurn / (double) repoChurn);
 
-	    // Keep the classification consistent with the GUI:
-	    // the GUI shows share as a percentage with 2 decimals (e.g., 62.47%),
-	    // which corresponds to rounding the ratio to 4 decimals (0.6247).
+	    // Keep the classification consistent with the GUI: the GUI shows share as
+	    // a percentage with 2 decimals (e.g., 62.47%), i.e. the ratio rounded to 4.
 	    double share = Math.round(shareRaw * 10000.0) / 10000.0;
 
-	    // Thresholds around the expected share:
-	    // - veryLow: below 50% of expected (or near-zero)
-	    // - okMin/okMax: "balanced band" = expected ±20%
 	    double veryLow = expected * THRESHOLD_VERY_LOW;
 	    double okMin   = expected * THRESHOLD_BELOW;
 	    double okMax   = expected * THRESHOLD_HIGH;
 
-	    // Badge selection using contiguous ranges (no gaps, no overlaps):
-	    // 1) share < veryLow  -> VERY_LOW
-	    // 2) share < okMin    -> BELOW
-	    // 3) share <= okMax   -> BALANCED
-	    // 4) otherwise        -> HIGH
-	    ContributionBadge badge;
-	    if (share < veryLow) badge = ContributionBadge.VERY_LOW;
-	    else if (share < okMin) badge = ContributionBadge.BELOW;
-	    else if (share <= okMax) badge = ContributionBadge.BALANCED;
-	    else badge = ContributionBadge.HIGH;
+	    if (share < veryLow) return ContributionBadge.VERY_LOW;
+	    else if (share < okMin) return ContributionBadge.BELOW;
+	    else if (share <= okMax) return ContributionBadge.BALANCED;
+	    else return ContributionBadge.HIGH;
+	}
 
-	    // Additional alert flags (secondary indicators)
-	    List<AlertFlag> flags = new ArrayList<>();
-
-	    // AI_PASTE: churn-per-commit much higher than repo average (heuristic indicator)
-	    double churnPerCommit = (commitsJava <= 0) ? 0.0 : (uChurn / (double) commitsJava);
-	    int totalCommitsJava = contributors.stream().mapToInt(UserStats::getCommits).sum();
-	    int totalChurn = contributors.stream().mapToInt(this::userChurn).sum();
+	/**
+	 * Heuristic AI/paste-like detector: true when the user's churn-per-commit is
+	 * at least {@link #AI_PASTE_MULTIPLIER}× the repo average. Package-visible for
+	 * unit testing.
+	 */
+	static boolean isAiPasteLike(int userChurn, int commitsJava, int totalChurn, int totalCommitsJava) {
+	    if (commitsJava <= 0) return false;
+	    double churnPerCommit = userChurn / (double) commitsJava;
 	    double avgChurnPerCommit = (totalCommitsJava > 0) ? totalChurn / (double) totalCommitsJava : 0.0;
-
-	    if (commitsJava > 0 && avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * AI_PASTE_MULTIPLIER) {
-	        flags.add(AlertFlag.AI_PASTE);
-	    }
-	    
-	    return new Interpretation(badge, flags);
+	    return avgChurnPerCommit > 0 && churnPerCommit >= avgChurnPerCommit * AI_PASTE_MULTIPLIER;
 	}
 
 	private String buildInterpretationTooltip(RepoStats repo, UserStats u) {

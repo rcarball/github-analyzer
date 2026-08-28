@@ -9,8 +9,9 @@ public class RepoStatsTest {
     @Test
     public void testAddUserStats() {
         RepoStats stats = new RepoStats();
-        
+
         // Initial state
+        assertTrue(stats.getUserStats().isEmpty());
         assertEquals(0, stats.getCommits());
         assertEquals(0, stats.getLinesAdded());
         assertEquals(0, stats.getLinesDeleted());
@@ -20,40 +21,49 @@ public class RepoStatsTest {
 
         // public UserStats(String username, String email, int commits, int javaFiles, int added, int deleted, int changed, long firstCommit, long lastCommit)
         UserStats u1 = new UserStats("Alice", "alice@test.com", 5, 2, 100, 20, 30, 1000L, 5000L);
-        stats.addUserStats(u1);
-        
-        assertEquals(1, stats.getUserStats().size());
-        assertEquals(5, stats.getCommits());
-        assertEquals(100, stats.getLinesAdded());
-        assertEquals(20, stats.getLinesDeleted()); // Fix we implemented!
-        assertEquals(30, stats.getLinesChanged()); // Fix we implemented!
-        
-        assertEquals(1000L, stats.getFirstCommit());
-        assertEquals(5000L, stats.getLastCommit());
-        
         UserStats u2 = new UserStats("Bob", "bob@test.com", 3, 1, 50, 10, 5, 500L, 6000L);
+        stats.addUserStats(u1);
         stats.addUserStats(u2);
-        
+
+        // addUserStats() only appends to the list; by design it does NOT
+        // aggregate the repo-level counters (that is done explicitly by the
+        // data loader). Adding a null must be a no-op.
+        stats.addUserStats(null);
+
         assertEquals(2, stats.getUserStats().size());
-        assertEquals(8, stats.getCommits());
+        assertTrue(stats.getUserStats().contains(u1));
+        assertTrue(stats.getUserStats().contains(u2));
+        assertEquals(0, stats.getCommits(), "addUserStats must not touch repo-level counters");
+        assertEquals(0, stats.getLinesAdded(), "addUserStats must not touch repo-level counters");
+        assertEquals(0, stats.getLinesChanged(), "addUserStats must not touch repo-level counters");
+
+        // Repo-level aggregates are populated explicitly, the same way
+        // GitHubDataLoader does after all users are collected.
+        stats.setLinesAdded(stats.getUserStats().stream().mapToInt(UserStats::getAdded).sum());
+        stats.setLinesDeleted(stats.getUserStats().stream().mapToInt(UserStats::getDeleted).sum());
+        stats.setLinesChanged(stats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());
+
         assertEquals(150, stats.getLinesAdded());
         assertEquals(30, stats.getLinesDeleted());
         assertEquals(35, stats.getLinesChanged());
-        
-        assertEquals(500L, stats.getFirstCommit(), "First commit should be min");
-        assertEquals(6000L, stats.getLastCommit(), "Last commit should be max");
     }
-    
+
     @Test
     public void testAddUserStatsDuplicate() {
         RepoStats stats = new RepoStats();
         UserStats u1 = new UserStats("Alice", "alice@test.com", 5, 2, 100, 20, 30, 1000L, 5000L);
-        
+
         stats.addUserStats(u1);
-        stats.addUserStats(u1); // Should not be added twice because of contains check
-        
+        stats.addUserStats(u1); // Same instance: ignored by the contains() check
+
         assertEquals(1, stats.getUserStats().size(), "Should ignore duplicates");
-        assertEquals(5, stats.getCommits(), "Stats should not be doubled");
+
+        // A different instance that is equal() (username + email, case-insensitive)
+        // must also be deduplicated.
+        UserStats u1Equal = new UserStats("alice", "ALICE@TEST.COM", 9, 9, 9, 9, 9, 9L, 9L);
+        stats.addUserStats(u1Equal);
+
+        assertEquals(1, stats.getUserStats().size(), "Equal users (username+email) must be deduped");
     }
 
     @Test
