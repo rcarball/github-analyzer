@@ -41,8 +41,9 @@ Run the main class `es.deusto.prog3.githubanalyzer.Main`.
 java -jar github-analyzer.jar
 ```
 This builds `github-analyzer.jar` (icons bundled inside). Keep `lib/` and a
-`resources/` folder (with your `config.properties` and `repositories.txt`) next
-to the jar, and run it from that folder — those files stay external and editable.
+`resources/` folder (with your `config.properties` and `repositories.txt`) **next
+to the jar**; you can then launch it from any directory — paths are resolved
+relative to the jar's location. Those files stay external and editable.
 
 ### Option C — Compile and run from source (CLI)
 ```bash
