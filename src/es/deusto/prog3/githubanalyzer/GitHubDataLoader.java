@@ -590,9 +590,13 @@ public class GitHubDataLoader {
         try {
             GHUser ghAuthor = c.getAuthor();
             if (ghAuthor != null) {
+                // getLogin() is inline in the commit-list payload. We deliberately do
+                // NOT call ghAuthor.getEmail()/getName(): those fields are not included
+                // inline, so each call would fetch the full user (one extra API request
+                // per commit, quickly exhausting the rate limit on large repos). The git
+                // author email/name below come inline from the commit itself.
                 login = ghAuthor.getLogin();
                 if (login != null && !login.isBlank()) name = login;
-                if (ghAuthor.getEmail() != null) email = ghAuthor.getEmail();
             }
         } catch (Exception ignore) {}
 
@@ -600,7 +604,7 @@ public class GitHubDataLoader {
             GitUser authorInfo = c.getCommitShortInfo().getAuthor();
             if (authorInfo != null) {
                 if ((name == null || "unknown".equals(name)) && authorInfo.getName() != null) name = authorInfo.getName();
-                if ((email == null || email.isBlank()) && authorInfo.getEmail() != null) email = authorInfo.getEmail();
+                if (authorInfo.getEmail() != null) email = authorInfo.getEmail();
             }
         } catch (Exception ignore) {}
 
