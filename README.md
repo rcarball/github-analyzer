@@ -149,6 +149,8 @@ For private repositories and to reduce throttling, use a token with **read** acc
 > Identity: uses GitHub login when available; otherwise derived from commit author info.  
 > Some identities may be merged (e.g., `noreply`, same email local-part) to reduce duplicates.
 
+> **Teaching-oriented identity matching:** Students who are new to Git often make commits from different computers or IDEs without configuring the same name and email. To avoid splitting one student's work across several rows, the analyzer deliberately merges likely identities using GitHub login, email local-part and, when supported by another signal, normalized name. This prioritizes recovering a student's full contribution over strict Git-identity matching. In the uncommon case of students with coincident details, review the commit history before drawing conclusions.
+
 - **✅ Java commits**  
   Non-merge commits that touched at least one `.java` file.
 

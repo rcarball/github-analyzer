@@ -81,6 +81,13 @@ headless and fast.
 - **Snapshot-cache versioning.** A change to file-snapshot semantics must bump
   `FILE_SNAPSHOT_VERSION` in `GitHubDataLoader`; that makes legacy cached repositories
   refresh once even when their GitHub push timestamp has not changed.
+- **Identity merging is deliberately permissive.** This is a teaching tool for students
+  who may commit from several computers or IDEs without configuring Git consistently.
+  `GitHubDataLoader` therefore clusters likely identities by GitHub login, non-noreply
+  email local-part, and normalized name when there is another strong anchor. Do not
+  replace this with exact matching without reconsidering that use case: it would split
+  one student's work across multiple rows. The accepted trade-off is an occasional
+  false merge for coincident details; commit history remains the evidence to review.
 - **Cache persistence is batched.** Analysis accumulates in memory; the `.dat` is written
   **once** by the caller. Do not add per-repo `store` calls (that was an O(n²) regression).
 - **Cache deserialization is filtered.** `DataManager` uses an `ObjectInputFilter`
