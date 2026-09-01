@@ -31,8 +31,7 @@ public class Main {
 	    List<RepoStats> refreshedStats = loader.loadData(statsMap, false);
 	    if (DataManager.shouldStoreRefresh(loader.getConfiguredRepositoryCount(), refreshedStats)) {
 	        statsMap = refreshedStats;
-	        DataManager.getInstance().storeData(statsMap);
-	        System.out.format("- Stored %d repositories in cache.\n", statsMap.size());
+	        System.out.format("- Cache now contains %d repositories.\n", statsMap.size());
 	    } else {
 	        System.err.println("* Refresh returned no repositories; keeping the existing cache.");
 	    }

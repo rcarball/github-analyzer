@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader.RawIdentity;
+import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 
 /**
  * Unit tests for the author identity-merging logic
@@ -28,6 +30,27 @@ public class GitHubDataLoaderTest {
     /** True when identities at positions i and j ended up in the same cluster. */
     private static boolean sameCluster(int[] root, int i, int j) {
         return root[i] == root[j];
+    }
+
+    private static RepoStats repo(String url, String name) {
+        RepoStats repo = new RepoStats();
+        repo.setUrl(url);
+        repo.setName(name);
+        return repo;
+    }
+
+    @Test
+    public void replacingOneConfirmedRepositoryKeepsTheOthersCached() {
+        RepoStats oldA = repo("https://github.com/course/a", "a-old");
+        RepoStats oldB = repo("https://github.com/course/b", "b-old");
+        RepoStats refreshedA = repo("https://github.com/course/a", "a-new");
+
+        List<RepoStats> updated = GitHubDataLoader.replaceCachedRepository(
+                new ArrayList<>(List.of(oldA, oldB)), refreshedA);
+
+        assertEquals(2, updated.size());
+        assertSame(refreshedA, updated.get(0));
+        assertSame(oldB, updated.get(1), "A failed repository must retain its previous cache entry");
     }
 
     // ---------------- clusterIdentities: merging rules ----------------

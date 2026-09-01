@@ -91,8 +91,10 @@ headless and fast.
   replace this with exact matching without reconsidering that use case: it would split
   one student's work across multiple rows. The accepted trade-off is an occasional
   false merge for coincident details; commit history remains the evidence to review.
-- **Cache persistence is batched.** Analysis accumulates in memory; the `.dat` is written
-  **once** by the caller. Do not add per-repo `store` calls (that was an O(n²) regression).
+- **Cache persistence is progressive.** Each repository confirmed by the loader replaces
+  only its own entry and is immediately written to the `.dat`. A failed or timed-out
+  repository therefore retains its previous cached data. This deliberately favours
+  resilience for long classroom-wide refreshes over minimizing writes.
 - **CSV export is spreadsheet-safe.** Use `DataManager.csvTextCell` for every text
   field: it quotes separators, quotes and line breaks, and makes formula-like values
   literal. Keep metric values numeric; the export is UTF-8 with BOM and `;` separators.

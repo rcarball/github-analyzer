@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -46,6 +47,9 @@ public class GitHubDataLoader {
     private static final GitHubDataLoader instance = new GitHubDataLoader();
     private final Map<String, String> groupsRepoMap = new HashMap<>();
     private volatile List<String> repos = Collections.emptyList();
+    // Updated after each load so the GUI can distinguish a fresh result from a
+    // cached value retained because that repository could not be reached.
+    private volatile int lastConfirmedRepositoryCount;
 
     // Standalone markers students place in comments to flag external / AI-assisted
     // code. Word boundaries (\b) avoid false positives inside identifiers, e.g. the
@@ -120,14 +124,31 @@ public class GitHubDataLoader {
         return repos.size();
     }
 
+    /** Number of repositories actually confirmed by the most recent load. */
+    public int getLastConfirmedRepositoryCount() {
+        return lastConfirmedRepositoryCount;
+    }
+
     public List<RepoStats> loadData(List<RepoStats> statsMap) {
         return loadData(statsMap, false);
     }
 
     public List<RepoStats> loadData(List<RepoStats> initialStats, boolean forceRefresh) {
         if (initialStats == null) initialStats = new ArrayList<>();
+        lastConfirmedRepositoryCount = 0;
 
-        List<RepoStats> result = Collections.synchronizedList(new ArrayList<>());
+        // Keep only the cache entries still configured. Each successful analysis
+        // replaces its own entry and is immediately written to disk. Therefore a
+        // timeout or a failed repository leaves its previous cache entry intact.
+        Set<String> configuredUrls = new HashSet<>(repos);
+        List<RepoStats> progressiveCache = new ArrayList<>();
+        for (RepoStats cached : initialStats) {
+            if (cached != null && configuredUrls.contains(cached.getUrl())) {
+                progressiveCache.add(cached);
+            }
+        }
+        Object progressiveCacheLock = new Object();
+        AtomicInteger confirmedRepositories = new AtomicInteger();
         ExecutorService executorService = null;
 
         try {
@@ -144,7 +165,21 @@ public class GitHubDataLoader {
             List<Future<?>> futures = new ArrayList<>();
 
             for (String repoUrl : repos) {
-                futures.add(executorService.submit(() -> analyzeRepo(repoUrl, github, finalStatsMap, forceRefresh, result)));
+                futures.add(executorService.submit(() -> {
+                    RepoStats confirmed = analyzeRepo(repoUrl, github, finalStatsMap, forceRefresh);
+                    if (confirmed == null) return;
+
+                    // Serialize the replacement and the write. storeData writes a
+                    // temporary file then atomically replaces the cache, so every
+                    // completed repository becomes durable independently.
+                    synchronized (progressiveCacheLock) {
+                        List<RepoStats> updated = replaceCachedRepository(progressiveCache, confirmed);
+                        progressiveCache.clear();
+                        progressiveCache.addAll(updated);
+                        DataManager.getInstance().storeData(new ArrayList<>(progressiveCache));
+                    }
+                    confirmedRepositories.incrementAndGet();
+                }));
             }
 
             for (Future<?> f : futures) {
@@ -152,14 +187,7 @@ public class GitHubDataLoader {
                 catch (Exception e) { System.err.println("\t* Error waiting for task: " + e.getMessage()); }
             }
             
-            // Persist the CSV once, from the in-memory result (sorted for stable output).
-            // The binary cache is written once by the caller (Main / refresh worker), so
-            // we no longer rewrite the whole cache file once per repository (was O(n^2)).
-            Collections.sort(result);
-            result.forEach(r -> Collections.sort(r.getUserStats()));
-            DataManager.getInstance().storeCSV(result);
-
-            System.out.printf("- %d repositories successfully analyzed\n\n", result.size());
+            lastConfirmedRepositoryCount = confirmedRepositories.get();
 
         } catch (Exception ex) {
             System.err.printf("\t* Error getting info from GitHub: %s\n\n", ex.getMessage());
@@ -167,16 +195,31 @@ public class GitHubDataLoader {
             if (executorService != null) executorService.shutdown();
         }
 
+        List<RepoStats> result;
+        synchronized (progressiveCacheLock) {
+            result = new ArrayList<>(progressiveCache);
+        }
         Collections.sort(result);
         result.forEach(r -> Collections.sort(r.getUserStats()));
+        // An explicitly empty repository list has always meant that the cache is
+        // cleared. Normal refreshes, in contrast, are persisted per repository
+        // above so an individual failure cannot erase older data.
+        if (repos.isEmpty()) DataManager.getInstance().storeData(result);
+        DataManager.getInstance().storeCSV(result);
+
+        System.out.printf("- %d of %d repositories confirmed; cache preserved progressively\n\n",
+                lastConfirmedRepositoryCount, repos.size());
         return result;
     }
 
-    private void analyzeRepo(String repoUrl,
-                             GitHub github,
-                             List<RepoStats> cache,
-                             boolean forceRefresh,
-                             List<RepoStats> result) {
+    /**
+     * Analyzes one repository and returns its confirmed state. Returning
+     * {@code null} means that no cache replacement must be made for this URL.
+     */
+    private RepoStats analyzeRepo(String repoUrl,
+                                  GitHub github,
+                                  List<RepoStats> cache,
+                                  boolean forceRefresh) {
 
         StringBuilder buffer = null;
 
@@ -206,8 +249,6 @@ public class GitHubDataLoader {
             if (oldRepoStats != null && !forceRefresh
                     && oldRepoStats.getLastPushTime() == lastPushTime
                     && oldRepoStats.getFileSnapshotVersion() == FILE_SNAPSHOT_VERSION) {
-                result.add(oldRepoStats);
-                
                 // Update group info if needed
                 String group = groupsRepoMap.get(repoUrl);
                 
@@ -216,7 +257,7 @@ public class GitHubDataLoader {
                 }
                 
                 buffer.append(String.format("\t* %s repository has not changed (using cache).\n", repoUrl));
-                return;
+                return oldRepoStats;
             }
 
             RepoStats repoStats = new RepoStats();
@@ -248,8 +289,7 @@ public class GitHubDataLoader {
                 repoStats.setCommits(0);
                 repoStats.setFirstCommit(-1);
                 repoStats.setLastCommit(-1);
-                result.add(repoStats);
-                return;
+                return repoStats;
             }
 
             // File-based metrics describe the repository's current project state, so
@@ -273,12 +313,39 @@ public class GitHubDataLoader {
             repoStats.setLinesDeleted(repoStats.getUserStats().stream().mapToInt(UserStats::getDeleted).sum());
             repoStats.setLinesChanged(repoStats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());            
 
-            result.add(repoStats);
+            return repoStats;
         } catch (Exception e) {
             System.err.printf("\t* Error analyzing '%s': %s\n\n", repoUrl, e.getMessage());
+            return null;
         } finally {
             if (buffer != null) System.out.println(buffer);
         }
+    }
+
+    /**
+     * Replaces exactly one repository entry while retaining all others. This is
+     * the core rule behind progressive persistence: a failed repository is not
+     * passed here, so its older cached value survives the refresh unchanged.
+     * Package-visible for a focused unit test.
+     */
+    static List<RepoStats> replaceCachedRepository(List<RepoStats> cache, RepoStats confirmed) {
+        List<RepoStats> updated = new ArrayList<>();
+        if (confirmed == null) return updated;
+
+        boolean replaced = false;
+        String url = confirmed.getUrl();
+        if (cache != null) {
+            for (RepoStats existing : cache) {
+                if (existing != null && java.util.Objects.equals(url, existing.getUrl())) {
+                    if (!replaced) updated.add(confirmed);
+                    replaced = true;
+                } else if (existing != null) {
+                    updated.add(existing);
+                }
+            }
+        }
+        if (!replaced) updated.add(confirmed);
+        return updated;
     }
 
     // ---------------- FILES ----------------

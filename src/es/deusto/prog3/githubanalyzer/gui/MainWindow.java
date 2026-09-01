@@ -426,16 +426,17 @@ public class MainWindow extends JFrame {
 	                if (!Configurator.getInstance().isConfigured()) {
 	                    throw new IllegalStateException("Configure a GitHub user and token before refreshing.");
 	                }
-	                // Load new data from GitHub
-	                List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(null, true);
+	                // Start from the existing cache: entries for repositories that
+	                // fail this refresh remain available while confirmed entries
+	                // are persisted one by one by the loader.
+	                List<RepoStats> cachedStats = DataManager.getInstance().loadData();
+	                List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(cachedStats, true);
 	                int configured = GitHubDataLoader.getInstance().getConfiguredRepositoryCount();
 	                if (!DataManager.shouldStoreRefresh(configured, newStats)) {
 	                    throw new IllegalStateException("No repositories could be refreshed; the existing cache was kept.");
 	                }
-	                // Store the new data in the local cache
-	                DataManager.getInstance().storeData(newStats);
-	    	    	// Return the new data
-	    	    	return newStats;
+	                // Return the new data
+	                return newStats;
 	            }
 
 	            @Override
@@ -452,23 +453,23 @@ public class MainWindow extends JFrame {
 		    	    	loadRepoStats(null);
 
 		    	    	int expected = GitHubDataLoader.getInstance().getConfiguredRepositoryCount();
-		    	    	int analyzed = newStats.size();
+						int confirmed = GitHubDataLoader.getInstance().getLastConfirmedRepositoryCount();
 
-		    	    	if (analyzed < expected) {
-		    	    		JOptionPane.showMessageDialog(
-		    	    			    MainWindow.this,
-		    	    			    String.format(
-		    	    			        "Refresh finished, but only %d of %d repositories could be analyzed.\n\n"
-		    	    			        + "Some were skipped (private / no access, GitHub rate limits, or an "
-		    	    			        + "invalid token). See the console log for details.",
-		    	    			        analyzed, expected),
+						if (confirmed < expected) {
+							JOptionPane.showMessageDialog(
+								MainWindow.this,
+								String.format(
+									"Refresh finished, but only %d of %d repositories could be refreshed.\n\n"
+									+ "For repositories that failed (private / no access, GitHub rate limits, "
+									+ "or an invalid token), their previous cached data was kept. See the console log for details.",
+									confirmed, expected),
 		    	    			    "Refresh completed with warnings",
 		    	    			    JOptionPane.WARNING_MESSAGE
 		    	    			);
-		    	    	} else {
-		    	    		JOptionPane.showMessageDialog(
-		    	    			    MainWindow.this,
-		    	    			    String.format("Data refreshed successfully (%d repositories).", analyzed),
+						} else {
+							JOptionPane.showMessageDialog(
+								MainWindow.this,
+								String.format("Data refreshed successfully (%d repositories).", confirmed),
 		    	    			    "Refresh completed",
 		    	    			    JOptionPane.INFORMATION_MESSAGE
 		    	    			);

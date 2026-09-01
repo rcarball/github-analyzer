@@ -355,7 +355,9 @@ GitHub enforces API **rate limits** (roughly 5,000 requests/hour with a token, a
 only ~60/hour without one). Analyzing many repositories — or repos with lots of
 commits/branches — can hit that limit, and private repos need a token with access.
 When fewer repos come back than configured, the app warns you; retry later, use a
-token, or work offline with the cached `stats.dat`.
+token, or work offline with the cached `stats.dat`. Confirmed repositories are saved
+progressively; if one repository fails during a refresh, its previous cached entry is
+kept instead of being erased.
 
 ---
 
