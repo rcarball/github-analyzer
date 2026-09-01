@@ -35,6 +35,15 @@ public class DataManager {
     }
 
     /**
+     * A refresh that was expected to analyze repositories but returned no data is
+     * treated as a failure, not as an instruction to erase a valid cache. An
+     * empty result is still valid when the configured repository list is empty.
+     */
+    public static boolean shouldStoreRefresh(int configuredRepositoryCount, List<RepoStats> refreshedData) {
+        return configuredRepositoryCount <= 0 || (refreshedData != null && !refreshedData.isEmpty());
+    }
+
+    /**
      * Restricts deserialization of the local cache to the classes we actually
      * write, with resource limits, to mitigate Java deserialization risks
      * (gadget-chain code execution and decompression/allocation DoS) if the

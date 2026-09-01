@@ -422,10 +422,17 @@ public class MainWindow extends JFrame {
 	                // (new token / repos) take effect without restarting the app.
 	                Configurator.getInstance().reload();
 	                GitHubDataLoader.getInstance().reloadRepositories();
+	                if (!Configurator.getInstance().isConfigured()) {
+	                    throw new IllegalStateException("Configure a GitHub user and token before refreshing.");
+	                }
 	                // Load new data from GitHub
-	            	List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(null, true);
-	    	    	// Store the new data in the local cache
-	    	    	DataManager.getInstance().storeData(newStats);
+	                List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(null, true);
+	                int configured = GitHubDataLoader.getInstance().getConfiguredRepositoryCount();
+	                if (!DataManager.shouldStoreRefresh(configured, newStats)) {
+	                    throw new IllegalStateException("No repositories could be refreshed; the existing cache was kept.");
+	                }
+	                // Store the new data in the local cache
+	                DataManager.getInstance().storeData(newStats);
 	    	    	// Return the new data
 	    	    	return newStats;
 	            }
@@ -469,7 +476,12 @@ public class MainWindow extends JFrame {
 						Thread.currentThread().interrupt();
 						showRefreshFailedDialog();
 					} catch (ExecutionException ex) {
-						showRefreshFailedDialog();
+						Throwable cause = ex.getCause();
+						if (cause instanceof IllegalStateException) {
+							showRefreshFailedDialog(cause.getMessage());
+						} else {
+							showRefreshFailedDialog();
+						}
 					} finally {
 						setCursor(Cursor.getDefaultCursor());
 						btnRefresh.setEnabled(true);
@@ -1030,6 +1042,14 @@ public class MainWindow extends JFrame {
 				this,
 				"Refresh failed.\n\nTip: GitHub may throttle requests when refreshing many repositories.\n"
 						+ "Try again later or use offline mode (cached data).",
+				"Refresh failed",
+			JOptionPane.WARNING_MESSAGE);
+	}
+
+	private void showRefreshFailedDialog(String reason) {
+		JOptionPane.showMessageDialog(
+				this,
+				reason + "\n\nTry again later or use offline mode (cached data).",
 				"Refresh failed",
 				JOptionPane.WARNING_MESSAGE);
 	}

@@ -25,6 +25,15 @@ import es.deusto.prog3.githubanalyzer.domain.UserStats;
  */
 public class DataManagerTest {
 
+    @Test
+    public void refreshWithConfiguredRepositoriesNeedsAtLeastOneResultToReplaceCache() {
+        assertFalse(DataManager.shouldStoreRefresh(1, List.of()));
+        assertFalse(DataManager.shouldStoreRefresh(1, null));
+        assertTrue(DataManager.shouldStoreRefresh(1, List.of(new RepoStats())));
+        assertTrue(DataManager.shouldStoreRefresh(0, List.of()),
+                "An empty repository configuration intentionally produces an empty cache");
+    }
+
     private static void writeObject(Path file, Object obj) throws Exception {
         try (OutputStream os = Files.newOutputStream(file);
              ObjectOutputStream out = new ObjectOutputStream(new BufferedOutputStream(os))) {
