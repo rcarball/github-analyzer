@@ -64,6 +64,12 @@ javac -cp "lib/*" -d bin $(find src -name "*.java")
 java  -cp "bin:lib/*" es.deusto.prog3.githubanalyzer.Main
 ```
 
+### CSV export compatibility
+`stats.csv` uses UTF-8 (with BOM) and `;` as its separator so it opens cleanly in
+common spreadsheet applications. Text fields are quoted, including values with
+semicolons, quotes or line breaks. Values that could be interpreted as spreadsheet
+formulas are exported as literal text.
+
 ### Run the tests
 ```bash
 ./run-tests.sh          # Windows: run-tests.bat  (or "Run as > JUnit Test" in Eclipse)

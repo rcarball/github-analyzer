@@ -90,6 +90,9 @@ headless and fast.
   false merge for coincident details; commit history remains the evidence to review.
 - **Cache persistence is batched.** Analysis accumulates in memory; the `.dat` is written
   **once** by the caller. Do not add per-repo `store` calls (that was an O(n²) regression).
+- **CSV export is spreadsheet-safe.** Use `DataManager.csvTextCell` for every text
+  field: it quotes separators, quotes and line breaks, and makes formula-like values
+  literal. Keep metric values numeric; the export is UTF-8 with BOM and `;` separators.
 - **Cache deserialization is filtered.** `DataManager` uses an `ObjectInputFilter`
   (allow-list + limits). If you add a serialized field type outside `java.util`/`java.lang`
   /`…domain`, extend the filter pattern.

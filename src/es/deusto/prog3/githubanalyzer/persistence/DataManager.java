@@ -7,10 +7,10 @@ package es.deusto.prog3.githubanalyzer.persistence;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.PrintWriter;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,6 +27,8 @@ import es.deusto.prog3.githubanalyzer.domain.UserStats;
 public class DataManager {
 
     private static final DataManager instance = new DataManager();
+    private static final char CSV_SEPARATOR = ';';
+    private static final char UTF8_BOM = '\uFEFF';
 
     private DataManager() { }
 
@@ -147,15 +149,25 @@ public class DataManager {
             return;
         }
 
-        try (PrintWriter out = new PrintWriter(
-                new java.io.OutputStreamWriter(
-                        new java.io.FileOutputStream(csvPath),
-                        java.nio.charset.StandardCharsets.UTF_8))) {
+        try {
+            storeCSV(data, Paths.get(csvPath));
+            System.out.format("- CSV stored in '%s'%n%n", csvPath);
+        } catch (Exception ex) {
+            System.err.format("* Error saving CSV file '%s': %s%n%n", csvPath, ex.getMessage());
+        }
+    }
+
+    /** Package-visible for testing CSV output at a controlled destination. */
+    synchronized void storeCSV(List<RepoStats> data, Path csvPath) throws java.io.IOException {
+        try (BufferedWriter out = Files.newBufferedWriter(csvPath, java.nio.charset.StandardCharsets.UTF_8)) {
 
             SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd");
 
-            // Header compatible with GUI metrics (plus repo URL for grouping)
-            out.println("GROUP;URL;USERNAME;EMAIL;JAVA_ADDED;JAVA_DELETED;JAVA_CHURN;JAVA_CHURN_SHARE;JAVA_FILES;JAVA_COMMITS;LAST_COMMIT;FIRST_COMMIT");
+            // The BOM makes UTF-8 accents import correctly in common spreadsheet
+            // applications. Text cells are quoted and formula-hardened below.
+            out.write(UTF8_BOM);
+            writeCsvRow(out, "GROUP", "URL", "USERNAME", "EMAIL", "JAVA_ADDED", "JAVA_DELETED",
+                    "JAVA_CHURN", "JAVA_CHURN_SHARE", "JAVA_FILES", "JAVA_COMMITS", "LAST_COMMIT", "FIRST_COMMIT");
 
             for (RepoStats repo : (data == null ? java.util.Collections.<RepoStats>emptyList() : data)) {
                 if (repo == null || repo.getUserStats() == null) continue;
@@ -170,33 +182,46 @@ public class DataManager {
                             ? "-"                                                       // teacher row
                             : String.format(java.util.Locale.ROOT, "%.6f", share);      // 0..1 fraction
 
-                    out.format(java.util.Locale.ROOT,
-                            "%s;%s;%s;%s;%d;%d;%d;%s;%d;%d;%s;%s%n",
-                            nullSafe(repo.getGroup()),
-                            nullSafe(repo.getUrl()),
-                            nullSafe(u.getUsername()),
-                            nullSafe(u.getEmail()),
-                            u.getAdded(),
-                            u.getDeleted(),
-                            churn,
+                    writeCsvRow(out,
+                            csvTextCell(repo.getGroup()),
+                            csvTextCell(repo.getUrl()),
+                            csvTextCell(u.getUsername()),
+                            csvTextCell(u.getEmail()),
+                            Integer.toString(u.getAdded()),
+                            Integer.toString(u.getDeleted()),
+                            Integer.toString(churn),
                             shareStr,
-                            u.getJavaFiles(),
-                            u.getCommits(),
+                            Integer.toString(u.getJavaFiles()),
+                            Integer.toString(u.getCommits()),
                             fmtDateOrDash(sdf, u.getLastCommit()),
-                            fmtDateOrDash(sdf, u.getFirstCommit())
-                    );
+                            fmtDateOrDash(sdf, u.getFirstCommit()));
                 }
             }
 
-            System.out.format("- CSV stored in '%s'%n%n", csvPath);
-
-        } catch (Exception ex) {
-            System.err.format("* Error saving CSV file '%s': %s%n%n", csvPath, ex.getMessage());
         }
     }
 
     private static String nullSafe(String s) {
         return (s == null) ? "" : s;
+    }
+
+    /**
+     * Returns one correctly quoted text cell for this semicolon-separated export.
+     * A leading apostrophe makes formula-looking values literal in spreadsheet
+     * applications instead of allowing CSV formula injection.
+     */
+    static String csvTextCell(String value) {
+        String text = nullSafe(value);
+        String leading = text.stripLeading();
+        if (!leading.isEmpty() && "=+-@".indexOf(leading.charAt(0)) >= 0) {
+            text = "'" + text;
+        }
+        return '"' + text.replace("\"", "\"\"") + '"';
+    }
+
+    private static void writeCsvRow(BufferedWriter out, String... cells) throws java.io.IOException {
+        out.write(String.join(String.valueOf(CSV_SEPARATOR), cells));
+        out.newLine();
     }
 
     private static String fmtDateOrDash(SimpleDateFormat sdf, long ts) {

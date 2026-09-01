@@ -34,6 +34,32 @@ public class DataManagerTest {
                 "An empty repository configuration intentionally produces an empty cache");
     }
 
+    @Test
+    public void csvTextCellsEscapeSeparatorsQuotesAndFormulaPrefixes() {
+        assertEquals("\"team;A\"", DataManager.csvTextCell("team;A"));
+        assertEquals("\"She said \"\"hello\"\"\"", DataManager.csvTextCell("She said \"hello\""));
+        assertEquals("\"first line\nsecond line\"", DataManager.csvTextCell("first line\nsecond line"));
+        assertEquals("\"'=SUM(A1:A2)\"", DataManager.csvTextCell("=SUM(A1:A2)"));
+        assertEquals("\"'  @command\"", DataManager.csvTextCell("  @command"));
+        assertEquals("\"\"", DataManager.csvTextCell(null));
+    }
+
+    @Test
+    public void csvExportUsesUtf8BomAndKeepsConflictingTextInOneCell(@TempDir Path tmp) throws Exception {
+        RepoStats repo = new RepoStats();
+        repo.setGroup("team;A");
+        repo.setUrl("https://github.com/owner/repo");
+        repo.addUserStats(new UserStats("=SUM(A1:A2)", "a\"b@example.com", 2, 1, 10, 3, 13, -1L, -1L));
+
+        Path file = tmp.resolve("stats.csv");
+        DataManager.getInstance().storeCSV(List.of(repo), file);
+        String csv = Files.readString(file);
+
+        assertTrue(csv.startsWith("\uFEFFGROUP;URL;USERNAME;EMAIL;"));
+        assertTrue(csv.contains("\"team;A\";\"https://github.com/owner/repo\";\"'=SUM(A1:A2)\";\"a\"\"b@example.com\""));
+        assertTrue(csv.contains(";10;3;13;"), "Metric values must remain numeric fields");
+    }
+
     private static void writeObject(Path file, Object obj) throws Exception {
         try (OutputStream os = Files.newOutputStream(file);
              ObjectOutputStream out = new ObjectOutputStream(new BufferedOutputStream(os))) {
