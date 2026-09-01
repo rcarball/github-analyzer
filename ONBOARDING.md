@@ -75,6 +75,12 @@ headless and fast.
 - **Merges vs. unique commits.** Repo "total commits" includes merges (display only);
   per-user Java commits exclude merges and only count `.java` changes. `RepoStats`
   exposes `getMergeCommits()` / `getNonMergeCommits()` so the numbers reconcile.
+- **Snapshot vs. history scope.** Java LOC, file types and external-reference markers
+  come only from GitHub's default branch. Commit history traverses all known branches
+  and deduplicates by SHA, so it can include commits not present in that snapshot.
+- **Snapshot-cache versioning.** A change to file-snapshot semantics must bump
+  `FILE_SNAPSHOT_VERSION` in `GitHubDataLoader`; that makes legacy cached repositories
+  refresh once even when their GitHub push timestamp has not changed.
 - **Cache persistence is batched.** Analysis accumulates in memory; the `.dat` is written
   **once** by the caller. Do not add per-repo `store` calls (that was an O(n²) regression).
 - **Cache deserialization is filtered.** `DataManager` uses an `ObjectInputFilter`

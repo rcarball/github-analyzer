@@ -54,6 +54,7 @@ public class GitHubDataLoader {
     private static final String LINES_KEY = "LINES";
     private static final String REF_KEY = "REF";
     private static final String JAVA_EXTENSION = ".java";
+    private static final int FILE_SNAPSHOT_VERSION = 1;
 
     private static final int MAX_THREADS = 4;                 
     private static final int MAX_CONCURRENT_LIST_FILES = 2; 
@@ -194,7 +195,9 @@ public class GitHubDataLoader {
             Date pushedAt = repository.getPushedAt();
             long lastPushTime = (pushedAt != null) ? pushedAt.getTime() : -1;
             
-            if (oldRepoStats != null && !forceRefresh && oldRepoStats.getLastPushTime() == lastPushTime) {
+            if (oldRepoStats != null && !forceRefresh
+                    && oldRepoStats.getLastPushTime() == lastPushTime
+                    && oldRepoStats.getFileSnapshotVersion() == FILE_SNAPSHOT_VERSION) {
                 result.add(oldRepoStats);
                 
                 // Update group info if needed
@@ -220,6 +223,7 @@ public class GitHubDataLoader {
             repoStats.setUrl(repoUrl);
             repoStats.setName(repoName);
             repoStats.setLastPushTime(lastPushTime);
+			repoStats.setFileSnapshotVersion(FILE_SNAPSHOT_VERSION);
 
             Map<String, GHBranch> branches = repository.getBranches();
             repoStats.setBranches(branches.size());
@@ -240,7 +244,11 @@ public class GitHubDataLoader {
                 return;
             }
 
-            Map<String, Integer> fileCounters = filesStatisticsAllBranches(repository, branches, buffer);
+            // File-based metrics describe the repository's current project state, so
+            // inspect only GitHub's default branch. Commit history below deliberately
+            // still traverses every branch and deduplicates commit SHAs.
+            Map<String, Integer> fileCounters = filesStatisticsDefaultBranch(
+                    repository, repository.getDefaultBranch(), buffer);
 
             repoStats.setCodeLines(fileCounters.getOrDefault(LINES_KEY, 0));
             fileCounters.remove(LINES_KEY);
@@ -267,55 +275,57 @@ public class GitHubDataLoader {
 
     // ---------------- FILES ----------------
 
-    private Map<String, Integer> filesStatisticsAllBranches(GHRepository repository,
-                                                           Map<String, GHBranch> branches,
-                                                           StringBuilder buffer) {
+    /**
+     * Builds the file snapshot from the repository's default branch only. This
+     * keeps Java LOC, file types and external-reference markers aligned with the
+     * state a visitor sees when opening the repository, rather than including
+     * abandoned or unmerged work from other branches.
+     */
+    private Map<String, Integer> filesStatisticsDefaultBranch(GHRepository repository,
+                                                                String defaultBranch,
+                                                                StringBuilder buffer) {
         Map<String, Integer> result = new TreeMap<>();
         result.put(LINES_KEY, 0);
         result.put(REF_KEY, 0);
 
-        Set<String> processedFiles = new HashSet<>();
-
-        for (Map.Entry<String, GHBranch> branchEntry : branches.entrySet()) {
-            GHBranch branch = branchEntry.getValue();
-            try {
-                List<GHContent> allFiles = repository.getDirectoryContent("/", branch.getName());
-                processFilesFromBranch(allFiles, result, processedFiles, buffer);
-            } catch (Exception ex) {
-                buffer.append(String.format("\t* Error processing files from branch '%s': %s\n",
-                        branchEntry.getKey(), ex.getMessage()));
-            }
+        if (defaultBranch == null || defaultBranch.isBlank()) {
+            buffer.append("\t* Could not determine the default branch for the file snapshot.\n");
+            return result;
         }
+
+        try {
+            List<GHContent> allFiles = repository.getDirectoryContent("/", defaultBranch);
+            buffer.append(String.format("\t* File snapshot branch: %s\n", defaultBranch));
+            processFiles(allFiles, result, buffer);
+        } catch (Exception ex) {
+            buffer.append(String.format("\t* Error processing files from default branch '%s': %s\n",
+                    defaultBranch, ex.getMessage()));
+        }
+
         return result;
     }
 
-    private void processFilesFromBranch(List<GHContent> contentList,
-                                        Map<String, Integer> result,
-                                        Set<String> processedFiles,
-                                        StringBuilder buffer) {
+    private void processFiles(List<GHContent> contentList,
+                              Map<String, Integer> result,
+                              StringBuilder buffer) {
         for (GHContent content : contentList) {
-            fileStatisticsWithTracking(result, content, processedFiles, buffer);
+            fileStatistics(result, content, buffer);
         }
     }
 
-    private void fileStatisticsWithTracking(Map<String, Integer> counters,
-                                            GHContent content,
-                                            Set<String> processedFiles,
-                                            StringBuilder buffer) {
+    private void fileStatistics(Map<String, Integer> counters,
+                                GHContent content,
+                                StringBuilder buffer) {
         try {
             if (content.isDirectory()) {
                 for (GHContent c : content.listDirectoryContent()) {
-                    fileStatisticsWithTracking(counters, c, processedFiles, buffer);
+                    fileStatistics(counters, c, buffer);
                 }
                 return;
             }
 
             String name = content.getName();
             if (name == null || !name.contains(".")) return;
-
-            String sha = content.getSha();
-            if (sha != null && processedFiles.contains(sha)) return;
-            if (sha != null) processedFiles.add(sha);
 
             String type = name.substring(name.lastIndexOf(".")).toLowerCase();
             counters.put(type, counters.getOrDefault(type, 0) + 1);

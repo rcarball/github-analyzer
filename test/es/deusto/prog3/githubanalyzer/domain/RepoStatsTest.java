@@ -85,6 +85,15 @@ public class RepoStatsTest {
     }
 
     @Test
+    public void testFileSnapshotVersionDefaultsToLegacyAndCanBeUpdated() {
+        RepoStats stats = new RepoStats();
+        assertEquals(0, stats.getFileSnapshotVersion(), "Old serialized caches use the legacy default");
+
+        stats.setFileSnapshotVersion(1);
+        assertEquals(1, stats.getFileSnapshotVersion());
+    }
+
+    @Test
     public void testCompareTo() {
         RepoStats r1 = new RepoStats();
         r1.setName("Alpha");

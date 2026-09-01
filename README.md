@@ -12,7 +12,7 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 - 🌳 Repository tree (left panel).
 - 🧾 When you select a repo, shows **repository-level** metrics.
 - 👥 Per-author table with commits/lines metrics (focused on `.java`).
-- 🧩 Summary of **file types** present.
+- 🧩 Summary of **file types** in the default-branch snapshot.
 - 🔄 Refresh from GitHub or work **offline** using a cache (`stats.dat`).
 
 ---
@@ -127,7 +127,7 @@ For private repositories and to reduce throttling, use a token with **read** acc
   📌 Useful to estimate real working period and detect end-of-period spikes.
 
 - **📄 Java Lines-Of-Code (LOC) (snapshot)**  
-  Current lines in `.java` files (final snapshot).  
+  Current lines in `.java` files on GitHub's **default branch** (snapshot).
   📌 Measures size, not effort.
 
 - **🔁 Java churn (added + deleted)**  
@@ -136,9 +136,11 @@ For private repositories and to reduce throttling, use a token with **read** acc
   ⚠️ Can be inflated by formatting, generated code, or large pastes.
 
 - **🔗 External references**  
-  Occurrences of the standalone markers `IAG` or `FUENTE-EXTERNA` inside `.java` files
+  Occurrences of the standalone markers `IAG` or `FUENTE-EXTERNA` inside `.java` files on the **default branch**
   (matched as whole words, so they are **not** counted inside identifiers like `DIAGNOSTIC`).  
   📌 Useful as a “reference/AI mention” signal (not proof).
+
+> **Metric scope:** File-based metrics (Java LOC, file types and external references) are a snapshot of GitHub's default branch only. Commit-history metrics traverse all known branches, deduplicate commits by SHA, and therefore can include work that is not present in the current default branch.
 
 ---
 
@@ -306,7 +308,7 @@ Interpretation:
 
 ## 📚 Mini glossary
 
-- **LOC (Lines of Code)**: Number of lines in files (here, `.java`). This is a *size snapshot*, not effort.
+- **LOC (Lines of Code)**: Number of lines in files (here, `.java`) on the default branch. This is a *size snapshot*, not effort.
 - **Churn**: `added + deleted` lines. Used as a proxy for “how much code was edited”.
 - **Share (churn share)**: A user’s churn divided by the **team churn** (active contributors, excluding the teacher). Team shares sum to 100%; used to compare relative contribution within a team.
 - **Expected share**: `1/n`, where `n` is the number of active contributors (excluding teacher). A baseline for “balanced” teams.

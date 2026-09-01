@@ -32,6 +32,9 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private int externalReferences;
 	private boolean isPublic;
 	private long lastPushTime;
+	// Bumped when the semantics of file-based snapshot metrics change. Older
+	// serialized caches deserialize this new field as 0 and are refreshed once.
+	private int fileSnapshotVersion;
 	
 	private Map<String, Integer> fileTypeMap = new TreeMap<>();
 	
@@ -202,6 +205,14 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 
 	public void setLastPushTime(long lastPushTime) {
 		this.lastPushTime = lastPushTime;
+	}
+
+	public int getFileSnapshotVersion() {
+		return fileSnapshotVersion;
+	}
+
+	public void setFileSnapshotVersion(int fileSnapshotVersion) {
+		this.fileSnapshotVersion = fileSnapshotVersion;
 	}
 
 	public int getLinesDeleted() {

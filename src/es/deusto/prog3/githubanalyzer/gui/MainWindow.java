@@ -299,18 +299,18 @@ public class MainWindow extends JFrame {
 		lblCreationDate  = new JLabel("• Created:");
 		lblFirstCommit   = new JLabel("• First commit:");
 		lblLastCommit    = new JLabel("• Last commit:");
-		lblCodeLines     = new JLabel("• Java LOC (snapshot):");
+		lblCodeLines     = new JLabel("• Java LOC (default branch):");
 		lblLinesChanged  = new JLabel("• Java churn (added+deleted):");
-		lblExternalRefs  = new JLabel("• External references:");
+		lblExternalRefs  = new JLabel("• External references (default branch):");
 		lblURL           = new JLabel("• Open repository:");
 		
 		lblCommits.setToolTipText("<html><b>Unique commits</b> across all branches (deduplicated by SHA).<br>This is a global activity indicator (not the same as “Java commits per person”).</html>");
 		lblCreationDate.setToolTipText("Repository creation date (from GitHub).");
 		lblFirstCommit.setToolTipText("Earliest commit date found in the analyzed history.");
 		lblLastCommit.setToolTipText("Latest commit date found in the analyzed history.");
-		lblCodeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files (snapshot).<br>It measures code size, not effort.</html>");
+		lblCodeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files on GitHub's default branch.<br>It measures code size, not effort.</html>");
 		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
-		lblExternalRefs.setToolTipText("<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
+		lblExternalRefs.setToolTipText("<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files on the default branch (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
 		lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
 
 		// Right-click menu: open or copy the full repository URL.
@@ -372,7 +372,7 @@ public class MainWindow extends JFrame {
 
 		jTreeFileType = new JTree(new DefaultMutableTreeNode(""));		
 		JScrollPane fileTypeJScrollPane = new JScrollPane(jTreeFileType);
-		fileTypeJScrollPane.setBorder(new TitledBorder("File types"));
+		fileTypeJScrollPane.setBorder(new TitledBorder("File types (default branch)"));
 
 		JPanel centralPanel = new JPanel();
 		centralPanel.setLayout(new GridLayout(3, 1, 5, 0));
@@ -825,10 +825,10 @@ public class MainWindow extends JFrame {
 			    javaCommitsSum
 			));
 			
-			lblCodeLines.setText(String.format("• Java LOC (snapshot): %d", repoStats.getCodeLines()));
+			lblCodeLines.setText(String.format("• Java LOC (default branch): %d", repoStats.getCodeLines()));
 			lblLinesChanged.setText(String.format("• Java churn (added+deleted): %d", repoStats.getLinesChanged()));
 			lblLinesChanged.setToolTipText(String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
-			lblExternalRefs.setText(String.format("• External references: %d", repoStats.getExternalReferences()));
+			lblExternalRefs.setText(String.format("• External references (default branch): %d", repoStats.getExternalReferences()));
 			lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repoStats.getName()));
 			lblURL.setForeground(Color.BLUE);
 			lblURL.setToolTipText(repoStats.getUrl() == null
@@ -864,7 +864,7 @@ public class MainWindow extends JFrame {
 			});
 
 			DefaultMutableTreeNode root = (DefaultMutableTreeNode) jTreeFileType.getModel().getRoot();
-			root.setUserObject(String.format("%d file types", repoStats.getFileTypeMap().keySet().size()));
+			root.setUserObject(String.format("%d file types (default branch)", repoStats.getFileTypeMap().keySet().size()));
 			root.removeAllChildren();
 			repoStats.getFileTypeMap().forEach((k, v) -> root.add(new DefaultMutableTreeNode(String.format("%s (%d)", k, v))));
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
@@ -874,9 +874,9 @@ public class MainWindow extends JFrame {
 			lblFirstCommit.setText("• First commit:");
 			lblLastCommit.setText("• Last commit:");
 			lblCommits.setText("• Total commits:");
-			lblCodeLines.setText("• Java LOC (snapshot):");
+			lblCodeLines.setText("• Java LOC (default branch):");
 			lblLinesChanged.setText("• Java churn (added+deleted):");
-			lblExternalRefs.setText("• External references:");
+			lblExternalRefs.setText("• External references (default branch):");
 			lblURL.setText("• URL:");
 			lblURL.setForeground(lblCommits.getForeground());
 			lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
@@ -884,7 +884,7 @@ public class MainWindow extends JFrame {
 			tableModelUserStats.setRowCount(0);
 			
 			DefaultMutableTreeNode root = (DefaultMutableTreeNode) jTreeFileType.getModel().getRoot();
-			root.setUserObject("0 file types");
+			root.setUserObject("0 file types (default branch)");
 			root.removeAllChildren();
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
