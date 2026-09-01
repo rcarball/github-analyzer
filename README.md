@@ -20,15 +20,16 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 ## 🚀 How to run
 
 ### Requirements
-- ☕ Java 17+ (recommended)
+- ☕ Java 17+ (required)
 - 🗂️ Libraries included under `lib/` for compiling (no Maven/Gradle required); the
   runnable JAR bundles them, so nothing extra is needed to *run* it
-- 🔑 GitHub token (recommended; required for private repos)
+- 🔑 A non-empty GitHub user field and token are required for an online refresh;
+  use a read-only token with access to the repositories to analyze
 
 ### First, configure
 On the **first run** the app creates a `resources/` folder with default
-`config.properties` and `repositories.txt` next to the app, and — if no token is
-set yet — opens a **⚙ Config** dialog so you can fill in your GitHub user, token,
+`config.properties` and `repositories.txt` next to the app, and — if the required
+user or token is not set — opens a **⚙ Config** dialog so you can fill in your GitHub user, token,
 teacher account and the repository list from inside the app. You can reopen it any
 time with the **⚙ Config** button.
 
@@ -51,16 +52,17 @@ java -jar github-analyzer.jar
 ```
 This builds a **self-contained** `github-analyzer.jar`: the application, the icons
 **and all third-party libraries are bundled inside** — no `lib/` folder is needed
-to run it. The only thing that must sit next to the jar is a `resources/` folder
-with your `config.properties` and `repositories.txt`; you can launch the jar from
-any directory (paths resolve relative to the jar's location). Those files stay
+to run it. On first run, the app creates a `resources/` folder next to the JAR.
+For an existing configuration, keep that folder with its `config.properties` and
+`repositories.txt` next to the JAR; you can launch it from any directory (paths
+resolve relative to the JAR's location). Those files stay
 **external and editable** and are never bundled, since they hold your token and
 student data.
 
 ### Option C — Compile and run from source (CLI)
 ```bash
 # macOS / Linux  (Windows: use ';' as the classpath separator)
-javac -cp "lib/*" -d bin $(find src -name "*.java")
+javac --release 17 -cp "lib/*" -d bin $(find src -name "*.java")
 java  -cp "bin:lib/*" es.deusto.prog3.githubanalyzer.Main
 ```
 
@@ -82,11 +84,12 @@ formulas are exported as literal text.
 ### 1) `resources/config.properties`
 
 ```properties
-github.user=_USERNAME_                         # Username (informational)
-github.token=_TOKEN_                           # Token (recommended; private repos + fewer limits)
+github.user=_USERNAME_                         # Required configuration field (not used for authentication)
+github.token=_TOKEN_                           # Required for online refresh; use a read-only token
 update.from.github=_<yes|no>_                  # yes: online refresh | no: offline (use stats.dat)
 repositories.file=resources/repositories.txt   # Repo list
 stats.file=resources/stats.dat                 # Binary cache of last refresh
+stats.csv=resources/stats.csv                  # CSV export
 
 # (Optional) Exclude teacher account from expected-share calculations
 teacher.user=_TEACHER_USERNAME_
@@ -353,7 +356,8 @@ Always confirm with code defense and understanding questions.
 ### Why did a refresh only analyze some repositories?
 GitHub enforces API **rate limits** (roughly 5,000 requests/hour with a token, and
 only ~60/hour without one). Analyzing many repositories — or repos with lots of
-commits/branches — can hit that limit, and private repos need a token with access.
+commits/branches — can hit that limit. The app requires a configured token for any
+online refresh, and that token also needs access when repositories are private.
 When fewer repos come back than configured, the app warns you; retry later, use a
 token, or work offline with the cached `stats.dat`. Confirmed repositories are saved
 progressively; if one repository fails during a refresh, its previous cached entry is

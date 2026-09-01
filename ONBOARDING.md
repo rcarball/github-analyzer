@@ -11,7 +11,8 @@ new contributor productive quickly and records the conventions the codebase reli
 ## 1. Prerequisites
 - **Java 17+** (developed/tested on newer JDKs; compile targets 17).
 - No Maven/Gradle: all dependencies are vendored under `lib/`.
-- A **GitHub Personal Access Token** with *read* access to the repos you want to analyze.
+- A non-empty `github.user` field and a **GitHub Personal Access Token** with *read*
+  access to the repos you want to analyze; both are required for online refresh.
 
 ## 2. First-time setup
 Config and data files are **git-ignored on purpose** (secrets + student PII). Start
@@ -40,11 +41,13 @@ And list the repositories to analyze in `resources/repositories.txt`
   ./build-jar.sh            # Windows: build-jar.bat
   java -jar github-analyzer.jar
   ```
-  Keep `lib/` and a `resources/` folder (with your config) next to the jar; run it
-  from that folder. Icons are bundled inside the jar.
+  The JAR already bundles all runtime library dependencies and the icons. On first run it creates `resources/`
+  next to itself; keep that external folder there once it contains your configuration.
+  The JAR can be launched from any directory because its resource paths resolve next
+  to the JAR.
 - **From source (CLI):**
   ```bash
-  javac -cp "lib/*" -d bin $(find src -name "*.java")   # Windows: classpath sep is ';'
+  javac --release 17 -cp "lib/*" -d bin $(find src -name "*.java")   # Windows: classpath sep is ';'
   java  -cp "bin:lib/*" es.deusto.prog3.githubanalyzer.Main
   ```
 
@@ -52,7 +55,7 @@ And list the repositories to analyze in `resources/repositories.txt`
 ```bash
 ./run-tests.sh             # Windows: run-tests.bat   (or "Run as > JUnit Test" in Eclipse)
 ```
-JUnit 5, run via `lib/junit-platform-console-standalone-*.jar`. Currently **57 tests**.
+JUnit 5, run via `lib/junit-platform-console-standalone-*.jar`. Currently **64 tests**.
 When you touch domain/loader/metrics logic, add or update tests; the CLI runner is
 headless and fast.
 
@@ -103,7 +106,8 @@ headless and fast.
   /`…domain`, extend the filter pattern.
 - **External-reference markers** (`IAG`, `FUENTE-EXTERNA`) match as **whole words**
   (`\b…\b`) — see `GitHubDataLoader.countExternalMarkers`.
-- **Dates** are `yyyy-MM-dd` with `Locale.ROOT` (year-aware, locale-independent).
+- **Dates.** The GUI displays dates as `yyyy-MM-dd` with `Locale.ROOT`; CSV dates
+  use `yyyy/MM/dd` for spreadsheet compatibility.
 - **Resources** (icons) load from the **classpath** first (`/images/…`), filesystem
   fallback for the IDE — required for the JAR to work.
 - **GUI errors** are surfaced to the user (dialogs), not swallowed with `printStackTrace`.
@@ -111,14 +115,16 @@ headless and fast.
 ## 7. Recent changes (audit session)
 Security/privacy: stopped tracking secrets/PII (+ `.example` templates), purged leaked
 tokens from git history. Correctness: fixed the team-churn share bias (GUI + CSV +
-badges), whole-word markers, merge-commit reconciliation. Robustness/perf: O(n²)→O(n)
-cache persistence, allow-list deserialization filter. Portability/UX: classpath icons +
-runnable-JAR build scripts, user-visible error dialogs, `yyyy-MM-dd` dates, sortable user
-table with `%`-churn mini-bars and a repository filter. Tests grew from 12 (2 failing) to
-**57 green**, plus a CLI JUnit runner.
+badges), whole-word markers, merge-commit reconciliation. Robustness: progressive cache
+persistence that preserves prior data on partial refreshes, plus an allow-list
+deserialization filter. Portability/UX: classpath icons + runnable-JAR build scripts,
+user-visible error dialogs, `yyyy-MM-dd` GUI dates, sortable user table with `%`-churn
+mini-bars and a repository filter. Tests grew from 12 (2 failing) to **64 green**, plus a
+CLI JUnit runner.
 
 ## 8. Gotchas
-- Don't run the app from a directory without a `resources/` folder — config/data paths are
-  resolved relative to the working directory.
+- When packaged, resource paths resolve next to the JAR (and `resources/` is created on
+  first run). From the IDE or loose class files, relative resource paths resolve from the
+  current working directory.
 - The GUI is not covered by unit tests; verify visual changes by running the app.
 - `github-api` calls count against GitHub rate limits; large repo sets can be throttled.
