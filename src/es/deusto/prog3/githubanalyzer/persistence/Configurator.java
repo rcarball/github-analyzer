@@ -113,15 +113,21 @@ public class Configurator {
 		this.teacherUser = tUser;
 		this.teacherEmail = tEmail;
 
+		// The dialog does not edit resource paths, so preserve the values originally
+		// read from disk instead of silently resetting custom locations to defaults.
+		String repositoriesPath = pathToPersist(properties, "repositories.file", REPOSITORIES_FILE);
+		String statsPath = pathToPersist(properties, "stats.file", STATS_FILE);
+		String csvPath = pathToPersist(properties, "stats.csv", STATS_CSV);
+
 		String content =
 				"# GitHub Analyzer configuration.\n" +
 				"# IMPORTANT: never commit this file with a real token.\n" +
 				"github.user=" + nz(githubUser) + "\n" +
 				"github.token=" + nz(githubToken) + "\n" +
 				"update.from.github=" + (loadFromGithub ? "yes" : "no") + "\n" +
-				"repositories.file=" + REPOSITORIES_FILE + "\n" +
-				"stats.file=" + STATS_FILE + "\n" +
-				"stats.csv=" + STATS_CSV + "\n" +
+				"repositories.file=" + repositoriesPath + "\n" +
+				"stats.file=" + statsPath + "\n" +
+				"stats.csv=" + csvPath + "\n" +
 				"teacher.user=" + nz(teacherUser) + "\n" +
 				"teacher.email=" + nz(teacherEmail) + "\n";
 		try {
@@ -151,6 +157,16 @@ public class Configurator {
 
 	private static String nz(String s) {
 		return (s == null) ? "" : s;
+	}
+
+	/**
+	 * Returns the original, un-resolved value for a resource path so saving the
+	 * GUI form preserves user choices such as a relative or absolute location.
+	 * Package-visible to keep this preservation rule directly unit-testable.
+	 */
+	static String pathToPersist(Properties source, String key, String defaultPath) {
+		if (source == null) return defaultPath;
+		return source.getProperty(key, defaultPath);
 	}
 
 	/** Resolves a (possibly relative) path against {@link #BASE_DIR}; absolute paths are kept as-is. */

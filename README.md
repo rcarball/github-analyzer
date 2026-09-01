@@ -93,6 +93,9 @@ teacher.user=_TEACHER_USERNAME_
 teacher.email=_TEACHER_EMAIL_
 ```
 
+Custom paths for the repository list, binary cache and CSV export are supported.
+Saving user/token/teacher settings from the Config dialog preserves those paths.
+
 ### 2) `resources/repositories.txt`
 One URL per line (GROUP-ID is optional):
 

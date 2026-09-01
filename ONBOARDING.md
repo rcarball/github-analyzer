@@ -81,6 +81,9 @@ headless and fast.
 - **Snapshot-cache versioning.** A change to file-snapshot semantics must bump
   `FILE_SNAPSHOT_VERSION` in `GitHubDataLoader`; that makes legacy cached repositories
   refresh once even when their GitHub push timestamp has not changed.
+- **Configuration paths are user-owned.** The Config dialog edits credentials,
+  teacher settings and repository contents, but must preserve any custom
+  `repositories.file`, `stats.file` and `stats.csv` paths from `config.properties`.
 - **Identity merging is deliberately permissive.** This is a teaching tool for students
   who may commit from several computers or IDEs without configuring Git consistently.
   `GitHubDataLoader` therefore clusters likely identities by GitHub login, non-noreply
