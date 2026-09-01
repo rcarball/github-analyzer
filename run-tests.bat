@@ -5,7 +5,7 @@ setlocal
 cd /d "%~dp0"
 
 set OUT=build\test-classes
-set JUNIT=lib\junit-platform-console-standalone-1.11.4.jar
+set JUNIT=lib\junit-platform-console-standalone-1.14.4.jar
 
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%"

@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")"
 
 OUT=build/test-classes
-JUNIT=lib/junit-platform-console-standalone-1.11.4.jar
+JUNIT=lib/junit-platform-console-standalone-1.14.4.jar
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
