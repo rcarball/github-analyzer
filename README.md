@@ -213,9 +213,13 @@ The GUI adds a quick interpretation per person based on two concepts:
 ## 🏷️ ContributionBadge (main level)
 
 Badges are the **main** interpretation result. They appear:
-- in the **username cell** (large emoji),
+- in the **username cell** (large marker),
 - in the **long tooltip**,
 - and in the **status bar**.
+
+The following emojis are visual references for the future
+platform-independent image icons. They do not depend on a particular font in
+the final GUI; each will be replaced by an image with the same meaning.
 
 ### How the badge is computed (rules)
 
@@ -228,10 +232,10 @@ population — active contributors excluding the teacher):
 
 Final badge (contiguous ranges, no gaps):
 - **🎓 TEACHER** if the user matches `teacher.user` or `teacher.email`
-- **⛔ VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
-- **⚠️ BELOW** if `veryLow <= share < okMin`
-- **✅ BALANCED** if `okMin <= share <= okMax`
-- **🌟 HIGH** if `share > okMax`
+- **📊 VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
+- **📉 BELOW** if `veryLow <= share < okMin`
+- **⚖️ BALANCED** if `okMin <= share <= okMax`
+- **📈 HIGH** if `share > okMax`
 
 
 ### Badge table
@@ -239,10 +243,10 @@ Final badge (contiguous ranges, no gaps):
 | Badge | Label | Meaning |
 |------:|------|---------|
 | 🎓 | Teacher account | Instructor account; excluded from expected-share calculations |
-| ⛔ | Very low / no contribution | Very low or null Java contribution; check additional evidence |
-| ⚠️ | Below expected contribution | Some Java work, but under the expected share |
-| ✅ | Balanced contribution | Close to expected share for the team size |
-| 🌟 | High contribution | Above expected share; may indicate a strong role or imbalance |
+| 📊 | Very low / no contribution | Bar chart at a very low level: very low or null Java contribution; check additional evidence |
+| 📉 | Below expected contribution | Downward chart: some Java work, but under the expected share |
+| ⚖️ | Balanced contribution | Balance scale: close to expected share for the team size |
+| 📈 | High contribution | Upward chart: above expected share; may indicate a strong role or imbalance |
 
 ---
 
