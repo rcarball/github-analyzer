@@ -413,8 +413,9 @@ public class MainWindow extends JFrame {
 			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 			lblStatus.setText("Refreshing from GitHub…");
 
-			// SwingWorker to perform the refresh in the background
-	        SwingWorker<List<RepoStats>, String> worker = new SwingWorker<>() {
+			// SwingWorker keeps network I/O off Swing's event-dispatch thread (EDT).
+			// Its done() method runs on the EDT, where it is safe to update components.
+		        SwingWorker<List<RepoStats>, String> worker = new SwingWorker<>() {
 
 	            @Override
 	            protected List<RepoStats> doInBackground() throws Exception {
@@ -1170,6 +1171,11 @@ public class MainWindow extends JFrame {
 	    }
 	}
 
+	/**
+	 * Builds the presentation-only interpretation for one row. The teacher check
+	 * comes first because that account is deliberately excluded from the team
+	 * denominator used by every other badge and alert calculation.
+	 */
 	private Interpretation interpret(RepoStats repo, UserStats u) {
 	    // Defensive defaults
 	    if (repo == null || u == null) return new Interpretation(ContributionBadge.BELOW, List.of());

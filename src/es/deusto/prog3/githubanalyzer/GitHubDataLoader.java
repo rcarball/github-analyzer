@@ -56,10 +56,15 @@ public class GitHubDataLoader {
     private static final String JAVA_EXTENSION = ".java";
     private static final int FILE_SNAPSHOT_VERSION = 1;
 
-    private static final int MAX_THREADS = 4;                 
-    private static final int MAX_CONCURRENT_LIST_FILES = 2; 
+    // Repositories are independent, so they can be analyzed in parallel. Calls
+    // that expand a commit into its changed files are much more expensive, hence
+    // the stricter shared limit below.
+    private static final int MAX_THREADS = 4;
+    private static final int MAX_CONCURRENT_LIST_FILES = 2;
     private static final Semaphore LIST_FILES_SEMAPHORE = new Semaphore(MAX_CONCURRENT_LIST_FILES);
 
+    // A best-effort pause between expensive API calls. Together with the semaphore
+    // it reduces bursts without serializing the complete repository analysis.
     private static final long MIN_DELAY_BETWEEN_HEAVY_CALLS_MS = 120;
     private static final AtomicLong LAST_HEAVY_CALL_TS = new AtomicLong(0);
 
@@ -195,6 +200,9 @@ public class GitHubDataLoader {
             Date pushedAt = repository.getPushedAt();
             long lastPushTime = (pushedAt != null) ? pushedAt.getTime() : -1;
             
+            // The cache is reusable only when GitHub reports no new push and the
+            // stored snapshot follows the current metric definition. The version
+            // check makes semantic changes refresh old cached data once.
             if (oldRepoStats != null && !forceRefresh
                     && oldRepoStats.getLastPushTime() == lastPushTime
                     && oldRepoStats.getFileSnapshotVersion() == FILE_SNAPSHOT_VERSION) {
@@ -413,6 +421,11 @@ public class GitHubDataLoader {
         return lp;
     }
 
+    /**
+     * Disjoint-set union (union-find) keeps the transitive identity matches in
+     * one cluster: if A matches B and B matches C, all three represent one user.
+     * Path compression and rank keep repeated merges close to constant time.
+     */
     private static class DSU {
         int[] parent;
         int[] rank;
@@ -460,6 +473,11 @@ public class GitHubDataLoader {
         return (bl > al) ? b : a;
     }
 
+    /**
+     * Converts raw commit identities into one representative user per cluster.
+     * Clustering decides who belongs together; representative selection decides
+     * which login/name/email is clearest to show in the GUI and CSV.
+     */
     private Map<SimpleGitUser, List<GHCommit>> resolveAndMergeAuthors(Map<RawIdentity, List<GHCommit>> rawMap) {
         List<RawIdentity> ids = new ArrayList<>(rawMap.keySet());
         int[] root = clusterIdentities(ids);
@@ -549,6 +567,11 @@ public class GitHubDataLoader {
     
     // ---------------- COMMITS ----------------
 
+    /**
+     * Traverses every branch to capture the repository's complete known history.
+     * A commit reachable from more than one branch is processed only once by SHA;
+     * otherwise merged branches would inflate repository and author totals.
+     */
     private Map<RawIdentity, List<GHCommit>> collectCommitsAllBranches(GHRepository repository,
                                                                         Map<String, GHBranch> branches,
                                                                         RepoStats repoStats,
@@ -653,6 +676,11 @@ public class GitHubDataLoader {
         }
     }
 
+    /**
+     * Calculates Java-specific work for one resolved author. Merge commits are
+     * skipped because their file list aggregates work already attributed to their
+     * parent commits; a commit counts only when it changes at least one .java file.
+     */
     private UserStats computeUserStatsFromCommits(List<GHCommit> commits,
                                                   String username,
                                                   String email,
@@ -718,6 +746,11 @@ public class GitHubDataLoader {
         );
     }
 
+    /**
+     * Expands one commit under the shared API budget. A failed expansion is
+     * reported and contributes no Java changes, allowing the remaining commits
+     * and repositories to finish instead of aborting the whole analysis.
+     */
     private List<GHCommit.File> safeListFiles(GHCommit commit, StringBuilder buffer) {
         boolean acquired = false;
         try {
