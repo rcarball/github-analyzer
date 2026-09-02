@@ -168,23 +168,16 @@ public class MainWindow extends JFrame {
 	     */
 	    public ImageIcon icon() {
 	        if (icon == null) {
-	            URL resource = imageResource();
-	            if (resource != null) {
-	                icon = new ImageIcon(resource);
-	            }
+	            icon = MainWindow.loadIcon(imageFile);
 	        }
 	        return icon;
 	    }
 
 	    /** Returns an HTML image tag for Swing tooltips, or an empty string when unavailable. */
 	    public String htmlIcon() {
-	        URL resource = imageResource();
-	        return resource == null ? ""
-	                : "<img src=\"" + resource.toExternalForm() + "\" width=\"32\" height=\"32\">";
-	    }
-
-	    private URL imageResource() {
-	        return MainWindow.class.getResource("/images/" + imageFile);
+	        String source = MainWindow.iconHtmlSource(imageFile);
+	        return source == null ? ""
+	                : "<img src=\"" + source + "\" width=\"32\" height=\"32\">";
 	    }
 
 	    public String shortText() {
@@ -919,8 +912,8 @@ public class MainWindow extends JFrame {
 	 * the {@code resources/images/} folder (handy when running from the project dir in
 	 * the IDE). Returns {@code null} if the icon cannot be found, so callers can skip it.
 	 */
-	private ImageIcon loadIcon(String fileName) {
-		java.net.URL url = MainWindow.class.getResource("/images/" + fileName);
+	private static ImageIcon loadIcon(String fileName) {
+		URL url = MainWindow.class.getResource("/images/" + fileName);
 		if (url != null) {
 			return new ImageIcon(url);
 		}
@@ -929,6 +922,19 @@ public class MainWindow extends JFrame {
 			return new ImageIcon(file.getPath());
 		}
 		return null;
+	}
+
+	/**
+	 * Returns a URL accepted by Swing's HTML renderer for an icon. It follows the
+	 * same classpath-then-project-folder lookup used by {@link #loadIcon(String)}.
+	 */
+	private static String iconHtmlSource(String fileName) {
+		URL url = MainWindow.class.getResource("/images/" + fileName);
+		if (url != null) {
+			return url.toExternalForm();
+		}
+		java.io.File file = new java.io.File("resources/images/" + fileName);
+		return file.isFile() ? file.toURI().toString() : null;
 	}
 
 	private ImageIcon scaleIcon(ImageIcon icon) {

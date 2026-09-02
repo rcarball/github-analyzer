@@ -11,6 +11,7 @@ package es.deusto.prog3.githubanalyzer.gui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,15 @@ public class MainWindowInterpretationTest {
 
     private static ContributionBadge badge(int userChurn) {
         return MainWindow.classifyBadge(userChurn, COMMITS, TEAM_CHURN, N);
+    }
+
+    @Test
+    public void badgeIconsLoadFromProjectResources() {
+        for (ContributionBadge badge : ContributionBadge.values()) {
+            assertNotNull(badge.icon(), "Missing icon for " + badge.name());
+            assertEquals(32, badge.icon().getIconWidth(), "Unexpected icon width for " + badge.name());
+            assertEquals(32, badge.icon().getIconHeight(), "Unexpected icon height for " + badge.name());
+        }
     }
 
     // ---------------- classifyBadge: guardrails ----------------
