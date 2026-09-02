@@ -73,8 +73,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.ToolTipManager;
 import javax.swing.border.TitledBorder;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
@@ -111,7 +109,6 @@ public class MainWindow extends JFrame {
 	private DefaultTableModel tableModelUserStats;
 	private JTree jTreeFileType;
 	private JTree jTreeRepos = new JTree();
-	private JTextField repoFilter = new JTextField();
 	private List<RepoStats> allRepos = new ArrayList<>();
 
 	private JButton btnRefresh = new JButton("Refresh from GitHub");
@@ -304,17 +301,8 @@ public class MainWindow extends JFrame {
 
 		JScrollPane reposJScrollPane = new JScrollPane(jTreeRepos);
 
-		// Filter box above the repository tree (matches group / name / URL).
-		repoFilter.setToolTipText("Filter repositories by group, name or URL");
-		repoFilter.getDocument().addDocumentListener(new DocumentListener() {
-			@Override public void insertUpdate(DocumentEvent e) { rebuildRepoTree(); }
-			@Override public void removeUpdate(DocumentEvent e) { rebuildRepoTree(); }
-			@Override public void changedUpdate(DocumentEvent e) { rebuildRepoTree(); }
-		});
-
-		JPanel reposPanel = new JPanel(new BorderLayout(0, 4));
+		JPanel reposPanel = new JPanel(new BorderLayout());
 		reposPanel.setBorder(new TitledBorder("Repositories"));
-		reposPanel.add(repoFilter, BorderLayout.NORTH);
 		reposPanel.add(reposJScrollPane, BorderLayout.CENTER);
 
 		JPanel panelDetails = new JPanel();
@@ -575,35 +563,16 @@ public class MainWindow extends JFrame {
 		rebuildRepoTree();
 	}
 
-	/** Rebuilds the repository tree, honoring the current filter text. */
+	/** Rebuilds the repository tree with every configured repository. */
 	private void rebuildRepoTree() {
-		String query = (repoFilter == null) ? "" : repoFilter.getText().trim().toLowerCase();
-
-		List<RepoStats> shown = new ArrayList<>();
-		for (RepoStats repo : allRepos) {
-			if (matchesFilter(repo, query)) shown.add(repo);
-		}
-
-		String rootLabel = query.isEmpty()
-				? String.format("%d Repositories", shown.size())
-				: String.format("%d / %d Repositories", shown.size(), allRepos.size());
-
-		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(rootLabel);
-		shown.forEach(repo -> repoRootNode.add(new DefaultMutableTreeNode(repo)));
+		DefaultMutableTreeNode repoRootNode = new DefaultMutableTreeNode(
+				String.format("%d Repositories", allRepos.size()));
+		allRepos.forEach(repo -> repoRootNode.add(new DefaultMutableTreeNode(repo)));
 
 		jTreeRepos.setModel(new DefaultTreeModel(repoRootNode));
 		for (int i = 0; i < jTreeRepos.getRowCount(); i++) jTreeRepos.expandRow(i);
 	}
 
-	/** A repo matches when the (case-insensitive) query is contained in its group, name or URL. */
-	private boolean matchesFilter(RepoStats repo, String query) {
-		if (query == null || query.isEmpty()) return true;
-		String group = (repo.getGroup() == null) ? "" : repo.getGroup().toLowerCase();
-		String name  = (repo.getName()  == null) ? "" : repo.getName().toLowerCase();
-		String url   = (repo.getUrl()   == null) ? "" : repo.getUrl().toLowerCase();
-		return group.contains(query) || name.contains(query) || url.contains(query);
-	}
-	
 	private void initTable() {
 	    Vector<String> cabecera = new Vector<>(
 	        Arrays.asList(
