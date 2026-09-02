@@ -41,7 +41,10 @@ cp -R "$OUT/." "$STAGE/"
 mkdir -p "$STAGE/images"
 cp resources/images/*.png "$STAGE/images/"
 
-# 5) Package a single self-contained runnable jar (Main-Class via -e).
+# 5) Include the license and attribution notices in the binary distribution.
+cp LICENSE NOTICE THIRD_PARTY_NOTICES.md "$STAGE/"
+
+# 6) Package a single self-contained runnable jar (Main-Class via -e).
 jar cfe "$JAR" "$MAIN" -C "$STAGE" .
 echo "Built self-contained $JAR ($(du -h "$JAR" | cut -f1))"
 echo "Run with: java -jar $JAR   (only a resources/ folder needs to sit next to it)"

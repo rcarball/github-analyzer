@@ -42,7 +42,10 @@ xcopy /e /i /y /q "%OUT%\*" "%STAGE%\" >nul
 mkdir "%STAGE%\images" 2>nul
 copy /y resources\images\*.png "%STAGE%\images\" >nul
 
-REM 5) Package a single self-contained runnable jar (Main-Class via -e).
+REM 5) Include the license and attribution notices in the binary distribution.
+for %%F in (LICENSE NOTICE THIRD_PARTY_NOTICES.md) do copy /y "%%F" "%STAGE%\" >nul
+
+REM 6) Package a single self-contained runnable jar (Main-Class via -e).
 jar cfe "%JAR%" "%MAIN%" -C "%STAGE%" .
 echo Built self-contained %JAR%
 echo Run with: java -jar %JAR%   (only a resources\ folder needs to sit next to it)

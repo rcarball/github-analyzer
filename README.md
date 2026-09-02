@@ -393,8 +393,20 @@ kept instead of being erased.
 
 ---
 
-## 📜 License
-MIT License — https://opensource.org/license/mit/
+## 📜 Licensing, attribution and citation
+
+The Java source code, build scripts and runnable JAR are licensed under the
+[Apache License 2.0](LICENSE). Its attribution notice is available in
+[NOTICE](NOTICE).
+
+Documentation authored for this project is licensed under
+[CC BY 4.0](LICENSES/CC-BY-4.0.md). Third-party libraries and icons are excluded
+from those grants and retain their own terms; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+For academic or teaching use, GitHub can generate the recommended citation from
+[CITATION.cff](CITATION.cff) through the repository's **Cite this repository**
+option.
 
 ---
 
