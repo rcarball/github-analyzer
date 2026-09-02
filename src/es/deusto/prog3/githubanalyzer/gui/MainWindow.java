@@ -91,7 +91,8 @@ import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
 	private static final long serialVersionUID = 1L;
-	private static final int STATUS_BAR_HEIGHT = 36;
+	private static final int ICON_SIZE = 24;
+	private static final int STATUS_BAR_HEIGHT = ICON_SIZE + 4;
 
 	private JLabel lblCreationDate;
 	private JLabel lblFirstCommit;
@@ -169,7 +170,8 @@ public class MainWindow extends JFrame {
 	     */
 	    public ImageIcon icon() {
 	        if (icon == null) {
-	            icon = MainWindow.loadIcon(imageFile);
+	            ImageIcon loadedIcon = MainWindow.loadIcon(imageFile);
+	            icon = loadedIcon == null ? null : MainWindow.scaleIcon(loadedIcon);
 	        }
 	        return icon;
 	    }
@@ -178,7 +180,8 @@ public class MainWindow extends JFrame {
 	    public String htmlIcon() {
 	        String source = MainWindow.iconHtmlSource(imageFile);
 	        return source == null ? ""
-	                : "<img src=\"" + source + "\" width=\"32\" height=\"32\">";
+	                : "<img src=\"" + source + "\" width=\"" + ICON_SIZE
+	                        + "\" height=\"" + ICON_SIZE + "\">";
 	    }
 
 	    public String shortText() {
@@ -202,7 +205,8 @@ public class MainWindow extends JFrame {
 
 	    public ImageIcon icon() {
 	        if (icon == null) {
-	            icon = MainWindow.loadIcon(imageFile);
+	            ImageIcon loadedIcon = MainWindow.loadIcon(imageFile);
+	            icon = loadedIcon == null ? null : MainWindow.scaleIcon(loadedIcon);
 	        }
 	        return icon;
 	    }
@@ -214,7 +218,8 @@ public class MainWindow extends JFrame {
 	    public String htmlIcon() {
 	        String source = MainWindow.iconHtmlSource(imageFile);
 	        return source == null ? ""
-	                : "<img src=\"" + source + "\" width=\"32\" height=\"32\">";
+	                : "<img src=\"" + source + "\" width=\"" + ICON_SIZE
+	                        + "\" height=\"" + ICON_SIZE + "\">";
 	    }
 
 	    public String htmlShortText() {
@@ -778,8 +783,8 @@ public class MainWindow extends JFrame {
 	        return result;
 	    };
 
-	    // Badge images are 32 px high; leave a small vertical margin around them.
-	    jTableUserStats.setRowHeight(36);
+	    // Keep a small vertical margin around the uniformly scaled 24 px icons.
+	    jTableUserStats.setRowHeight(ICON_SIZE + 4);
 	    jTableUserStats.setShowGrid(false);
 	    jTableUserStats.getTableHeader().setReorderingAllowed(false);
 	    jTableUserStats.getTableHeader().setResizingAllowed(false);
@@ -958,8 +963,8 @@ public class MainWindow extends JFrame {
 		return file.isFile() ? file.toURI().toString() : null;
 	}
 
-	private ImageIcon scaleIcon(ImageIcon icon) {
-		return new ImageIcon(icon.getImage().getScaledInstance(22, 22, Image.SCALE_SMOOTH));
+	private static ImageIcon scaleIcon(ImageIcon icon) {
+		return new ImageIcon(icon.getImage().getScaledInstance(ICON_SIZE, ICON_SIZE, Image.SCALE_SMOOTH));
 	}
 
 	/**

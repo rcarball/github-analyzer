@@ -217,9 +217,10 @@ Badges are the **main** interpretation result. They appear:
 - in the **long tooltip**,
 - and in the **status bar**.
 
-The GUI displays a 32×32 PNG icon for each badge. The icons are packaged with
-the application, so their appearance does not depend on emoji support or on a
-font installed by the operating system.
+The GUI displays each icon at 24×24 px. The PNG source images are packaged
+with the application and scaled consistently by the GUI, so their appearance
+does not depend on emoji support or on a font installed by the operating
+system.
 
 ### How the badge is computed (rules)
 
