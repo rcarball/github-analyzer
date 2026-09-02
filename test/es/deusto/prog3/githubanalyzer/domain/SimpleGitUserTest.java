@@ -1,3 +1,12 @@
+// IAG (herramientas: ChatGPT (OpenAI), Claude Code (Anthropic), Codex (OpenAI))
+// SIN CAMBIOS
+
+/*
+ * AI-GENERATED TEST CASES
+ *
+ * All test cases in this file were generated entirely with the assistance of
+ * the AI tools identified above.
+ */
 package es.deusto.prog3.githubanalyzer.domain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
