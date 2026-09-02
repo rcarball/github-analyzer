@@ -91,6 +91,7 @@ import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
 	private static final long serialVersionUID = 1L;
+	private static final int STATUS_BAR_HEIGHT = 36;
 
 	private JLabel lblCreationDate;
 	private JLabel lblFirstCommit;
@@ -186,28 +187,45 @@ public class MainWindow extends JFrame {
 	}
 	
 	enum AlertFlag {
-	    AI_PASTE("[AI]", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
+	    AI_PASTE("AI.png", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
 
-	    final String marker;
+	    final String imageFile;
 	    final String title;
 	    final String description;
+	    private ImageIcon icon;
 
-	    AlertFlag(String marker, String title, String description) {
-	        this.marker = marker;
+	    AlertFlag(String imageFile, String title, String description) {
+	        this.imageFile = imageFile;
 	        this.title = title;
 	        this.description = description;
 	    }
 
-	    public String marker() {
-	        return marker;
+	    public ImageIcon icon() {
+	        if (icon == null) {
+	            icon = MainWindow.loadIcon(imageFile);
+	        }
+	        return icon;
 	    }
 
 	    public String shortText() {
-	    	return String.format("%s %s", marker(), title);
+	        return title;
+	    }
+
+	    public String htmlIcon() {
+	        String source = MainWindow.iconHtmlSource(imageFile);
+	        return source == null ? ""
+	                : "<img src=\"" + source + "\" width=\"32\" height=\"32\">";
+	    }
+
+	    public String htmlShortText() {
+	        String image = htmlIcon();
+	        return image.isEmpty() ? shortText() : image + " " + shortText();
 	    }
 
 	    public String htmlLine() {
-	        return marker() + " <b>" + title + "</b>: " + description + "<br>";
+	        String image = htmlIcon();
+	        return (image.isEmpty() ? "" : image + " ")
+	                + "<b>" + title + "</b>: " + description + "<br>";
 	    }
 	}
 
@@ -513,6 +531,9 @@ public class MainWindow extends JFrame {
 		lblStatus.setForeground(new Color(80, 80, 80));
 
 		JPanel bottomPanel = new JPanel(new BorderLayout());
+		// Reserve the same height whether an interpretation icon is visible or not.
+		bottomPanel.setPreferredSize(new Dimension(0, STATUS_BAR_HEIGHT));
+		bottomPanel.setMinimumSize(new Dimension(0, STATUS_BAR_HEIGHT));
 		bottomPanel.add(lblStatus, BorderLayout.WEST);
 		bottomPanel.add(lblFooter, BorderLayout.EAST);
 				
@@ -1309,12 +1330,14 @@ public class MainWindow extends JFrame {
 	    if (repo == null || u == null) return " ";
 	    Interpretation it = interpretationFor(repo, u);
 
+	    if (it.flags.isEmpty()) {
+	        return it.badge.shortLabel;
+	    }
+
 	    List<String> parts = new ArrayList<>();
 	    parts.add(it.badge.shortLabel);
-
-	    for (AlertFlag f : it.flags) parts.add(f.shortText());
-
-	    return String.join("   |   ", parts);
+	    for (AlertFlag f : it.flags) parts.add(f.htmlShortText());
+	    return "<html>" + String.join("&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;", parts) + "</html>";
 	}
 
 	/** Shows a regular status message and clears any contribution badge icon. */

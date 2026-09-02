@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
+import es.deusto.prog3.githubanalyzer.gui.MainWindow.AlertFlag;
 import es.deusto.prog3.githubanalyzer.gui.MainWindow.ContributionBadge;
 
 /**
@@ -43,6 +44,9 @@ public class MainWindowInterpretationTest {
             assertEquals(32, badge.icon().getIconWidth(), "Unexpected icon width for " + badge.name());
             assertEquals(32, badge.icon().getIconHeight(), "Unexpected icon height for " + badge.name());
         }
+        assertNotNull(AlertFlag.AI_PASTE.icon());
+        assertEquals(32, AlertFlag.AI_PASTE.icon().getIconWidth());
+        assertEquals(32, AlertFlag.AI_PASTE.icon().getIconHeight());
     }
 
     // ---------------- classifyBadge: guardrails ----------------

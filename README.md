@@ -250,11 +250,11 @@ Final badge (contiguous ranges, no gaps):
 
 ---
 
-## 🚩 AlertFlag (additional signals)
+## AlertFlag (additional signals)
 
 Flags do not change the badge: they are **extra alerts** to inspect patterns.
 
-### 📋 AI_PASTE — “AI/paste-like pattern”
+### ![AI/paste-like alert](resources/images/AI.png) AI_PASTE — “AI/paste-like pattern”
 - **Triggers when**:
   - `churnPerCommit >= repoAvgChurnPerCommit * 2.5`
   - (with `javaCommits > 0` and `repoAvgChurnPerCommit > 0`)
@@ -262,13 +262,13 @@ Flags do not change the badge: they are **extra alerts** to inspect patterns.
 
 ---
 
-## 🧪 Examples (how to read the UI)
+## Examples (how to read the UI)
 
 ### Example 1 — Balanced team members
 You hover a row and see:
 
-- Username cell: `✅ alice`
-- Status bar: `✅ Balanced contribution`
+- Username cell: ![Balanced contribution](resources/images/BALANCED.png) `alice`
+- Status bar: ![Balanced contribution](resources/images/BALANCED.png) Balanced contribution
 - Tooltip (long): shows expected share and no flags
 
 Interpretation:
@@ -280,8 +280,8 @@ Interpretation:
 ### Example 2 — Below expected but still contributing
 Row shows:
 
-- Username cell: `⚠️ bob`
-- Status bar: `⚠️ Below expected contribution`
+- Username cell: ![Below expected contribution](resources/images/BELOW.png) `bob`
+- Status bar: ![Below expected contribution](resources/images/BELOW.png) Below expected contribution
 
 Interpretation:
 - Bob contributes, but the Java churn share is below the expected range.
@@ -292,8 +292,8 @@ Interpretation:
 ### Example 3 — Very low / no Java contribution
 Row shows:
 
-- Username cell: `⛔ carol`
-- Status bar: `⛔ Very low / no contribution`
+- Username cell: ![Very low contribution](resources/images/VERY_LOW.png) `carol`
+- Status bar: ![Very low contribution](resources/images/VERY_LOW.png) Very low / no contribution
 
 Interpretation:
 - Carol has no Java churn or no Java commits, or a share well below half the expected one.
@@ -304,8 +304,8 @@ Interpretation:
 ### Example 4 — High contribution
 Row shows:
 
-- Username cell: `🌟 dave`
-- Status bar: `🌟 High contribution`
+- Username cell: ![High contribution](resources/images/HIGH.png) `dave`
+- Status bar: ![High contribution](resources/images/HIGH.png) High contribution
 
 Interpretation:
 - Dave’s Java churn share is clearly above the expected share for the team size.
@@ -316,8 +316,8 @@ Interpretation:
 ### Example 5 — AI/paste-like burst pattern
 Row shows:
 
-- Username cell: `⚠️ eva`
-- Status bar: `⚠️ Below expected contribution | 📋 AI/paste-like pattern`
+- Username cell: ![Below expected contribution](resources/images/BELOW.png) `eva`
+- Status bar: ![Below expected contribution](resources/images/BELOW.png) Below expected contribution | ![AI/paste-like alert](resources/images/AI.png) AI/paste-like pattern
 
 Interpretation:
 - Eva’s total share might be modest, but her commits have unusually high churn per commit.
@@ -348,7 +348,7 @@ This app uses a teaching-oriented definition:
 
 Goal: **consistency for teaching interpretation**, not to replicate GitHub UI.
 
-### A student shows ⛔ or ⚠️ — does that mean they did nothing?
+### A student shows a very-low or below-expected icon — does that mean they did nothing?
 Not necessarily. They may have:
 - contributed mostly in **non-Java** files
 - merge commits excluded from the Java stats
