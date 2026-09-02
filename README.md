@@ -243,11 +243,11 @@ Final badge (contiguous ranges, no gaps):
 
 | Badge | Label | Meaning |
 |------:|------|---------|
-| <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/TEACHER.png" width="24" height="24" alt="Teacher account"> | Teacher account | Instructor account; excluded from expected-share calculations |
-| <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/VERY_LOW.png" width="24" height="24" alt="Very low contribution"> | Very low / no contribution | Bar chart at a very low level: very low or null Java contribution; check additional evidence |
-| <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BELOW.png" width="24" height="24" alt="Below expected contribution"> | Below expected contribution | Downward chart: some Java work, but under the expected share |
-| <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BALANCED.png" width="24" height="24" alt="Balanced contribution"> | Balanced contribution | Balance scale: close to expected share for the team size |
-| <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/HIGH.png" width="24" height="24" alt="High contribution"> | High contribution | Upward chart: above expected share; may indicate a strong role or imbalance |
+| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/TEACHER.png?raw=true" width="24" height="24" alt="Teacher account"> | Teacher account | Instructor account; excluded from expected-share calculations |
+| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/VERY_LOW.png?raw=true" width="24" height="24" alt="Very low contribution"> | Very low / no contribution | Bar chart at a very low level: very low or null Java contribution; check additional evidence |
+| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> | Below expected contribution | Downward chart: some Java work, but under the expected share |
+| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BALANCED.png?raw=true" width="24" height="24" alt="Balanced contribution"> | Balanced contribution | Balance scale: close to expected share for the team size |
+| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/HIGH.png?raw=true" width="24" height="24" alt="High contribution"> | High contribution | Upward chart: above expected share; may indicate a strong role or imbalance |
 
 ---
 
@@ -255,7 +255,7 @@ Final badge (contiguous ranges, no gaps):
 
 Flags do not change the badge: they are **extra alerts** to inspect patterns.
 
-### <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/AI.png" width="24" height="24" alt="AI/paste-like alert"> AI_PASTE — “AI/paste-like pattern”
+### <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/AI.png?raw=true" width="24" height="24" alt="AI/paste-like alert"> AI_PASTE — “AI/paste-like pattern”
 - **Triggers when**:
   - `churnPerCommit >= repoAvgChurnPerCommit * 2.5`
   - (with `javaCommits > 0` and `repoAvgChurnPerCommit > 0`)
@@ -268,8 +268,8 @@ Flags do not change the badge: they are **extra alerts** to inspect patterns.
 ### Example 1 — Balanced team members
 You hover a row and see:
 
-- Username cell: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BALANCED.png" width="24" height="24" alt="Balanced contribution"> `alice`
-- Status bar: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BALANCED.png" width="24" height="24" alt="Balanced contribution"> Balanced contribution
+- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BALANCED.png?raw=true" width="24" height="24" alt="Balanced contribution"> `alice`
+- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BALANCED.png?raw=true" width="24" height="24" alt="Balanced contribution"> Balanced contribution
 - Tooltip (long): shows expected share and no flags
 
 Interpretation:
@@ -281,8 +281,8 @@ Interpretation:
 ### Example 2 — Below expected but still contributing
 Row shows:
 
-- Username cell: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BELOW.png" width="24" height="24" alt="Below expected contribution"> `bob`
-- Status bar: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BELOW.png" width="24" height="24" alt="Below expected contribution"> Below expected contribution
+- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> `bob`
+- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> Below expected contribution
 
 Interpretation:
 - Bob contributes, but the Java churn share is below the expected range.
@@ -293,8 +293,8 @@ Interpretation:
 ### Example 3 — Very low / no Java contribution
 Row shows:
 
-- Username cell: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/VERY_LOW.png" width="24" height="24" alt="Very low contribution"> `carol`
-- Status bar: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/VERY_LOW.png" width="24" height="24" alt="Very low contribution"> Very low / no contribution
+- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/VERY_LOW.png?raw=true" width="24" height="24" alt="Very low contribution"> `carol`
+- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/VERY_LOW.png?raw=true" width="24" height="24" alt="Very low contribution"> Very low / no contribution
 
 Interpretation:
 - Carol has no Java churn or no Java commits, or a share well below half the expected one.
@@ -305,8 +305,8 @@ Interpretation:
 ### Example 4 — High contribution
 Row shows:
 
-- Username cell: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/HIGH.png" width="24" height="24" alt="High contribution"> `dave`
-- Status bar: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/HIGH.png" width="24" height="24" alt="High contribution"> High contribution
+- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/HIGH.png?raw=true" width="24" height="24" alt="High contribution"> `dave`
+- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/HIGH.png?raw=true" width="24" height="24" alt="High contribution"> High contribution
 
 Interpretation:
 - Dave’s Java churn share is clearly above the expected share for the team size.
@@ -317,8 +317,8 @@ Interpretation:
 ### Example 5 — AI/paste-like burst pattern
 Row shows:
 
-- Username cell: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BELOW.png" width="24" height="24" alt="Below expected contribution"> `eva`
-- Status bar: <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/BELOW.png" width="24" height="24" alt="Below expected contribution"> Below expected contribution | <img src="https://raw.githubusercontent.com/rcarball/github-analyzer/master/resources/images/AI.png" width="24" height="24" alt="AI/paste-like alert"> AI/paste-like pattern
+- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> `eva`
+- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> Below expected contribution | <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/AI.png?raw=true" width="24" height="24" alt="AI/paste-like alert"> AI/paste-like pattern
 
 Interpretation:
 - Eva’s total share might be modest, but her commits have unusually high churn per commit.
