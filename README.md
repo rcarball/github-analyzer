@@ -29,9 +29,9 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 ### First, configure
 On the **first run** the app creates a `resources/` folder with default
 `config.properties` and `repositories.txt` next to the app, and — if the required
-user or token is not set — opens a **⚙ Config** dialog so you can fill in your GitHub user, token,
+user or token is not set — opens a **Config** dialog so you can fill in your GitHub user, token,
 teacher account and the repository list from inside the app. You can reopen it any
-time with the **⚙ Config** button.
+time with the **Config** button.
 
 You can also edit the two files by hand (see the **Configuration** section below);
 the **Refresh from GitHub** button re-reads them, so new tokens or repositories

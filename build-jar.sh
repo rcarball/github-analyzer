@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Build a SELF-CONTAINED runnable JAR (macOS / Linux).
 #
-# Produces ./github-analyzer.jar with the application classes, the tree icons AND
+# Produces ./github-analyzer.jar with the application classes, all GUI icons AND
 # all third-party libraries bundled inside — no lib/ folder needed at runtime.
 #
 # Run it (from any directory) with:
@@ -35,7 +35,7 @@ javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
 rm -f "$STAGE/META-INF/MANIFEST.MF" "$STAGE/module-info.class"
 rm -f "$STAGE/META-INF/"*.SF "$STAGE/META-INF/"*.DSA "$STAGE/META-INF/"*.RSA "$STAGE/META-INF/"*.EC 2>/dev/null || true
 
-# 4) Add our compiled classes and the tree icons (loaded as /images/<name>).
+# 4) Add our compiled classes and all GUI icons (loaded as /images/<name>).
 cp -R "$OUT/." "$STAGE/"
 mkdir -p "$STAGE/images"
 cp resources/images/*.png "$STAGE/images/"

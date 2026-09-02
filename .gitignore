@@ -7,4 +7,5 @@
 bin/
 build/
 /github-analyzer.jar
+/release/
 /.DS_Store

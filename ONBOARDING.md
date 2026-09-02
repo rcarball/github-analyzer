@@ -55,7 +55,7 @@ And list the repositories to analyze in `resources/repositories.txt`
 ```bash
 ./run-tests.sh             # Windows: run-tests.bat   (or "Run as > JUnit Test" in Eclipse)
 ```
-JUnit 5, run via `lib/junit-platform-console-standalone-*.jar`. Currently **64 tests**.
+JUnit 5, run via `lib/junit-platform-console-standalone-*.jar`. Currently **65 tests**.
 When you touch domain/loader/metrics logic, add or update tests; the CLI runner is
 headless and fast.
 
@@ -119,8 +119,8 @@ badges), whole-word markers, merge-commit reconciliation. Robustness: progressiv
 persistence that preserves prior data on partial refreshes, plus an allow-list
 deserialization filter. Portability/UX: classpath icons + runnable-JAR build scripts,
 user-visible error dialogs, `yyyy-MM-dd` GUI dates, sortable user table with `%`-churn
-mini-bars and a repository filter. Tests grew from 12 (2 failing) to **64 green**, plus a
-CLI JUnit runner.
+mini-bars and contribution-aware row shading. Tests grew from 12 (2 failing) to **65 green**,
+plus a CLI JUnit runner.
 
 ## 8. Gotchas
 - When packaged, resource paths resolve next to the JAR (and `resources/` is created on

@@ -1,7 +1,7 @@
 @echo off
 REM Build a SELF-CONTAINED runnable JAR (Windows).
 REM
-REM Produces github-analyzer.jar with the application classes, the tree icons AND
+REM Produces github-analyzer.jar with the application classes, all GUI icons AND
 REM all third-party libraries bundled inside — no lib\ folder needed at runtime.
 REM
 REM Run it (from any directory) with:
@@ -36,7 +36,7 @@ REM 3) Drop artifacts that don't belong in a merged, non-modular classpath jar.
 del /q "%STAGE%\META-INF\MANIFEST.MF" "%STAGE%\module-info.class" 2>nul
 del /q "%STAGE%\META-INF\*.SF" "%STAGE%\META-INF\*.DSA" "%STAGE%\META-INF\*.RSA" "%STAGE%\META-INF\*.EC" 2>nul
 
-REM 4) Add our compiled classes and the tree icons.
+REM 4) Add our compiled classes and all GUI icons.
 xcopy /e /i /y /q "%OUT%\*" "%STAGE%\" >nul
 mkdir "%STAGE%\images" 2>nul
 copy /y resources\images\*.png "%STAGE%\images\" >nul
