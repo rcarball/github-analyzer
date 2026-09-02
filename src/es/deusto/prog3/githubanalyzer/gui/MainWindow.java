@@ -176,14 +176,6 @@ public class MainWindow extends JFrame {
 	        return icon;
 	    }
 
-	    /** Returns an HTML image tag for Swing tooltips, or an empty string when unavailable. */
-	    public String htmlIcon() {
-	        String source = MainWindow.iconHtmlSource(imageFile);
-	        return source == null ? ""
-	                : "<img src=\"" + source + "\" width=\"" + ICON_SIZE
-	                        + "\" height=\"" + ICON_SIZE + "\">";
-	    }
-
 	    public String shortText() {
 	        return shortLabel;
 	    }
@@ -228,9 +220,7 @@ public class MainWindow extends JFrame {
 	    }
 
 	    public String htmlLine() {
-	        String image = htmlIcon();
-	        return (image.isEmpty() ? "" : image + " ")
-	                + "<b>" + title + "</b>: " + description + "<br>";
+	        return "<b>" + title + "</b>: " + description + "<br>";
 	    }
 	}
 
@@ -1361,8 +1351,6 @@ public class MainWindow extends JFrame {
 	    StringBuilder sb = new StringBuilder("<html>");
 	    sb.append("<b>Interpretation</b><br>");
 	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
-	    sb.append(it.badge.htmlIcon());
-	    if (it.badge.icon() != null) sb.append(" ");
 	    sb.append("<b>").append(it.badge.shortLabel).append("</b>");
 	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");
 
