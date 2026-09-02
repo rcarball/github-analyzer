@@ -694,6 +694,7 @@ public class MainWindow extends JFrame {
 
 	        // 3) Color coding + short tooltip
 	        RepoStats repo = (selectedRepo == null) ? null : repoStatsMap.get(selectedRepo);
+	        Color contributionColor = null;
 	       
 	        if (repo != null && row >= 0) {
 	            int modelRow = table.convertRowIndexToModel(row);
@@ -702,8 +703,8 @@ public class MainWindow extends JFrame {
 	                UserStats user = repo.getUserStats().get(modelRow);
 	                Interpretation it = interpretationFor(repo, user);
 	                
-	                // Apply row color (all columns)
-	                label.setForeground(it.badge.color);
+	                // Apply the same contribution color to all cells in the row.
+	                contributionColor = it.badge.color;
 	                if (column == 0) {
 	                    label.setIcon(it.badge.icon());
 	                    label.setIconTextGap(6);
@@ -716,18 +717,18 @@ public class MainWindow extends JFrame {
 	                }
 	                label.setToolTipText(shortTip);
 	            }
-	        } else {
-	            // Default appearance when no repo is selected
-	            label.setForeground(table.getForeground());
-	            label.setToolTipText(null);
 	        }
 
-	        // 4) Selection 
-	        if (isSelected) {
-	            label.setBackground(table.getSelectionBackground());
-	            label.setForeground(table.getSelectionForeground());
+	        // 4) Contribution-aware shading. Selection uses a stronger tint instead
+	        // of the operating system's generic blue, while retaining readable text.
+	        if (contributionColor != null) {
+	            Color background = contributionBackground(table.getBackground(), contributionColor, isSelected);
+	            label.setBackground(background);
+	            label.setForeground(contributionForeground(contributionColor, background, isSelected));
 	        } else {
-	            label.setBackground(table.getBackground());
+	            label.setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
+	            label.setForeground(isSelected ? table.getSelectionForeground() : table.getForeground());
+	            label.setToolTipText(null);
 	        }
 
 	        return label;
@@ -1108,6 +1109,39 @@ public class MainWindow extends JFrame {
 				JOptionPane.WARNING_MESSAGE);
 	}
 
+	/** Blends an accent color with a base color without relying on a system look and feel. */
+	private static Color blend(Color base, Color accent, float accentWeight) {
+		float baseWeight = 1f - accentWeight;
+		return new Color(
+				Math.round(base.getRed() * baseWeight + accent.getRed() * accentWeight),
+				Math.round(base.getGreen() * baseWeight + accent.getGreen() * accentWeight),
+				Math.round(base.getBlue() * baseWeight + accent.getBlue() * accentWeight));
+	}
+
+	/** Uses a subtle tint for a row and a stronger, still restrained tint when selected. */
+	private static Color contributionBackground(Color tableBackground, Color contributionColor, boolean selected) {
+		return blend(tableBackground, contributionColor, selected ? 0.22f : 0.08f);
+	}
+
+	/** Keeps the contribution color visible and darkens it slightly on selection. */
+	private static Color contributionForeground(Color contributionColor, Color background, boolean selected) {
+		Color candidate = selected ? blend(contributionColor, Color.BLACK, 0.18f) : contributionColor;
+		return contrastRatio(candidate, background) >= 3.0f
+				? candidate
+				: (relativeLuminance(background) > 0.5f ? Color.BLACK : Color.WHITE);
+	}
+
+	private static float contrastRatio(Color first, Color second) {
+		float firstLuminance = relativeLuminance(first);
+		float secondLuminance = relativeLuminance(second);
+		return (Math.max(firstLuminance, secondLuminance) + 0.05f)
+				/ (Math.min(firstLuminance, secondLuminance) + 0.05f);
+	}
+
+	private static float relativeLuminance(Color color) {
+		return (0.2126f * color.getRed() + 0.7152f * color.getGreen() + 0.0722f * color.getBlue()) / 255f;
+	}
+
 	/**
 	 * Cell renderer for the "% churn" column: paints a horizontal bar proportional
 	 * to the value (in the person's badge color) with the percentage on top, so the
@@ -1131,17 +1165,25 @@ public class MainWindow extends JFrame {
 			text = Float.isNaN(fraction) ? "-" : String.format("%.2f %%", fraction * 100f);
 
 			Color badge = table.getForeground();
+			boolean hasContributionColor = false;
 			RepoStats repo = (selectedRepo == null) ? null : repoStatsMap.get(selectedRepo);
 			if (repo != null && row >= 0) {
 				int modelRow = table.convertRowIndexToModel(row);
 				if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
 					badge = interpretationFor(repo, repo.getUserStats().get(modelRow)).badge.color;
+					hasContributionColor = true;
 				}
 			}
 
-			textColor = isSelected ? table.getSelectionForeground() : badge;
-			background = isSelected ? table.getSelectionBackground() : table.getBackground();
-			barColor = new Color(badge.getRed(), badge.getGreen(), badge.getBlue(), 55); // translucent
+			if (hasContributionColor) {
+				background = contributionBackground(table.getBackground(), badge, isSelected);
+				textColor = contributionForeground(badge, background, isSelected);
+				barColor = new Color(badge.getRed(), badge.getGreen(), badge.getBlue(), isSelected ? 95 : 55);
+			} else {
+				background = isSelected ? table.getSelectionBackground() : table.getBackground();
+				textColor = isSelected ? table.getSelectionForeground() : table.getForeground();
+				barColor = new Color(0, 0, 0, 0);
+			}
 			return this;
 		}
 
