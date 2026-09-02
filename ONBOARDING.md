@@ -39,7 +39,7 @@ And list the repositories to analyze in `resources/repositories.txt`
 - **Runnable JAR (any OS):**
   ```bash
   ./build-jar.sh            # Windows: build-jar.bat
-  java -jar github-analyzer.jar
+  java -jar github-analyzer-1.3.0.jar
   ```
   The JAR already bundles all runtime library dependencies and the icons. On first run it creates `resources/`
   next to itself; keep that external folder there once it contains your configuration.

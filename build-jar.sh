@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
 # Build a SELF-CONTAINED runnable JAR (macOS / Linux).
 #
-# Produces ./github-analyzer.jar with the application classes, all GUI icons AND
+# Produces ./github-analyzer-<version>.jar with the application classes, all GUI icons AND
 # all third-party libraries bundled inside — no lib/ folder needed at runtime.
 #
 # Run it (from any directory) with:
-#     java -jar github-analyzer.jar
+#     java -jar github-analyzer-1.3.0.jar
 # Keep a `resources/` folder (with your config.properties and repositories.txt)
 # next to the jar — those files stay EXTERNAL and editable (never bundled, since
 # they hold your token and student data).
@@ -14,7 +14,8 @@ cd "$(dirname "$0")"
 
 OUT=build/jar-classes
 STAGE=build/fat
-JAR=github-analyzer.jar
+VERSION=1.3.0
+JAR="github-analyzer-${VERSION}.jar"
 MAIN=es.deusto.prog3.githubanalyzer.Main
 LIB="$(pwd)/lib"
 

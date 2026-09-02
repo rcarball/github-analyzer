@@ -48,9 +48,9 @@ Run the main class `es.deusto.prog3.githubanalyzer.Main`.
 ### Option B — Runnable JAR (any OS)
 ```bash
 ./build-jar.sh          # Windows: build-jar.bat
-java -jar github-analyzer.jar
+java -jar github-analyzer-1.3.0.jar
 ```
-This builds a **self-contained** `github-analyzer.jar`: the application, the icons
+This builds a **self-contained** versioned JAR (currently `github-analyzer-1.3.0.jar`): the application, the icons
 **and all third-party libraries are bundled inside** — no `lib/` folder is needed
 to run it. On first run, the app creates a `resources/` folder next to the JAR.
 For an existing configuration, keep that folder with its `config.properties` and
