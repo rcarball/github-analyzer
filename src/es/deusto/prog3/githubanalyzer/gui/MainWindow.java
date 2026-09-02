@@ -38,6 +38,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.net.URI;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -112,7 +113,7 @@ public class MainWindow extends JFrame {
 	private List<RepoStats> allRepos = new ArrayList<>();
 
 	private JButton btnRefresh = new JButton("Refresh from GitHub");
-	private JButton btnConfig = new JButton("⚙ Config");
+	private JButton btnConfig = new JButton("Config");
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
@@ -127,77 +128,85 @@ public class MainWindow extends JFrame {
 	private static final double THRESHOLD_HIGH         = 1.20; // > 120 % del share esperado
 	private static final double AI_PASTE_MULTIPLIER    = 2.50; // churn/commit vs. media del equipo
 
-	// Some systems (certain Windows/Linux setups) lack a font with color emoji, so
-	// badge emojis would render as ▯. Fall back to an ASCII marker when the UI font
-	// cannot display the emoji.
-	private static final Font BADGE_FONT = new JLabel().getFont();
-	static String emojiOr(String emoji, String fallback) {
-		return (BADGE_FONT != null && BADGE_FONT.canDisplayUpTo(emoji) == -1) ? emoji : fallback;
-	}
-
 	enum ContributionBadge {
-		TEACHER("🎓", "T", Color.DARK_GRAY,
+		TEACHER("TEACHER.png", Color.DARK_GRAY,
 		        "Teacher account",
 		        "Teacher account: excluded from expected-share calculations."),
 
-		VERY_LOW("⛔", "X", new Color(234, 23, 68),
+		VERY_LOW("VERY_LOW.png", new Color(234, 23, 68),
 		        "Very low / no contribution",
 		        "Very low / no contribution: below expected or near zero."),
 
-		BELOW("⚠", "!", new Color(245, 143, 41),
+		BELOW("BELOW.png", new Color(245, 143, 41),
 		        "Below expected contribution",
 		        "Below expected contribution: noticeable but under the expected share."),
 
-		BALANCED("✓", "OK", new Color(54, 130, 127),
+		BALANCED("BALANCED.png", new Color(54, 130, 127),
 		        "Balanced contribution",
 		        "Balanced contribution: close to expected for the team size."),
 
-		HIGH("★", "*", new Color(54, 130, 127),
+		HIGH("HIGH.png", new Color(54, 130, 127),
 		        "High contribution",
 		        "High contribution: above expected for the team size.");
 
-	    final String emoji;
-	    final String fallback;
+	    final String imageFile;
 	    final Color color;
 	    final String shortLabel;
 	    final String longLine;
+	    private ImageIcon icon;
 
-	    ContributionBadge(String emoji, String fallback, Color color, String shortLabel, String longLine) {
-	        this.emoji = emoji;
-	        this.fallback = fallback;
+	    ContributionBadge(String imageFile, Color color, String shortLabel, String longLine) {
+	        this.imageFile = imageFile;
 	        this.color = color;
 	        this.shortLabel = shortLabel;
 	        this.longLine = longLine;
 	    }
 
-	    /** Emoji when the UI font can render it, otherwise an ASCII fallback (▯-proof). */
-	    public String marker() {
-	        return emojiOr(emoji, fallback);
+	    /**
+	     * Loads the badge icon from the packaged resources on first use. Tests can
+	     * exercise the classification logic without requiring graphical resources.
+	     */
+	    public ImageIcon icon() {
+	        if (icon == null) {
+	            URL resource = imageResource();
+	            if (resource != null) {
+	                icon = new ImageIcon(resource);
+	            }
+	        }
+	        return icon;
+	    }
+
+	    /** Returns an HTML image tag for Swing tooltips, or an empty string when unavailable. */
+	    public String htmlIcon() {
+	        URL resource = imageResource();
+	        return resource == null ? ""
+	                : "<img src=\"" + resource.toExternalForm() + "\" width=\"32\" height=\"32\">";
+	    }
+
+	    private URL imageResource() {
+	        return MainWindow.class.getResource("/images/" + imageFile);
 	    }
 
 	    public String shortText() {
-	    	return String.format("%s %s", marker(), shortLabel);
+	        return shortLabel;
 	    }
 	}
 	
 	enum AlertFlag {
-	    AI_PASTE("📋", "[AI]", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
+	    AI_PASTE("[AI]", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
 
-	    final String emoji;
-	    final String fallback;
+	    final String marker;
 	    final String title;
 	    final String description;
 
-	    AlertFlag(String emoji, String fallback, String title, String description) {
-	        this.emoji = emoji;
-	        this.fallback = fallback;
+	    AlertFlag(String marker, String title, String description) {
+	        this.marker = marker;
 	        this.title = title;
 	        this.description = description;
 	    }
 
-	    /** Emoji when the UI font can render it, otherwise an ASCII fallback. */
 	    public String marker() {
-	        return emojiOr(emoji, fallback);
+	        return marker;
 	    }
 
 	    public String shortText() {
@@ -422,7 +431,7 @@ public class MainWindow extends JFrame {
 			// Give immediate feedback and prevent overlapping refreshes.
 			btnRefresh.setEnabled(false);
 			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-			lblStatus.setText("Refreshing from GitHub…");
+			setStatusText("Refreshing from GitHub…");
 
 			// SwingWorker keeps network I/O off Swing's event-dispatch thread (EDT).
 			// Its done() method runs on the EDT, where it is safe to update components.
@@ -498,7 +507,7 @@ public class MainWindow extends JFrame {
 					} finally {
 						setCursor(Cursor.getDefaultCursor());
 						btnRefresh.setEnabled(true);
-						lblStatus.setText(" ");
+						setStatusText(" ");
 					}
 	            }
 	        };
@@ -542,7 +551,7 @@ public class MainWindow extends JFrame {
 		// First run / not configured yet: prompt the user to set things up.
 		if (!Configurator.getInstance().isConfigured()) {
 			SwingUtilities.invokeLater(() -> {
-				lblStatus.setText("Not configured yet — fill in your GitHub user and token.");
+				setStatusText("Not configured yet — fill in your GitHub user and token.");
 				showConfigDialog();
 			});
 		}
@@ -674,8 +683,12 @@ public class MainWindow extends JFrame {
 	                UserStats user = repo.getUserStats().get(modelRow);
 	                Interpretation it = interpretationFor(repo, user);
 	                
-		            // Apply row color (all columns)
-		            label.setForeground(it.badge.color);
+	                // Apply row color (all columns)
+	                label.setForeground(it.badge.color);
+	                if (column == 0) {
+	                    label.setIcon(it.badge.icon());
+	                    label.setIconTextGap(6);
+	                }
 	
 		            // Tooltip for all columns
 	                String shortTip = it.badge.shortText();	              
@@ -703,7 +716,7 @@ public class MainWindow extends JFrame {
 
 	    // Header tooltips
 	    final String[] headerTooltips = new String[] {
-	    	    "GitHub login when available; otherwise derived from commit author info. Emoji = main contribution indicator.",
+	        "GitHub login when available; otherwise derived from commit author info. Icon = main contribution indicator.",
 	    	    "Java lines added (sum over non-merge commits).",
 	    	    "Java lines deleted (sum over non-merge commits).",
 	    	    "Java churn = added + deleted (sum over non-merge commits).",
@@ -751,7 +764,8 @@ public class MainWindow extends JFrame {
 	        return result;
 	    };
 
-	    jTableUserStats.setRowHeight(26);
+	    // Badge images are 32 px high; leave a small vertical margin around them.
+	    jTableUserStats.setRowHeight(36);
 	    jTableUserStats.setShowGrid(false);
 	    jTableUserStats.getTableHeader().setReorderingAllowed(false);
 	    jTableUserStats.getTableHeader().setResizingAllowed(false);
@@ -780,25 +794,25 @@ public class MainWindow extends JFrame {
 	    jTableUserStats.addMouseMotionListener(new MouseMotionAdapter() {
 	        @Override
 	        public void mouseMoved(MouseEvent e) {
-	        	RepoStats repo = repoStatsMap.get(selectedRepo);
-	        	int viewRow = jTableUserStats.rowAtPoint(e.getPoint());
-	        	if (repo != null && viewRow >= 0) {
-	        	    int modelRow = jTableUserStats.convertRowIndexToModel(viewRow);
-	        	    if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
-	        	        lblStatus.setText(statusTextFor(repo.getUserStats().get(modelRow), repo));
-	        	    } else {
-	        	        lblStatus.setText(" ");
-	        	    }
-	        	} else {
-	        	    lblStatus.setText(" ");
-	        	}
+	            RepoStats repo = repoStatsMap.get(selectedRepo);
+	            int viewRow = jTableUserStats.rowAtPoint(e.getPoint());
+	            if (repo != null && viewRow >= 0) {
+	                int modelRow = jTableUserStats.convertRowIndexToModel(viewRow);
+	                if (modelRow >= 0 && modelRow < repo.getUserStats().size()) {
+	                    showInterpretationStatus(repo.getUserStats().get(modelRow), repo);
+	                } else {
+	                    setStatusText(" ");
+	                }
+	            } else {
+	                setStatusText(" ");
+	            }
 	        }
 	    });
 
 	    jTableUserStats.addMouseListener(new MouseAdapter() {
 	        @Override
 	        public void mouseExited(MouseEvent e) {
-	            if (lblStatus != null) lblStatus.setText(" ");
+	            if (lblStatus != null) setStatusText(" ");
 	        }
 	    });
 	}
@@ -856,12 +870,7 @@ public class MainWindow extends JFrame {
 			    // Share of the team churn (excluding teacher). NaN for the teacher row (shown as "-").
 			    float pct = ContributionMetrics.teamShare(repoStats, s);
 
-			    Interpretation it = interpretationFor(repoStats, s);
-			    String displayName = String.format(
-			    	    "%s %s",
-			    	    it.badge.marker(),
-			    	    (s.getUsername() == null ? "" : s.getUsername())
-			    	);
+			    String displayName = s.getUsername() == null ? "" : s.getUsername();
 
 			    tableModelUserStats.addRow(new Object[] {
 			        displayName,
@@ -960,7 +969,7 @@ public class MainWindow extends JFrame {
 		if (text == null || text.isBlank()) return;
 		try {
 			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
-			lblStatus.setText("Copied: " + text);
+			setStatusText("Copied: " + text);
 		} catch (Exception ex) {
 			JOptionPane.showMessageDialog(this, "Could not copy to clipboard:\n" + text,
 					"Copy URL", JOptionPane.WARNING_MESSAGE);
@@ -1035,7 +1044,7 @@ public class MainWindow extends JFrame {
 			cfg.saveRepositories(reposArea.getText());
 			GitHubDataLoader.getInstance().reloadRepositories();
 			dialog.dispose();
-			lblStatus.setText("Configuration saved.");
+			setStatusText("Configuration saved.");
 
 			if (cfg.isConfigured() && onlineBox.isSelected()) {
 				int ans = JOptionPane.showConfirmDialog(this,
@@ -1278,7 +1287,9 @@ public class MainWindow extends JFrame {
 	    StringBuilder sb = new StringBuilder("<html>");
 	    sb.append("<b>Interpretation</b><br>");
 	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
-	    sb.append(it.badge.marker()).append(" <b>").append(it.badge.shortLabel).append("</b>");
+	    sb.append(it.badge.htmlIcon());
+	    if (it.badge.icon() != null) sb.append(" ");
+	    sb.append("<b>").append(it.badge.shortLabel).append("</b>");
 	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");
 
 	    for (AlertFlag f : it.flags) sb.append(f.htmlLine());
@@ -1293,10 +1304,28 @@ public class MainWindow extends JFrame {
 	    Interpretation it = interpretationFor(repo, u);
 
 	    List<String> parts = new ArrayList<>();
-	    parts.add(it.badge.marker() + " " + it.badge.shortLabel);
+	    parts.add(it.badge.shortLabel);
 
 	    for (AlertFlag f : it.flags) parts.add(f.shortText());
 
 	    return String.join("   |   ", parts);
+	}
+
+	/** Shows a regular status message and clears any contribution badge icon. */
+	private void setStatusText(String text) {
+	    lblStatus.setIcon(null);
+	    lblStatus.setText(text);
+	}
+
+	/** Shows the selected user's badge icon together with its textual interpretation. */
+	private void showInterpretationStatus(UserStats user, RepoStats repo) {
+	    if (user == null || repo == null) {
+	        setStatusText(" ");
+	        return;
+	    }
+	    Interpretation interpretation = interpretationFor(repo, user);
+	    lblStatus.setIcon(interpretation.badge.icon());
+	    lblStatus.setIconTextGap(6);
+	    lblStatus.setText(statusTextFor(user, repo));
 	}
 }

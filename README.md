@@ -210,16 +210,16 @@ The GUI adds a quick interpretation per person based on two concepts:
 
 ---
 
-## 🏷️ ContributionBadge (main level)
+## ContributionBadge (main level)
 
 Badges are the **main** interpretation result. They appear:
 - in the **username cell** (large marker),
 - in the **long tooltip**,
 - and in the **status bar**.
 
-The following emojis are visual references for the future
-platform-independent image icons. They do not depend on a particular font in
-the final GUI; each will be replaced by an image with the same meaning.
+The GUI displays a 32×32 PNG icon for each badge. The icons are packaged with
+the application, so their appearance does not depend on emoji support or on a
+font installed by the operating system.
 
 ### How the badge is computed (rules)
 
@@ -231,22 +231,22 @@ population — active contributors excluding the teacher):
 - `okMax   = expected * 1.2`
 
 Final badge (contiguous ranges, no gaps):
-- **🎓 TEACHER** if the user matches `teacher.user` or `teacher.email`
-- **📊 VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
-- **📉 BELOW** if `veryLow <= share < okMin`
-- **⚖️ BALANCED** if `okMin <= share <= okMax`
-- **📈 HIGH** if `share > okMax`
+- **TEACHER** if the user matches `teacher.user` or `teacher.email`
+- **VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
+- **BELOW** if `veryLow <= share < okMin`
+- **BALANCED** if `okMin <= share <= okMax`
+- **HIGH** if `share > okMax`
 
 
 ### Badge table
 
 | Badge | Label | Meaning |
 |------:|------|---------|
-| 🎓 | Teacher account | Instructor account; excluded from expected-share calculations |
-| 📊 | Very low / no contribution | Bar chart at a very low level: very low or null Java contribution; check additional evidence |
-| 📉 | Below expected contribution | Downward chart: some Java work, but under the expected share |
-| ⚖️ | Balanced contribution | Balance scale: close to expected share for the team size |
-| 📈 | High contribution | Upward chart: above expected share; may indicate a strong role or imbalance |
+| ![Teacher account](resources/images/TEACHER.png) | Teacher account | Instructor account; excluded from expected-share calculations |
+| ![Very low contribution](resources/images/VERY_LOW.png) | Very low / no contribution | Bar chart at a very low level: very low or null Java contribution; check additional evidence |
+| ![Below expected contribution](resources/images/BELOW.png) | Below expected contribution | Downward chart: some Java work, but under the expected share |
+| ![Balanced contribution](resources/images/BALANCED.png) | Balanced contribution | Balance scale: close to expected share for the team size |
+| ![High contribution](resources/images/HIGH.png) | High contribution | Upward chart: above expected share; may indicate a strong role or imbalance |
 
 ---
 
