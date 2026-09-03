@@ -1,0 +1,36 @@
+name: Java 17 CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# The workflow only needs to read the repository contents.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Check repository formatting
+        run: git diff --check HEAD^ HEAD
+
+      - name: Run automated tests
+        run: ./run-tests.sh
+
+      - name: Build the runnable JAR
+        run: ./build-jar.sh
