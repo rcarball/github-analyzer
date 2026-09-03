@@ -19,6 +19,9 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v6
+        with:
+          # The formatting check compares the current commit with its parent.
+          fetch-depth: 2
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
