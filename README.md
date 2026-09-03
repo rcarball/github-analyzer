@@ -1,5 +1,7 @@
 # 📊 GitHub Analyzer (Teaching-Oriented)
 
+[![Java 17 CI](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml/badge.svg?branch=master)](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
+
 Java (Swing) app to analyze GitHub repository activity for **team projects** (e.g., students).
 
 > 🧭 Teaching focus: these metrics aim to approximate **hands-on coding activity** (especially in Java) in a learning context.  
@@ -76,6 +78,11 @@ formulas are exported as literal text.
 ```bash
 ./run-tests.sh          # Windows: run-tests.bat  (or "Run as > JUnit Test" in Eclipse)
 ```
+
+### Continuous integration
+[GitHub Actions](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
+runs on every push and pull request targeting `master`. It verifies formatting,
+runs the automated test suite with Java 17 and builds the runnable JAR.
 
 ---
 
