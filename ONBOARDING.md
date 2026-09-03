@@ -112,15 +112,16 @@ headless and fast.
   fallback for the IDE — required for the JAR to work.
 - **GUI errors** are surfaced to the user (dialogs), not swallowed with `printStackTrace`.
 
-## 7. Recent changes (audit session)
-Security/privacy: stopped tracking secrets/PII (+ `.example` templates), purged leaked
-tokens from git history. Correctness: fixed the team-churn share bias (GUI + CSV +
-badges), whole-word markers, merge-commit reconciliation. Robustness: progressive cache
-persistence that preserves prior data on partial refreshes, plus an allow-list
-deserialization filter. Portability/UX: classpath icons + runnable-JAR build scripts,
-user-visible error dialogs, `yyyy-MM-dd` GUI dates, sortable user table with `%`-churn
-mini-bars and contribution-aware row shading. Tests grew from 12 (2 failing) to **65 green**,
-plus a CLI JUnit runner.
+## 7. Recent improvements
+The current version improves correctness, robustness, portability and usability:
+
+- Contribution shares, badge calculations, merge-commit accounting and external-reference
+  markers use the documented rules consistently in the GUI and CSV export.
+- The cache is persisted progressively and uses an allow-list during deserialization.
+- The runnable JAR loads icons from the classpath, while the IDE keeps a filesystem fallback.
+- The GUI includes user-visible error dialogs, `yyyy-MM-dd` dates, sortable contributor rows,
+  `%`-churn mini-bars and contribution-aware row shading.
+- The project includes **65 automated tests** and a command-line JUnit runner.
 
 ## 8. Gotchas
 - When packaged, resource paths resolve next to the JAR (and `resources/` is created on
