@@ -1,6 +1,6 @@
 # 📊 GitHub Analyzer (Teaching-Oriented)
 
-[![Java 17 CI](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml/badge.svg?branch=master)](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
+[![GitHub Actions CI](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml/badge.svg?branch=master)](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
 
 Java (Swing) app to analyze GitHub repository activity for **team projects** (e.g., students).
 
