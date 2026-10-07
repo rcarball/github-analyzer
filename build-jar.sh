@@ -14,7 +14,12 @@ cd "$(dirname "$0")"
 
 OUT=build/jar-classes
 STAGE=build/fat
-VERSION=1.3.1
+# CITATION.cff is the single source of truth for the release version.
+VERSION=$(sed -n 's/^version: "\([0-9][0-9.]*\)"$/\1/p' CITATION.cff)
+if [ -z "$VERSION" ]; then
+    echo "Missing or invalid version in CITATION.cff" >&2
+    exit 1
+fi
 JAR="github-analyzer-${VERSION}.jar"
 MAIN=es.deusto.prog3.githubanalyzer.Main
 LIB="$(pwd)/lib"
