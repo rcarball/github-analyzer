@@ -69,7 +69,7 @@ public class GitHubDataLoader {
     private static final String LINES_KEY = "LINES";
     private static final String REF_KEY = "REF";
     private static final String JAVA_EXTENSION = ".java";
-    private static final int FILE_SNAPSHOT_VERSION = 1;
+    private static final int FILE_SNAPSHOT_VERSION = 2;
 
     // Repositories are independent, so they can be analyzed in parallel. Calls
     // that expand a commit into its changed files are much more expensive, hence
@@ -232,16 +232,26 @@ public class GitHubDataLoader {
                                   List<RepoStats> cache,
                                   boolean forceRefresh) {
 
-        StringBuilder buffer = null;
-
         try {
             String[] tokens = repoUrl.split("/");
             String owner = tokens[tokens.length - 2];
             String repoName = tokens[tokens.length - 1];
+            return analyzeRepository(repoUrl, github.getRepository(owner + "/" + repoName), cache, forceRefresh);
+        } catch (Exception e) {
+            System.err.printf("\t* Error analyzing '%s': %s\n\n", repoUrl, e.getMessage());
+            return null;
+        }
+    }
 
-            GHRepository repository = github.getRepository(owner + "/" + repoName);
-            buffer = new StringBuilder(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));
-                    	
+    // Package-visible so failed API reads can be tested without a network connection.
+    RepoStats analyzeRepository(String repoUrl, GHRepository repository,
+                                List<RepoStats> cache, boolean forceRefresh) {
+        StringBuilder buffer = new StringBuilder();
+        try {
+            String[] tokens = repoUrl.split("/");
+            String repoName = tokens[tokens.length - 1];
+            buffer.append(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));
+
             if (forceRefresh) {
         	    buffer.append("\t* Force refresh enabled (ignoring cache)\n");
         	}
@@ -260,25 +270,14 @@ public class GitHubDataLoader {
             if (oldRepoStats != null && !forceRefresh
                     && oldRepoStats.getLastPushTime() == lastPushTime
                     && oldRepoStats.getFileSnapshotVersion() == FILE_SNAPSHOT_VERSION) {
-                // Update group info if needed
-                String group = groupsRepoMap.get(repoUrl);
-                
-                if (group != null && !group.equals(oldRepoStats.getGroup())) {
-                	oldRepoStats.setGroup(group);
-                }
-                
+                // A removed group must clear the old cached assignment too.
+                oldRepoStats.setGroup(groupsRepoMap.getOrDefault(repoUrl, ""));
                 buffer.append(String.format("\t* %s repository has not changed (using cache).\n", repoUrl));
                 return oldRepoStats;
             }
 
             RepoStats repoStats = new RepoStats();
-            String group = groupsRepoMap.get(repoUrl);
-
-            if (group != null) {
-            	repoStats.setGroup(groupsRepoMap.get(repoUrl));
-			} else {
-				repoStats.setGroup("");
-			}
+            repoStats.setGroup(groupsRepoMap.getOrDefault(repoUrl, ""));
 
             repoStats.setUrl(repoUrl);
             repoStats.setName(repoName);
@@ -376,7 +375,7 @@ public class GitHubDataLoader {
 
         if (defaultBranch == null || defaultBranch.isBlank()) {
             buffer.append("\t* Could not determine the default branch for the file snapshot.\n");
-            return result;
+            throw new IllegalStateException("Missing default branch for file snapshot");
         }
 
         try {
@@ -386,6 +385,7 @@ public class GitHubDataLoader {
         } catch (Exception ex) {
             buffer.append(String.format("\t* Error processing files from default branch '%s': %s\n",
                     defaultBranch, ex.getMessage()));
+            throw new IllegalStateException("Incomplete file snapshot", ex);
         }
 
         return result;
@@ -425,11 +425,13 @@ public class GitHubDataLoader {
                     }
                 } catch (Exception ex) {
                     buffer.append(String.format("\t* Error processing file '%s': %s\n", name, ex.getMessage()));
+                    throw new IllegalStateException("Incomplete file: " + name, ex);
                 }
             }
         } catch (Exception ex) {
             buffer.append(String.format("\t* Error processing content '%s': %s\n",
                     safeContentName(content), ex.getMessage()));
+            throw new IllegalStateException("Incomplete repository content", ex);
         }
     }
 
@@ -671,17 +673,13 @@ public class GitHubDataLoader {
                     if (sha == null || processedCommits.contains(sha)) continue;
                     processedCommits.add(sha);
 
-                    try {
-                        long t = c.getCommitDate().getTime();
-                        repoFirstCommitDate = Math.min(repoFirstCommitDate, t);
-                        repoLastCommitDate = Math.max(repoLastCommitDate, t);
-                    } catch (Exception ignore) {}
+                    long t = c.getCommitDate().getTime();
+                    repoFirstCommitDate = Math.min(repoFirstCommitDate, t);
+                    repoLastCommitDate = Math.max(repoLastCommitDate, t);
 
                     // A merge commit has more than one parent. These inflate the total
                     // commit count but are excluded from the per-user Java stats.
-                    try {
-                        if (c.getParents() != null && c.getParents().size() > 1) mergeCommits++;
-                    } catch (Exception ignore) {}
+                    if (c.getParents() != null && c.getParents().size() > 1) mergeCommits++;
 
                     RawIdentity author = resolveAuthorRaw(c);
                     result.computeIfAbsent(author, k -> new ArrayList<>()).add(c);
@@ -690,6 +688,7 @@ public class GitHubDataLoader {
             } catch (Exception ex) {
                 buffer.append(String.format("\t* Error reading commits from branch '%s': %s\n",
                         branchEntry.getKey(), ex.getMessage()));
+                throw new IllegalStateException("Incomplete commit history", ex);
             }
         }
 
@@ -717,7 +716,9 @@ public class GitHubDataLoader {
                 login = ghAuthor.getLogin();
                 if (login != null && !login.isBlank()) name = login;
             }
-        } catch (Exception ignore) {}
+        } catch (Exception ex) {
+            throw new IllegalStateException("Incomplete commit author", ex);
+        }
 
         try {
             GitUser authorInfo = c.getCommitShortInfo().getAuthor();
@@ -725,7 +726,9 @@ public class GitHubDataLoader {
                 if ((name == null || "unknown".equals(name)) && authorInfo.getName() != null) name = authorInfo.getName();
                 if (authorInfo.getEmail() != null) email = authorInfo.getEmail();
             }
-        } catch (Exception ignore) {}
+        } catch (Exception ex) {
+            throw new IllegalStateException("Incomplete commit author", ex);
+        }
 
         if ((login == null || login.isBlank())) {
             String nr = loginFromNoReply(email);
@@ -759,7 +762,7 @@ public class GitHubDataLoader {
      * skipped because their file list aggregates work already attributed to their
      * parent commits; a commit counts only when it changes at least one .java file.
      */
-    private UserStats computeUserStatsFromCommits(List<GHCommit> commits,
+    UserStats computeUserStatsFromCommits(List<GHCommit> commits,
                                                   String username,
                                                   String email,
                                                   StringBuilder buffer) {
@@ -779,8 +782,7 @@ public class GitHubDataLoader {
                     continue;
                 }
 
-                long commitTime = -1;
-                try { commitTime = commit.getCommitDate().getTime(); } catch (Exception ignore) {}
+                long commitTime = commit.getCommitDate().getTime();
                 if (commitTime != -1) {
                     firstCommitDate = Math.min(firstCommitDate, commitTime);
                     lastCommitDate = Math.max(lastCommitDate, commitTime);
@@ -803,6 +805,7 @@ public class GitHubDataLoader {
 
             } catch (Exception ex) {
                 buffer.append(String.format("\t  - Error processing commit for '%s': %s\n", username, ex.getMessage()));
+                throw new IllegalStateException("Incomplete contributor statistics", ex);
             }
         }
 
@@ -826,8 +829,8 @@ public class GitHubDataLoader {
 
     /**
      * Expands one commit under the shared API budget. A failed expansion is
-     * reported and contributes no Java changes, allowing the remaining commits
-     * and repositories to finish instead of aborting the whole analysis.
+     * propagated to reject this repository's incomplete result. Other repositories
+     * can still finish and persist their own confirmed results.
      */
     private List<GHCommit.File> safeListFiles(GHCommit commit, StringBuilder buffer) {
         boolean acquired = false;
@@ -841,7 +844,8 @@ public class GitHubDataLoader {
         } catch (Exception ex) {
             buffer.append(String.format("\t  - Error listFiles() for commit %s: %s\n",
                     safeSha(commit), ex.getMessage()));
-            return Collections.emptyList();
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new IllegalStateException("Could not read commit files", ex);
         } finally {
             if (acquired) LIST_FILES_SEMAPHORE.release();
         }

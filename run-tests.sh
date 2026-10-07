@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")"
 
 OUT=build/test-classes
-JUNIT=lib/junit-platform-console-standalone-1.14.4.jar
+JUNIT=lib/junit-platform-console-standalone-6.1.3.jar
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -14,5 +14,5 @@ mkdir -p "$OUT"
 javac --release 17 -cp "lib/*" -d "$OUT" $(find src test -name '*.java')
 
 # Run every test on the classpath (headless: no GUI window pops up).
-java -Djava.awt.headless=true -jar "$JUNIT" execute \
-     --class-path "$OUT" --scan-classpath --details=tree
+java -Djava.awt.headless=true -cp "$JUNIT:$OUT:lib/*" org.junit.platform.console.ConsoleLauncher execute \
+     --scan-classpath="$OUT" --details=tree

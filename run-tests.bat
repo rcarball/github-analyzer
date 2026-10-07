@@ -5,7 +5,7 @@ setlocal
 cd /d "%~dp0"
 
 set OUT=build\test-classes
-set JUNIT=lib\junit-platform-console-standalone-1.14.4.jar
+set JUNIT=lib\junit-platform-console-standalone-6.1.3.jar
 
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%"
@@ -16,7 +16,7 @@ javac --release 17 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-sources.txt"
 del "%TEMP%\ga-sources.txt"
 
 REM Run every test on the classpath (headless: no GUI window pops up).
-java -Djava.awt.headless=true -jar "%JUNIT%" execute ^
-     --class-path "%OUT%" --scan-classpath --details=tree
+java -Djava.awt.headless=true -cp "%JUNIT%;%OUT%;lib/*" org.junit.platform.console.ConsoleLauncher execute ^
+     --scan-classpath="%OUT%" --details=tree
 
 endlocal

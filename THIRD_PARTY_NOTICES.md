@@ -9,17 +9,17 @@ notices shipped by their authors.
 | Component | Version | License | Project |
 | --- | --- | --- | --- |
 | Apache Commons IO | 2.22.0 | Apache-2.0 | https://commons.apache.org/proper/commons-io/ |
-| Apache Commons Lang | 3.20.0 | Apache-2.0 | https://commons.apache.org/proper/commons-lang/ |
+| Apache Commons Lang | 3.21.0 | Apache-2.0 | https://commons.apache.org/proper/commons-lang/ |
 | GitHub API for Java | 1.330 | MIT | https://github.com/hub4j/github-api |
 | Jackson Annotations | 2.21 | Apache-2.0 | https://github.com/FasterXML/jackson-annotations |
-| Jackson Core | 2.21.5 | Apache-2.0 | https://github.com/FasterXML/jackson-core |
-| Jackson Databind | 2.21.5 | Apache-2.0 | https://github.com/FasterXML/jackson-databind |
+| Jackson Core | 2.21.7 | Apache-2.0 | https://github.com/FasterXML/jackson-core |
+| Jackson Databind | 2.21.7 | Apache-2.0 | https://github.com/FasterXML/jackson-databind |
 
 ## Test-only library included in the source distribution
 
 | Component | Version | License | Project |
 | --- | --- | --- | --- |
-| JUnit Platform Console Standalone | 1.14.4 | EPL-2.0 | https://junit.org/ |
+| JUnit Platform Console Standalone | 6.1.3 | EPL-2.0 | https://junit.org/ |
 
 ## Icons
 

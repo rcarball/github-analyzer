@@ -17,6 +17,8 @@
 package es.deusto.prog3.githubanalyzer.persistence;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.FileReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -77,7 +79,7 @@ public class Configurator {
 	private void load() {
 		try {
 			properties = new Properties();
-			properties.load(new FileReader(resolvePath(PROPERTIES_FILE)));
+			properties.load(new FileReader(resolvePath(PROPERTIES_FILE), StandardCharsets.UTF_8));
 			githubUser = properties.getProperty("github.user");
 			githubToken = properties.getProperty("github.token");
 			loadFromGithub = "YES".equalsIgnoreCase(properties.getProperty("update.from.github"));
@@ -130,23 +132,29 @@ public class Configurator {
 		String statsPath = pathToPersist(properties, "stats.file", STATS_FILE);
 		String csvPath = pathToPersist(properties, "stats.csv", STATS_CSV);
 
-		String content =
-				"# GitHub Analyzer configuration.\n" +
-				"# IMPORTANT: never commit this file with a real token.\n" +
-				"github.user=" + nz(githubUser) + "\n" +
-				"github.token=" + nz(githubToken) + "\n" +
-				"update.from.github=" + (loadFromGithub ? "yes" : "no") + "\n" +
-				"repositories.file=" + repositoriesPath + "\n" +
-				"stats.file=" + statsPath + "\n" +
-				"stats.csv=" + csvPath + "\n" +
-				"teacher.user=" + nz(teacherUser) + "\n" +
-				"teacher.email=" + nz(teacherEmail) + "\n";
-		try {
-			Files.writeString(Paths.get(resolvePath(PROPERTIES_FILE)), content, StandardCharsets.UTF_8);
+        Properties saved = new Properties();
+        saved.setProperty("github.user", nz(githubUser));
+        saved.setProperty("github.token", nz(githubToken));
+        saved.setProperty("update.from.github", loadFromGithub ? "yes" : "no");
+        saved.setProperty("repositories.file", repositoriesPath);
+        saved.setProperty("stats.file", statsPath);
+        saved.setProperty("stats.csv", csvPath);
+        saved.setProperty("teacher.user", nz(teacherUser));
+        saved.setProperty("teacher.email", nz(teacherEmail));
+        try {
+            storeProperties(saved, Paths.get(resolvePath(PROPERTIES_FILE)));
+            properties = saved;
 		} catch (Exception ex) {
 			System.err.format("* Error writing config: %s%n", ex.getMessage());
 		}
 	}
+
+    /** Use the Properties encoder to preserve backslashes, whitespace and control characters. */
+    static void storeProperties(Properties values, Path destination) throws IOException {
+        try (BufferedWriter writer = Files.newBufferedWriter(destination, StandardCharsets.UTF_8)) {
+            values.store(writer, "GitHub Analyzer configuration.\nIMPORTANT: never commit this file with a real token.");
+        }
+    }
 
 	/** Returns the raw contents of repositories.txt (for editing in the config dialog). */
 	public String readRepositoriesText() {

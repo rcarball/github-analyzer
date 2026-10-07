@@ -12,6 +12,11 @@ package es.deusto.prog3.githubanalyzer.persistence;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.Properties;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.io.TempDir;
 
 import org.junit.jupiter.api.Test;
 
@@ -40,5 +45,28 @@ public class ConfiguratorTest {
                 "An intentionally blank path must not be replaced while saving other settings");
         assertEquals("resources/stats.dat",
                 Configurator.pathToPersist(null, "stats.file", "resources/stats.dat"));
+    }
+    @Test
+    public void savedPropertiesRoundTripWindowsPathsAndSpecialCharacters(@TempDir Path dir) throws Exception {
+        Properties values = new Properties();
+        values.setProperty("repositories.file", "C:\\users\\rober\\repos.txt");
+        values.setProperty("stats.file", "C:\\course\\stats.dat");
+        values.setProperty("stats.csv", "C:\\new\\table.csv");
+        values.setProperty("teacher.user", "  José=profesor: #1!");
+        values.setProperty("teacher.email", "first\nsecond\tvalue\r");
+        Path file = dir.resolve("config.properties");
+        Configurator.storeProperties(values, file);
+        Properties loaded = new Properties();
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            loaded.load(reader);
+        }
+        assertEquals(values, loaded);
+        // A second save must not add an extra layer of escaping.
+        Configurator.storeProperties(loaded, file);
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            Properties twice = new Properties();
+            twice.load(reader);
+            assertEquals(values, twice);
+        }
     }
 }

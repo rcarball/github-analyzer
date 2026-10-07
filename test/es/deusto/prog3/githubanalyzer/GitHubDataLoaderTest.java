@@ -12,9 +12,26 @@ package es.deusto.prog3.githubanalyzer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.Map;
 import java.util.ArrayList;
+
+import org.kohsuke.github.GHBranch;
+import org.kohsuke.github.GHCommit;
+import org.kohsuke.github.GHCommitQueryBuilder;
+import org.kohsuke.github.GHContent;
+import org.kohsuke.github.GHRepository;
+import org.kohsuke.github.GitHub;
+import org.kohsuke.github.PagedIterable;
+import es.deusto.prog3.githubanalyzer.domain.UserStats;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -60,6 +77,146 @@ public class GitHubDataLoaderTest {
         assertEquals(2, updated.size());
         assertSame(refreshedA, updated.get(0));
         assertSame(oldB, updated.get(1), "A failed repository must retain its previous cache entry");
+    }
+
+    private static final String AUDIT_URL = "https://github.com/test-audit/repo";
+
+    private static class StubRepository extends GHRepository {
+        List<GHContent> contents = List.of(javaContent(false));
+        boolean failSnapshot;
+        boolean failHistory;
+        int snapshotReads;
+
+        @Override public String getFullName() { return "test-audit/repo"; }
+        @Override public Date getPushedAt() { return new Date(1000); }
+        @Override public Date getCreatedAt() { return new Date(0); }
+        @Override public int getSize() { return 10; }
+        @Override public boolean isPrivate() { return false; }
+        @Override public String getDefaultBranch() { return "master"; }
+        @Override public Map<String, GHBranch> getBranches() throws IOException {
+            if (!failHistory) return Map.of();
+            GHBranch branch = GitHub.getMappingObjectReader().forType(GHBranch.class)
+                    .readValue("{\"name\":\"master\",\"commit\":{\"sha\":\"test-sha\"}}");
+            return Map.of("master", branch);
+        }
+        @Override public GHCommitQueryBuilder queryCommits() {
+            throw new IllegalStateException("Simulated commit history API failure");
+        }
+        @Override public List<GHContent> getDirectoryContent(String path, String ref) throws IOException {
+            snapshotReads++;
+            if (failSnapshot) throw new IOException("Simulated snapshot API failure");
+            return contents;
+        }
+    }
+
+    private static GHContent javaContent(boolean failRead) {
+        return new GHContent() {
+            @Override public boolean isDirectory() { return false; }
+            @Override public String getName() { return "Example.java"; }
+            @Override public InputStream read() throws IOException {
+                if (failRead) throw new IOException("Simulated file API failure");
+                return new ByteArrayInputStream("// IAG\nclass Example {}\n".getBytes(StandardCharsets.UTF_8));
+            }
+        };
+    }
+
+    private static RepoStats cachedRepo(int snapshotVersion) {
+        RepoStats cached = repo(AUDIT_URL, "repo");
+        cached.setLastPushTime(1000);
+        cached.setFileSnapshotVersion(snapshotVersion);
+        cached.setCodeLines(42);
+        cached.setGroup("OLD-GROUP");
+        return cached;
+    }
+
+    @Test
+    public void failedSnapshotRejectsReplacementAndAllowsRetryAtSamePush() {
+        StubRepository repository = new StubRepository();
+        RepoStats cached = cachedRepo(2);
+        repository.failSnapshot = true;
+        GitHubDataLoader loader = GitHubDataLoader.getInstance();
+        assertNull(loader.analyzeRepository(AUDIT_URL, repository, List.of(cached), true));
+        assertEquals(42, cached.getCodeLines());
+        assertEquals("OLD-GROUP", cached.getGroup());
+        repository.failSnapshot = false;
+        RepoStats retried = loader.analyzeRepository(AUDIT_URL, repository, List.of(cached), true);
+        assertEquals(2, retried.getCodeLines());
+        assertEquals(1, retried.getExternalReferences());
+        assertEquals(2, repository.snapshotReads);
+    }
+
+    @Test
+    public void fileFailureAfterSuccessfulReadRejectsPartialSnapshot() {
+        StubRepository repository = new StubRepository();
+        repository.contents = List.of(javaContent(false), javaContent(true));
+        RepoStats cached = cachedRepo(2);
+        assertNull(GitHubDataLoader.getInstance().analyzeRepository(
+                AUDIT_URL, repository, List.of(cached), true));
+        assertEquals(42, cached.getCodeLines());
+    }
+
+    @Test
+    public void branchHistoryFailureRejectsOtherwiseValidSnapshot() {
+        StubRepository repository = new StubRepository();
+        repository.failHistory = true;
+        assertNull(GitHubDataLoader.getInstance().analyzeRepository(
+                AUDIT_URL, repository, List.of(cachedRepo(2)), true));
+        assertEquals(1, repository.snapshotReads);
+    }
+
+    @Test
+    public void failedCommitExpansionCannotBecomeZeroContribution() {
+        GHCommit commit = new GHCommit() {
+            @Override public List<GHCommit> getParents() { return List.of(); }
+            @Override public Date getCommitDate() { return new Date(1000); }
+            @Override public String getSHA1() { return "test-sha"; }
+            @Override public PagedIterable<GHCommit.File> listFiles() throws IOException {
+                throw new IOException("Simulated commit file API failure");
+            }
+        };
+        assertThrows(IllegalStateException.class, () -> GitHubDataLoader.getInstance()
+                .computeUserStatsFromCommits(List.of(commit), "student", "student@example.org", new StringBuilder()));
+    }
+
+    @Test
+    public void emptyCommitFileListRemainsAValidZeroContribution() {
+        GHCommit commit = new GHCommit() {
+            @Override public List<GHCommit> getParents() { return List.of(); }
+            @Override public Date getCommitDate() { return new Date(1000); }
+            @Override public PagedIterable<GHCommit.File> listFiles() {
+                return new PagedIterable<>() {
+                    @Override public org.kohsuke.github.PagedIterator<GHCommit.File> _iterator(int pageSize) {
+                        throw new UnsupportedOperationException();
+                    }
+                    @Override public List<GHCommit.File> toList() { return List.of(); }
+                };
+            }
+        };
+        UserStats stats = GitHubDataLoader.getInstance().computeUserStatsFromCommits(
+                List.of(commit), "student", "student@example.org", new StringBuilder());
+        assertEquals(0, stats.getCommits());
+        assertEquals(0, stats.getChurn());
+    }
+
+    @Test
+    public void oldSnapshotVersionIsReanalyzedWithoutAnotherPush() {
+        StubRepository repository = new StubRepository();
+        RepoStats refreshed = GitHubDataLoader.getInstance().analyzeRepository(
+                AUDIT_URL, repository, List.of(cachedRepo(1)), false);
+        assertEquals(1, repository.snapshotReads);
+        assertEquals(2, refreshed.getFileSnapshotVersion());
+        assertEquals(2, refreshed.getCodeLines());
+    }
+
+    @Test
+    public void reusingCacheClearsRemovedGroupWithoutReadingFiles() {
+        StubRepository repository = new StubRepository();
+        RepoStats cached = cachedRepo(2);
+        RepoStats result = GitHubDataLoader.getInstance().analyzeRepository(
+                AUDIT_URL, repository, List.of(cached), false);
+        assertSame(cached, result);
+        assertEquals("", result.getGroup());
+        assertEquals(0, repository.snapshotReads);
     }
 
     // ---------------- clusterIdentities: merging rules ----------------
