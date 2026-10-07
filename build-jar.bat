@@ -13,7 +13,13 @@ cd /d "%~dp0"
 
 set OUT=build\jar-classes
 set STAGE=build\fat
-set VERSION=1.3.1
+REM CITATION.cff is the single source of truth for the release version.
+set VERSION=
+for /f "tokens=2" %%V in ('findstr /b "version:" CITATION.cff') do set VERSION=%%~V
+if not defined VERSION (
+    echo Missing version in CITATION.cff
+    exit /b 1
+)
 set JAR=github-analyzer-%VERSION%.jar
 set MAIN=es.deusto.prog3.githubanalyzer.Main
 set LIB=%CD%\lib

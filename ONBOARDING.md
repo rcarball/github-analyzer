@@ -123,7 +123,14 @@ The current version improves correctness, robustness, portability and usability:
   `%`-churn mini-bars and contribution-aware row shading.
 - The project includes **73 automated tests** and a command-line JUnit runner.
 
-## 8. Gotchas
+## 8. Release workflow
+- Both build scripts read the version from `CITATION.cff`.
+- All changes to `master` must pass **Test and package** through a pull request.
+- After merging the release version and date, push its `vMAJOR.MINOR.PATCH` tag.
+- **Publish release** validates ancestry/version, tests and packages with Java 17,
+  and publishes the JAR and checksum. Manual runs only rehearse an existing tag.
+
+## 9. Gotchas
 - When packaged, resource paths resolve next to the JAR (and `resources/` is created on
   first run). From the IDE or loose class files, relative resource paths resolve from the
   current working directory.

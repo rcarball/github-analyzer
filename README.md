@@ -84,6 +84,34 @@ formulas are exported as literal text.
 runs on every push and pull request targeting `master`. It verifies formatting,
 runs the automated test suite with Java 17 and builds the runnable JAR.
 
+`master` requires a pull request, a successful **Test and package** check against
+its latest commit, and resolved review conversations. Force pushes and branch
+deletion are blocked. No approval is mandatory while this is a single-maintainer
+project.
+
+### Publish a release
+The version in `CITATION.cff` controls both build scripts. Update its `version`
+and `date-released` through a pull request before creating a release tag.
+Examples elsewhere in this guide use the current release; substitute the version
+you are publishing.
+
+After merging the version change, tag the corresponding commit on `master`:
+```bash
+git switch master
+git pull --ff-only origin master
+git tag -a v1.3.2 -m "GitHub Analyzer v1.3.2"
+git push origin v1.3.2
+```
+
+The **Publish release** workflow checks that the tag matches `CITATION.cff` and
+belongs to the history of `master`, runs the tests with Java 17, then publishes
+the JAR, its SHA-256 checksum and generated release notes. Only the publishing
+job has write permissions. Existing releases are never overwritten.
+
+For a rehearsal, run **Publish release → Run workflow** from the `master` branch
+and select an existing tag. This validates and packages it without publishing.
+
+
 ---
 
 ## ⚙️ Configuration
