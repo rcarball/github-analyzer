@@ -5,7 +5,7 @@ REM Produces github-analyzer-<version>.jar with the application classes, all GUI
 REM all third-party libraries bundled inside — no lib\ folder needed at runtime.
 REM
 REM Run it (from any directory) with:
-REM     java -jar github-analyzer-1.3.0.jar
+REM     java -jar github-analyzer-1.3.1.jar
 REM Keep a resources\ folder (with your config.properties and repositories.txt)
 REM next to the jar — those files stay EXTERNAL and editable (never bundled).
 setlocal
@@ -13,7 +13,7 @@ cd /d "%~dp0"
 
 set OUT=build\jar-classes
 set STAGE=build\fat
-set VERSION=1.3.0
+set VERSION=1.3.1
 set JAR=github-analyzer-%VERSION%.jar
 set MAIN=es.deusto.prog3.githubanalyzer.Main
 set LIB=%CD%\lib
