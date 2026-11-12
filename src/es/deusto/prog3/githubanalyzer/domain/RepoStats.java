@@ -200,9 +200,14 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	@Override
 	public int compareTo(RepoStats o) {
 		if (o == null) return 1;
+		String thisGroup = this.group == null ? "" : this.group;
+		String oGroup    = o.group    == null ? "" : o.group;
+		int cmp = thisGroup.compareTo(oGroup);
+		cmp = thisGroup.compareTo(oGroup);
+		if (cmp != 0) return cmp;
 		String thisName = this.name == null ? "" : this.name;
 		String oName    = o.name    == null ? "" : o.name;
-		int cmp = thisName.compareTo(oName);
+		cmp = thisName.compareTo(oName);
 		if (cmp != 0) return cmp;
 		String thisUrl = this.url == null ? "" : this.url;
 		String oUrl    = o.url    == null ? "" : o.url;
