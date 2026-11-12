@@ -94,10 +94,8 @@ public class MainWindow extends JFrame {
 	private JLabel lblExternalRefs;
 	private JLabel lblURL;
 	private JLabel lblStatus = new JLabel(" ");
-	// Locale-independent, year-aware, sortable date format. "MMM-dd" hid the year
-	// (a course spanning e.g. Oct→Jan could not tell 2025 from 2026) and localized
-	// the month name ("ene"/"Jan"), making the UI inconsistent across systems.
-	private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
+	private SimpleDateFormat dateFormatShort = new SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
+	private SimpleDateFormat dateFormatLong = new SimpleDateFormat("yyyy-MMM-dd - hh:mm", java.util.Locale.ROOT);
 	private JTable jTableUserStats;
 	private DefaultTableModel tableModelUserStats;
 	private JTree jTreeFileType;
@@ -815,18 +813,18 @@ public class MainWindow extends JFrame {
 
 		if (repoStats != null) {
 			// Update labels with repository stats
-			lblCreationDate.setText(String.format("• Creation date: %s", dateFormat.format(new Date(repoStats.getCreationDate()))));			
+			lblCreationDate.setText(String.format("• Creation date: %s", dateFormatLong.format(new Date(repoStats.getCreationDate()))));			
 			
 			if (repoStats.getFirstCommit() == -1) {
                 lblFirstCommit.setText("• First commit: -");
             } else {
-            	lblFirstCommit.setText(String.format("• First commit: %s", dateFormat.format(new Date(repoStats.getFirstCommit()))));
+            	lblFirstCommit.setText(String.format("• First commit: %s", dateFormatLong.format(new Date(repoStats.getFirstCommit()))));
             }
 
 			if (repoStats.getLastCommit() == -1) {
 				lblLastCommit.setText("• Last commit: -");
 			} else {			
-				lblLastCommit.setText(String.format("• Last commit: %s", dateFormat.format(new Date(repoStats.getLastCommit()))));
+				lblLastCommit.setText(String.format("• Last commit: %s", dateFormatLong.format(new Date(repoStats.getLastCommit()))));
 			}
 			
 			int javaCommitsSum = repoStats.getUserStats().stream().mapToInt(UserStats::getCommits).sum();
@@ -1153,7 +1151,7 @@ public class MainWindow extends JFrame {
     private String formatCellValue(Object v) {
         if (v instanceof Long) {
             long ts = (Long) v;
-            return (ts == -1L) ? "-" : dateFormat.format(new Date(ts));
+            return (ts == -1L) ? "-" : dateFormatShort.format(new Date(ts));
         }
         if (v instanceof Float) {
             float f = (Float) v;
