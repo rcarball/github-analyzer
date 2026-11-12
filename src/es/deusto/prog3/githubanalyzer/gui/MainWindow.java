@@ -233,7 +233,6 @@ public class MainWindow extends JFrame {
 	
 	public MainWindow(List<RepoStats> data) {
 		jTreeRepos.setRowHeight(23);
-
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
 			private static final long serialVersionUID = 1L;
 
