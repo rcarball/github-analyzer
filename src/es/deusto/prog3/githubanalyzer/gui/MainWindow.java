@@ -813,12 +813,12 @@ public class MainWindow extends JFrame {
 
 		if (repoStats != null) {
 			// Update labels with repository stats
-			lblCreationDate.setText(String.format("• Creation date: %s", dateFormatLong.format(new Date(repoStats.getCreationDate()))));			
+			lblCreationDate.setText(String.format("• Creation date: %s", dateFormatLong.format(new Date(repoStats.getCreationDate()))));
 			
 			if (repoStats.getFirstCommit() == -1) {
                 lblFirstCommit.setText("• First commit: -");
             } else {
-            	lblFirstCommit.setText(String.format("• First commit: %s", dateFormatLong.format(new Date(repoStats.getFirstCommit()))));
+                lblFirstCommit.setText(String.format("• First commit: %s", dateFormatLong.format(new Date(repoStats.getFirstCommit()))));
             }
 
 			if (repoStats.getLastCommit() == -1) {
