@@ -4,7 +4,10 @@ Java (Swing) tool that analyzes GitHub repository activity to help assess
 **individual contribution** in team projects (course context). This guide gets a
 new contributor productive quickly and records the conventions the codebase relies on.
 
-> For end-user documentation (metrics meaning, badges, FAQ) see [README.md](README.md).
+> For end-user documentation (metrics meaning, badges, FAQ) see [README.md](../README.md).
+
+All commands below are run from the repository root. For the directory layout,
+see the [README](../README.md#repository-layout).
 
 ---
 
@@ -35,29 +38,42 @@ And list the repositories to analyze in `resources/repositories.txt`
 > `.gitignore`; keep them that way. Tokens must be revoked if ever exposed.
 
 ## 3. Run
-- **Eclipse:** run `es.deusto.prog3.githubanalyzer.Main`.
+- **Eclipse:** use project-root working directory, output folder `build/eclipse`, and
+  compiler compliance/release **17**. A newer installed JDK (such as 21) can provide
+  the runtime while compilation targets Java 17. Run `es.deusto.prog3.githubanalyzer.Main`.
 - **Runnable JAR (any OS):**
   ```bash
-  ./build-jar.sh            # Windows: build-jar.bat
-  java -jar github-analyzer-1.3.1.jar
+  ./scripts/build-jar.sh            # Windows: scripts\build-jar.bat
+  java -jar dist/github-analyzer-1.3.1.jar
   ```
   The JAR already bundles all runtime library dependencies and the icons. On first run it creates `resources/`
-  next to itself; keep that external folder there once it contains your configuration.
+  next to itself (`dist/resources` for a local build); keep that external folder
+  there once it contains your configuration. See the README for sharing the existing
+  project configuration through a local link.
   The JAR can be launched from any directory because its resource paths resolve next
   to the JAR.
 - **From source (CLI):**
   ```bash
-  javac --release 17 -cp "lib/*" -d bin $(find src -name "*.java")   # Windows: classpath sep is ';'
-  java  -cp "bin:lib/*" es.deusto.prog3.githubanalyzer.Main
+  javac --release 17 -cp "lib/*" -d build/eclipse $(find src -name "*.java")   # Windows: classpath sep is ';'
+  java  -cp "build/eclipse:lib/*" es.deusto.prog3.githubanalyzer.Main
   ```
 
 ## 4. Tests
 ```bash
-./run-tests.sh             # Windows: run-tests.bat   (or "Run as > JUnit Test" in Eclipse)
+./scripts/run-tests.sh             # Windows: scripts\run-tests.bat   (or "Run as > JUnit Test" in Eclipse)
 ```
-JUnit 6, run via `lib/junit-platform-console-standalone-*.jar`. Currently **73 tests**.
+JUnit 6, run via `lib/junit-platform-console-standalone-*.jar`. Currently **87 tests**.
 When you touch domain/loader/metrics logic, add or update tests; the CLI runner is
 headless and fast.
+
+Release-workflow compatibility is checked separately with temporary fixtures for
+the legacy root layout and the current `scripts/` + `dist/` layout:
+
+```bash
+python3 scripts/check-release-layout.py  # Python 3, Bash and sha256sum required
+```
+CI runs this check before the Java tests; it also verifies failure propagation
+and rejects stale artifacts from the other layout.
 
 ## 5. Architecture (packages under `src/es/deusto/prog3/githubanalyzer/`)
 - `Main` — entry point (load cache → optionally refresh from GitHub → open GUI).
@@ -106,8 +122,9 @@ headless and fast.
   /`…domain`, extend the filter pattern.
 - **External-reference markers** (`IAG`, `FUENTE-EXTERNA`) match as **whole words**
   (`\b…\b`) — see `GitHubDataLoader.countExternalMarkers`.
-- **Dates.** The GUI displays dates as `yyyy-MM-dd` with `Locale.ROOT`; CSV dates
-  use `yyyy/MM/dd` for spreadsheet compatibility.
+- **Dates.** Repository overview timestamps use `yyyy-MMM-dd - hh:mm`; contributor
+  table dates use `yyyy-MM-dd`, both with `Locale.ROOT`. CSV dates use `yyyy/MM/dd`
+  for spreadsheet compatibility.
 - **Resources** (icons) load from the **classpath** first (`/images/…`), filesystem
   fallback for the IDE — required for the JAR to work.
 - **GUI errors** are surfaced to the user (dialogs), not swallowed with `printStackTrace`.
@@ -121,7 +138,7 @@ The current version improves correctness, robustness, portability and usability:
 - The runnable JAR loads icons from the classpath, while the IDE keeps a filesystem fallback.
 - The GUI includes user-visible error dialogs, `yyyy-MM-dd` dates, sortable contributor rows,
   `%`-churn mini-bars and contribution-aware row shading.
-- The project includes **73 automated tests** and a command-line JUnit runner.
+- The project includes **87 automated tests** and a command-line JUnit runner.
 
 ## 8. Release workflow
 - Both build scripts read the version from `CITATION.cff`.
@@ -129,10 +146,13 @@ The current version improves correctness, robustness, portability and usability:
 - After merging the release version and date, push its `vMAJOR.MINOR.PATCH` tag.
 - **Publish release** validates ancestry/version, tests and packages with Java 17,
   and publishes the JAR and checksum. Manual runs only rehearse an existing tag.
+- Historical tags keep their own scripts: the workflow selects the root or
+  `scripts/` entry points and collects the resulting JAR in `dist/` for either layout.
 
 ## 9. Gotchas
 - When packaged, resource paths resolve next to the JAR (and `resources/` is created on
   first run). From the IDE or loose class files, relative resource paths resolve from the
   current working directory.
-- The GUI is not covered by unit tests; verify visual changes by running the app.
+- The configuration form and refresh lifecycle have headless tests; verify visual
+  changes by running the app.
 - `github-api` calls count against GitHub rate limits; large repo sets can be throttled.

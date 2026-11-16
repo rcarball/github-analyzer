@@ -6,6 +6,7 @@
 # Compiled Code
 bin/
 build/
+/dist/
 /github-analyzer.jar
 /github-analyzer-*.jar
 /release/

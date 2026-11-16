@@ -19,6 +19,29 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 
 ---
 
+## Repository layout
+
+- `src/`, `test/`: application and test sources.
+- `lib/`: bundled compilation and test dependencies.
+- `resources/`: versioned icons/templates plus ignored local configuration and data.
+- `scripts/`: build and test entry points for macOS/Linux (`.sh`) and Windows (`.bat`).
+- `docs/`: [developer onboarding](docs/ONBOARDING.md) and third-party notices.
+- `build/`: regenerable files: `eclipse/`, `test-classes/`, `jar-classes/`, and `fat/`.
+- `dist/`: ignored runnable JARs and checksums. Historical local binaries may be
+  kept under `dist/archive/`; published versions belong in GitHub Releases.
+- `.github/workflows/`: CI and release automation.
+
+`README.md`, `LICENSE`, `NOTICE`, `CITATION.cff`, and `LICENSES/` stay at the root.
+Eclipse workspace metadata stays in the workspace; local `.project`, `.classpath`,
+and `.settings/` files remain ignored by Git. Configure Eclipse through its project
+settings when importing the project on another machine.
+
+Build and test scripts resolve paths from their own location, so they can also be
+invoked by absolute path from another working directory. Examples below assume
+you are in the repository root.
+
+---
+
 ## 🚀 How to run
 
 ### Requirements
@@ -45,27 +68,50 @@ cp resources/repositories.txt.example  resources/repositories.txt
 ```
 
 ### Option A — From the IDE (Eclipse)
-Run the main class `es.deusto.prog3.githubanalyzer.Main`.
+Run the main class `es.deusto.prog3.githubanalyzer.Main`, using the repository
+root as the working directory. Set the compiler compliance/release to **17** and
+the output folder to `build/eclipse/`. A newer installed JDK can be used to run
+Eclipse and the application while compiling for Java 17.
 
 ### Option B — Runnable JAR (any OS)
 ```bash
-./build-jar.sh          # Windows: build-jar.bat
-java -jar github-analyzer-1.3.1.jar
+./scripts/build-jar.sh          # Windows: scripts\build-jar.bat
+java -jar dist/github-analyzer-1.3.1.jar
 ```
-This builds a **self-contained** versioned JAR (currently `github-analyzer-1.3.1.jar`): the application, the icons
+This builds a **self-contained** versioned JAR under `dist/` (currently `dist/github-analyzer-1.3.1.jar`): the application, the icons
 **and all third-party libraries are bundled inside** — no `lib/` folder is needed
-to run it. On first run, the app creates a `resources/` folder next to the JAR.
+to run it. On first run, the app creates a `resources/` folder next to the JAR
+(`dist/resources/` when running the local build).
 For an existing configuration, keep that folder with its `config.properties` and
 `repositories.txt` next to the JAR; you can launch it from any directory (paths
 resolve relative to the JAR's location). Those files stay
 **external and editable** and are never bundled, since they hold your token and
 student data.
 
+To reuse the existing project configuration and cache when running the local JAR,
+create a directory link **once**, if `dist/resources` does not already exist:
+
+```bash
+# macOS / Linux, from the repository root after building
+ln -s ../resources dist/resources
+```
+
+On Windows, from Command Prompt in the repository root:
+
+```bat
+mklink /J dist\resources "%CD%\resources"
+```
+
+The link is local and ignored by Git; it shares the same files with Eclipse.
+For a standalone installation, keep the JAR and its own `resources/` folder together
+in the installation directory. Build and release scripts package only the JAR
+and its checksum, and never copy local credentials or statistics into it.
+
 ### Option C — Compile and run from source (CLI)
 ```bash
 # macOS / Linux  (Windows: use ';' as the classpath separator)
-javac --release 17 -cp "lib/*" -d bin $(find src -name "*.java")
-java  -cp "bin:lib/*" es.deusto.prog3.githubanalyzer.Main
+javac --release 17 -cp "lib/*" -d build/eclipse $(find src -name "*.java")
+java  -cp "build/eclipse:lib/*" es.deusto.prog3.githubanalyzer.Main
 ```
 
 ### CSV export compatibility
@@ -76,7 +122,7 @@ formulas are exported as literal text.
 
 ### Run the tests
 ```bash
-./run-tests.sh          # Windows: run-tests.bat  (or "Run as > JUnit Test" in Eclipse)
+./scripts/run-tests.sh          # Windows: scripts\run-tests.bat  (or "Run as > JUnit Test" in Eclipse)
 ```
 
 ### Continuous integration
@@ -110,6 +156,18 @@ job has write permissions. Existing releases are never overwritten.
 
 For a rehearsal, run **Publish release → Run workflow** from the `master` branch
 and select an existing tag. This validates and packages it without publishing.
+The workflow supports both historical tags with scripts and JAR output at the
+repository root, and the current `scripts/` + `dist/` layout. Verified artifacts
+are always collected in `dist/`.
+
+To check both layouts locally using the workflow's shell commands (requires
+Python 3, Bash and `sha256sum`):
+
+```bash
+python3 scripts/check-release-layout.py
+```
+This check uses temporary fixtures, including failed tests and missing artifacts,
+and also runs in CI.
 
 
 ---
@@ -437,7 +495,7 @@ The Java source code, build scripts and runnable JAR are licensed under the
 Documentation authored for this project is licensed under
 [CC BY 4.0](LICENSES/CC-BY-4.0.md). Third-party libraries and icons are excluded
 from those grants and retain their own terms; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 For academic or teaching use, GitHub can generate the recommended citation from
 [CITATION.cff](CITATION.cff) through the repository's **Cite this repository**

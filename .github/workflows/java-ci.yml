@@ -32,8 +32,11 @@ jobs:
       - name: Check repository formatting
         run: git diff --check HEAD^ HEAD
 
+      - name: Check release layout compatibility
+        run: python3 scripts/check-release-layout.py
+
       - name: Run automated tests
-        run: ./run-tests.sh
+        run: ./scripts/run-tests.sh
 
       - name: Build the runnable JAR
-        run: ./build-jar.sh
+        run: ./scripts/build-jar.sh

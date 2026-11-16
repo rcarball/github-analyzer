@@ -1,16 +1,16 @@
 #!/usr/bin/env sh
 # Build a SELF-CONTAINED runnable JAR (macOS / Linux).
 #
-# Produces ./github-analyzer-<version>.jar with the application classes, all GUI icons AND
+# Produces dist/github-analyzer-<version>.jar with the application classes, all GUI icons AND
 # all third-party libraries bundled inside — no lib/ folder needed at runtime.
 #
 # Run it (from any directory) with:
-#     java -jar github-analyzer-1.3.1.jar
+#     java -jar dist/github-analyzer-1.3.1.jar
 # Keep a `resources/` folder (with your config.properties and repositories.txt)
 # next to the jar — those files stay EXTERNAL and editable (never bundled, since
 # they hold your token and student data).
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 OUT=build/jar-classes
 STAGE=build/fat
@@ -20,12 +20,12 @@ if [ -z "$VERSION" ]; then
     echo "Missing or invalid version in CITATION.cff" >&2
     exit 1
 fi
-JAR="github-analyzer-${VERSION}.jar"
+JAR="dist/github-analyzer-${VERSION}.jar"
 MAIN=es.deusto.prog3.githubanalyzer.Main
 LIB="$(pwd)/lib"
 
 rm -rf "$OUT" "$STAGE"
-mkdir -p "$OUT" "$STAGE"
+mkdir -p "$OUT" "$STAGE" dist
 
 # 1) Compile application sources (tests excluded).
 javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
@@ -47,7 +47,9 @@ mkdir -p "$STAGE/images"
 cp resources/images/*.png "$STAGE/images/"
 
 # 5) Include the license and attribution notices in the binary distribution.
-cp LICENSE NOTICE THIRD_PARTY_NOTICES.md "$STAGE/"
+cp LICENSE NOTICE "$STAGE/"
+mkdir -p "$STAGE/docs"
+cp docs/THIRD_PARTY_NOTICES.md "$STAGE/docs/"
 
 # 6) Package a single self-contained runnable jar (Main-Class via -e).
 jar cfe "$JAR" "$MAIN" -C "$STAGE" .
