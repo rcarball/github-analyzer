@@ -23,6 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.kohsuke.github.GHBranch;
 import org.kohsuke.github.GHCommit;
@@ -35,6 +38,7 @@ import es.deusto.prog3.githubanalyzer.domain.UserStats;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader.RawIdentity;
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
@@ -48,6 +52,93 @@ import es.deusto.prog3.githubanalyzer.domain.RepoStats;
  * the same person, which directly drives the per-user contribution stats.
  */
 public class GitHubDataLoaderTest {
+
+    @Test
+    public void failedListReadAbortsRefreshWithoutReplacingTheCache(@TempDir Path dir) throws Exception {
+        Path repositories = dir.resolve("repositories.txt");
+        Files.writeString(repositories, "https://github.com/course/team;GROUP\n");
+        GitHubDataLoader loader = new GitHubDataLoader(() -> {
+            try {
+                return Files.readAllLines(repositories, StandardCharsets.UTF_8);
+            } catch (IOException ex) {
+                throw new IllegalStateException("Repository list unavailable", ex);
+            }
+        });
+        loader.reloadRepositories();
+        assertEquals(1, loader.getConfiguredRepositoryCount());
+        RepoStats cached = repo("https://github.com/course/team", "cached-team");
+        cached.setCodeLines(42);
+        List<RepoStats> cache = new ArrayList<>(List.of(cached));
+
+        Files.delete(repositories);
+        assertThrows(IllegalStateException.class, () -> loader.loadData(cache, true));
+        assertEquals(1, loader.getConfiguredRepositoryCount(), "A failed read must retain the previous list");
+        assertEquals(List.of(cached), cache);
+        assertEquals(42, cached.getCodeLines());
+
+        Files.writeString(repositories, "");
+        loader.reloadRepositories();
+        assertEquals(0, loader.getConfiguredRepositoryCount(), "A genuinely empty file is still accepted");
+    }
+
+    private static GHCommit.File changedFile(String path, int added, int deleted) {
+        return new GHCommit.File() {
+            @Override public String getFileName() { return path; }
+            @Override public int getLinesAdded() { return added; }
+            @Override public int getLinesDeleted() { return deleted; }
+        };
+    }
+
+    private static GHCommit commitWithFiles(GHCommit.File... files) {
+        return new GHCommit() {
+            @Override public List<GHCommit> getParents() { return List.of(); }
+            @Override public Date getCommitDate() { return new Date(1000); }
+            @Override public PagedIterable<GHCommit.File> listFiles() {
+                return new PagedIterable<>() {
+                    @Override public org.kohsuke.github.PagedIterator<GHCommit.File> _iterator(int pageSize) {
+                        throw new UnsupportedOperationException();
+                    }
+                    @Override public List<GHCommit.File> toList() { return List.of(files); }
+                };
+            }
+        };
+    }
+
+    @Test
+    public void equalDisplayIdentitiesRetainAllCommitsRegardlessOfInputOrder() {
+        GHCommit first = commitWithFiles(changedFile("First.java", 10, 2));
+        GHCommit second = commitWithFiles(changedFile("Second.java", 20, 3));
+        RawIdentity a = id("Student", "", null);
+        RawIdentity b = id("student", "", null);
+        for (boolean reversed : List.of(false, true)) {
+            Map<RawIdentity, List<GHCommit>> raw = new LinkedHashMap<>();
+            raw.put(reversed ? b : a, List.of(reversed ? second : first));
+            raw.put(reversed ? a : b, List.of(reversed ? first : second));
+            var merged = GitHubDataLoader.resolveAndMergeAuthors(raw);
+            assertEquals(1, merged.size());
+            List<GHCommit> commits = merged.values().iterator().next();
+            assertEquals(2, commits.size());
+            assertTrue(commits.containsAll(List.of(first, second)));
+            UserStats stats = GitHubDataLoader.getInstance().computeUserStatsFromCommits(
+                    commits, "student", "", new StringBuilder());
+            assertEquals(2, stats.getCommits());
+            assertEquals(35, stats.getChurn());
+        }
+    }
+
+    @Test
+    public void javaFileCountsPreserveCaseWhileMatchingExtensionsIgnoringCase() {
+        GHCommit first = commitWithFiles(
+                changedFile("src/Foo.java", 10, 2), changedFile("src/foo.java", 20, 3),
+                changedFile("SRC/Foo.java", 30, 4), changedFile("Other.JAVA", 40, 5),
+                changedFile("notes.txt", 500, 100));
+        GHCommit second = commitWithFiles(changedFile("src/Foo.java", 2, 1));
+        UserStats stats = GitHubDataLoader.getInstance().computeUserStatsFromCommits(
+                List.of(first, second), "student", "", new StringBuilder());
+        assertEquals(4, stats.getJavaFiles(), "Case-distinct paths count separately; repeated paths count once");
+        assertEquals(2, stats.getCommits());
+        assertEquals(117, stats.getChurn(), "Non-Java edits must remain excluded");
+    }
 
     private static RawIdentity id(String name, String email, String login) {
         return new RawIdentity(name, email, login);
@@ -132,7 +223,7 @@ public class GitHubDataLoaderTest {
     @Test
     public void failedSnapshotRejectsReplacementAndAllowsRetryAtSamePush() {
         StubRepository repository = new StubRepository();
-        RepoStats cached = cachedRepo(2);
+        RepoStats cached = cachedRepo(3);
         repository.failSnapshot = true;
         GitHubDataLoader loader = GitHubDataLoader.getInstance();
         assertNull(loader.analyzeRepository(AUDIT_URL, repository, List.of(cached), true));
@@ -149,7 +240,7 @@ public class GitHubDataLoaderTest {
     public void fileFailureAfterSuccessfulReadRejectsPartialSnapshot() {
         StubRepository repository = new StubRepository();
         repository.contents = List.of(javaContent(false), javaContent(true));
-        RepoStats cached = cachedRepo(2);
+        RepoStats cached = cachedRepo(3);
         assertNull(GitHubDataLoader.getInstance().analyzeRepository(
                 AUDIT_URL, repository, List.of(cached), true));
         assertEquals(42, cached.getCodeLines());
@@ -160,7 +251,7 @@ public class GitHubDataLoaderTest {
         StubRepository repository = new StubRepository();
         repository.failHistory = true;
         assertNull(GitHubDataLoader.getInstance().analyzeRepository(
-                AUDIT_URL, repository, List.of(cachedRepo(2)), true));
+                AUDIT_URL, repository, List.of(cachedRepo(3)), true));
         assertEquals(1, repository.snapshotReads);
     }
 
@@ -202,16 +293,16 @@ public class GitHubDataLoaderTest {
     public void oldSnapshotVersionIsReanalyzedWithoutAnotherPush() {
         StubRepository repository = new StubRepository();
         RepoStats refreshed = GitHubDataLoader.getInstance().analyzeRepository(
-                AUDIT_URL, repository, List.of(cachedRepo(1)), false);
+                AUDIT_URL, repository, List.of(cachedRepo(2)), false);
         assertEquals(1, repository.snapshotReads);
-        assertEquals(2, refreshed.getFileSnapshotVersion());
+        assertEquals(3, refreshed.getFileSnapshotVersion());
         assertEquals(2, refreshed.getCodeLines());
     }
 
     @Test
     public void reusingCacheClearsRemovedGroupWithoutReadingFiles() {
         StubRepository repository = new StubRepository();
-        RepoStats cached = cachedRepo(2);
+        RepoStats cached = cachedRepo(3);
         RepoStats result = GitHubDataLoader.getInstance().analyzeRepository(
                 AUDIT_URL, repository, List.of(cached), false);
         assertSame(cached, result);

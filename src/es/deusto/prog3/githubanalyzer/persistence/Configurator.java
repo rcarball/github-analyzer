@@ -16,7 +16,6 @@
 
 package es.deusto.prog3.githubanalyzer.persistence;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.FileReader;
@@ -24,7 +23,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -69,8 +67,15 @@ public class Configurator {
 	private String statsCSV = "";
 	private String teacherUser = "";
 	private String teacherEmail = "";
+	private final Path baseDir;
 
 	private Configurator() {
+		this(BASE_DIR);
+	}
+
+	/** Independent configuration rooted in a controlled directory (used by tests). */
+	Configurator(Path baseDir) {
+		this.baseDir = baseDir;
 		ensureResources();
 		load();
 	}
@@ -79,7 +84,9 @@ public class Configurator {
 	private void load() {
 		try {
 			properties = new Properties();
-			properties.load(new FileReader(resolvePath(PROPERTIES_FILE), StandardCharsets.UTF_8));
+			try (FileReader reader = new FileReader(resolvePath(PROPERTIES_FILE), StandardCharsets.UTF_8)) {
+				properties.load(reader);
+			}
 			githubUser = properties.getProperty("github.user");
 			githubToken = properties.getProperty("github.token");
 			loadFromGithub = "YES".equalsIgnoreCase(properties.getProperty("update.from.github"));
@@ -101,14 +108,17 @@ public class Configurator {
 	/** Creates the resources folder and default config/repositories files if they are missing. */
 	private void ensureResources() {
 		try {
-			Files.createDirectories(BASE_DIR.resolve("resources"));
+			Files.createDirectories(baseDir.resolve("resources"));
 			Path cfg = Paths.get(resolvePath(PROPERTIES_FILE));
-			if (!Files.exists(cfg)) {
+			boolean firstRun = !Files.exists(cfg);
+			if (firstRun) {
 				Files.writeString(cfg, DEFAULT_CONFIG, StandardCharsets.UTF_8);
 				System.out.format("- Created default config at '%s'%n", cfg);
 			}
 			Path repos = Paths.get(resolvePath(REPOSITORIES_FILE));
-			if (!Files.exists(repos)) {
+			// A missing list in an existing installation is an error, not a new
+			// empty configuration that may replace the user's cached statistics.
+			if (firstRun && !Files.exists(repos)) {
 				Files.writeString(repos, DEFAULT_REPOS, StandardCharsets.UTF_8);
 				System.out.format("- Created default repositories file at '%s'%n", repos);
 			}
@@ -120,12 +130,6 @@ public class Configurator {
 	/** Persists the given config values to config.properties and updates memory. */
 	public synchronized void save(String user, String token, boolean online,
 	                              String tUser, String tEmail) {
-		this.githubUser = user;
-		this.githubToken = token;
-		this.loadFromGithub = online;
-		this.teacherUser = tUser;
-		this.teacherEmail = tEmail;
-
 		// The dialog does not edit resource paths, so preserve the values originally
 		// read from disk instead of silently resetting custom locations to defaults.
 		String repositoriesPath = pathToPersist(properties, "repositories.file", REPOSITORIES_FILE);
@@ -133,19 +137,24 @@ public class Configurator {
 		String csvPath = pathToPersist(properties, "stats.csv", STATS_CSV);
 
         Properties saved = new Properties();
-        saved.setProperty("github.user", nz(githubUser));
-        saved.setProperty("github.token", nz(githubToken));
-        saved.setProperty("update.from.github", loadFromGithub ? "yes" : "no");
+        saved.setProperty("github.user", nz(user));
+        saved.setProperty("github.token", nz(token));
+        saved.setProperty("update.from.github", online ? "yes" : "no");
         saved.setProperty("repositories.file", repositoriesPath);
         saved.setProperty("stats.file", statsPath);
         saved.setProperty("stats.csv", csvPath);
-        saved.setProperty("teacher.user", nz(teacherUser));
-        saved.setProperty("teacher.email", nz(teacherEmail));
+        saved.setProperty("teacher.user", nz(tUser));
+        saved.setProperty("teacher.email", nz(tEmail));
         try {
             storeProperties(saved, Paths.get(resolvePath(PROPERTIES_FILE)));
             properties = saved;
+			this.githubUser = user;
+			this.githubToken = token;
+			this.loadFromGithub = online;
+			this.teacherUser = tUser;
+			this.teacherEmail = tEmail;
 		} catch (Exception ex) {
-			System.err.format("* Error writing config: %s%n", ex.getMessage());
+			throw new IllegalStateException("Could not save configuration.", ex);
 		}
 	}
 
@@ -161,7 +170,7 @@ public class Configurator {
 		try {
 			return Files.readString(Paths.get(getRepositoriesFile()), StandardCharsets.UTF_8);
 		} catch (Exception ex) {
-			return "";
+			throw new IllegalStateException("Could not read the repository list.", ex);
 		}
 	}
 
@@ -170,7 +179,7 @@ public class Configurator {
 		try {
 			Files.writeString(Paths.get(getRepositoriesFile()), text == null ? "" : text, StandardCharsets.UTF_8);
 		} catch (Exception ex) {
-			System.err.format("* Error writing repositories file: %s%n", ex.getMessage());
+			throw new IllegalStateException("Could not save the repository list.", ex);
 		}
 	}
 
@@ -188,11 +197,11 @@ public class Configurator {
 		return source.getProperty(key, defaultPath);
 	}
 
-	/** Resolves a (possibly relative) path against {@link #BASE_DIR}; absolute paths are kept as-is. */
-	private static String resolvePath(String path) {
+	/** Resolves a (possibly relative) path against the base directory; absolute paths are kept as-is. */
+	private String resolvePath(String path) {
 		if (path == null || path.isEmpty()) return path;
 		Path p = Paths.get(path);
-		return p.isAbsolute() ? path : BASE_DIR.resolve(p).toString();
+		return p.isAbsolute() ? path : baseDir.resolve(p).toString();
 	}
 
 	private static Path computeBaseDir() {
@@ -256,18 +265,10 @@ public class Configurator {
 	}
 
 	public List<String> getRepositories() {
-		List<String> result = new ArrayList<>();
-
-		try (BufferedReader in = new BufferedReader(new FileReader(getRepositoriesFile()))) {
-			String line;
-
-			while ((line = in.readLine()) != null) {
-				result.add(line);
-			}
+		try {
+			return Files.readAllLines(Paths.get(getRepositoriesFile()), StandardCharsets.UTF_8);
 		} catch (Exception ex) {
-			System.err.format("* Error reading repository file: %s%n", ex.getMessage());
+			throw new IllegalStateException("Could not read the repository list; existing data has been kept.", ex);
 		}
-
-		return result;
 	}
 }

@@ -42,8 +42,8 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private int externalReferences;
 	private boolean isPublic;
 	private long lastPushTime;
-	// Bumped when the semantics of file-based snapshot metrics change. Older
-	// serialized caches deserialize this new field as 0 and are refreshed once.
+	// Bumped when cached metric calculations change. The original field name is
+	// retained for serialization compatibility; old caches use 0 and refresh once.
 	private int fileSnapshotVersion;
 	
 	private Map<String, Integer> fileTypeMap = new TreeMap<>();

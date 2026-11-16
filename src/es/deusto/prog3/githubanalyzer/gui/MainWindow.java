@@ -26,11 +26,8 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Image;
-import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
@@ -52,7 +49,6 @@ import java.util.concurrent.ExecutionException;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
@@ -60,12 +56,9 @@ import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JPasswordField;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
-import javax.swing.JTextArea;
-import javax.swing.JTextField;
 import javax.swing.JTree;
 import javax.swing.RowSorter;
 import javax.swing.SortOrder;
@@ -231,6 +224,31 @@ public class MainWindow extends JFrame {
 	    }
 	}
 	
+	/** Keeps configuration locked until refresh completion, including error handling. */
+	static abstract class RefreshWorker extends SwingWorker<List<RepoStats>, String> {
+	    private final JButton refreshButton;
+	    private final JButton configButton;
+
+	    RefreshWorker(JButton refreshButton, JButton configButton) {
+	        this.refreshButton = refreshButton;
+	        this.configButton = configButton;
+	        refreshButton.setEnabled(false);
+	        configButton.setEnabled(false);
+	    }
+
+	    protected abstract void refreshFinished();
+
+	    @Override
+	    protected final void done() {
+	        try {
+	            refreshFinished();
+	        } finally {
+	            refreshButton.setEnabled(true);
+	            configButton.setEnabled(true);
+	        }
+	    }
+	}
+
 	public MainWindow(List<RepoStats> data) {
 		jTreeRepos.setRowHeight(23);
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
@@ -422,20 +440,17 @@ public class MainWindow extends JFrame {
 		btnRefresh.setToolTipText("Re-read the config files and fetch fresh data from GitHub");
 		btnRefresh.addActionListener(event -> {
 			// Give immediate feedback and prevent overlapping refreshes.
-			btnRefresh.setEnabled(false);
 			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 			setStatusText("Refreshing from GitHub…");
 
 			// SwingWorker keeps network I/O off Swing's event-dispatch thread (EDT).
 			// Its done() method runs on the EDT, where it is safe to update components.
-		        SwingWorker<List<RepoStats>, String> worker = new SwingWorker<>() {
+		        RefreshWorker worker = new RefreshWorker(btnRefresh, btnConfig) {
 
 	            @Override
 	            protected List<RepoStats> doInBackground() throws Exception {
-	                // Re-read config.properties and repositories.txt so external edits
-	                // (new token / repos) take effect without restarting the app.
+	                // Reload settings here; loadData reads the repository list once before updating the cache.
 	                Configurator.getInstance().reload();
-	                GitHubDataLoader.getInstance().reloadRepositories();
 	                if (!Configurator.getInstance().isConfigured()) {
 	                    throw new IllegalStateException("Configure a GitHub user and token before refreshing.");
 	                }
@@ -453,7 +468,7 @@ public class MainWindow extends JFrame {
 	            }
 
 	            @Override
-	            protected void done() {
+	            protected void refreshFinished() {
 	            	try {
 	            		List<RepoStats> newStats = get();
 		    	    	updateReposJTree(newStats);
@@ -499,7 +514,6 @@ public class MainWindow extends JFrame {
 						}
 					} finally {
 						setCursor(Cursor.getDefaultCursor());
-						btnRefresh.setEnabled(true);
 						setStatusText(" ");
 					}
 	            }
@@ -967,53 +981,17 @@ public class MainWindow extends JFrame {
 		}
 	}
 
-	private static String nzs(String s) {
-		return (s == null) ? "" : s;
-	}
 
 	/**
 	 * Opens a modal dialog to edit the configuration (user, token, online mode,
-	 * teacher) and the repository list. On save it writes both files via
-	 * {@link Configurator}, reloads the repo list, and offers to fetch right away.
+	 * teacher) and the repository list. An unreadable list is left untouched while
+	 * other settings remain editable. After saving a readable list, offers to fetch.
 	 * The same files can still be edited by hand outside the app.
 	 */
 	private void showConfigDialog() {
+		if (!btnConfig.isEnabled()) return;
 		Configurator cfg = Configurator.getInstance();
-
-		JTextField userField = new JTextField(nzs(cfg.getGithubUser()), 28);
-		JPasswordField tokenField = new JPasswordField(nzs(cfg.getGithubToken()), 28);
-		char echo = tokenField.getEchoChar();
-		JCheckBox showToken = new JCheckBox("show");
-		showToken.addActionListener(event -> tokenField.setEchoChar(showToken.isSelected() ? (char) 0 : echo));
-		JCheckBox onlineBox = new JCheckBox("Fetch from GitHub (online)", cfg.isLoadFromGithub());
-		JTextField teacherUserField = new JTextField(nzs(cfg.getTeacherUser()), 28);
-		JTextField teacherEmailField = new JTextField(nzs(cfg.getTeacherEmail()), 28);
-		JTextArea reposArea = new JTextArea(cfg.readRepositoriesText(), 8, 40);
-		reposArea.setToolTipText("One repository URL per line. Optionally append ;GROUP-ID. Lines starting with # are ignored.");
-
-		JPanel tokenPanel = new JPanel(new BorderLayout(4, 0));
-		tokenPanel.add(tokenField, BorderLayout.CENTER);
-		tokenPanel.add(showToken, BorderLayout.EAST);
-
-		JPanel form = new JPanel(new GridBagLayout());
-		GridBagConstraints c = new GridBagConstraints();
-		c.insets = new Insets(4, 6, 4, 6);
-		c.anchor = GridBagConstraints.WEST;
-		c.fill = GridBagConstraints.HORIZONTAL;
-
-		c.gridx = 0; c.gridy = 0; form.add(new JLabel("GitHub user:"), c);
-		c.gridx = 1; form.add(userField, c);
-		c.gridx = 0; c.gridy = 1; form.add(new JLabel("Token:"), c);
-		c.gridx = 1; form.add(tokenPanel, c);
-		c.gridx = 1; c.gridy = 2; form.add(onlineBox, c);
-		c.gridx = 0; c.gridy = 3; form.add(new JLabel("Teacher user:"), c);
-		c.gridx = 1; form.add(teacherUserField, c);
-		c.gridx = 0; c.gridy = 4; form.add(new JLabel("Teacher email:"), c);
-		c.gridx = 1; form.add(teacherEmailField, c);
-		c.gridx = 0; c.gridy = 5; c.anchor = GridBagConstraints.NORTHWEST;
-		form.add(new JLabel("<html>Repositories<br>(one URL/line,<br>optional ;GROUP):</html>"), c);
-		c.gridx = 1; c.fill = GridBagConstraints.BOTH; c.weightx = 1; c.weighty = 1;
-		form.add(new JScrollPane(reposArea), c);
+		ConfigurationForm form = new ConfigurationForm(cfg);
 
 		JDialog dialog = new JDialog(this, "Configuration", true);
 		dialog.getContentPane().add(form, BorderLayout.CENTER);
@@ -1027,17 +1005,20 @@ public class MainWindow extends JFrame {
 
 		cancel.addActionListener(event -> dialog.dispose());
 		save.addActionListener(event -> {
-			cfg.save(userField.getText().trim(),
-					new String(tokenField.getPassword()).trim(),
-					onlineBox.isSelected(),
-					teacherUserField.getText().trim(),
-					teacherEmailField.getText().trim());
-			cfg.saveRepositories(reposArea.getText());
-			GitHubDataLoader.getInstance().reloadRepositories();
+			try {
+				form.save();
+				if (form.repositoriesAvailable) GitHubDataLoader.getInstance().reloadRepositories();
+			} catch (IllegalStateException ex) {
+				JOptionPane.showMessageDialog(dialog,
+						ex.getMessage() + "\n\nNot all settings were saved. Check the files and try again.",
+						"Configuration", JOptionPane.ERROR_MESSAGE);
+				return;
+			}
 			dialog.dispose();
-			setStatusText("Configuration saved.");
+			setStatusText(form.repositoriesAvailable ? "Configuration saved."
+					: "Configuration saved; repository list unchanged.");
 
-			if (cfg.isConfigured() && onlineBox.isSelected()) {
+			if (form.repositoriesAvailable && cfg.isConfigured() && form.onlineBox.isSelected()) {
 				int ans = JOptionPane.showConfirmDialog(this,
 						"Configuration saved. Fetch data from GitHub now?",
 						"Refresh", JOptionPane.YES_NO_OPTION);
