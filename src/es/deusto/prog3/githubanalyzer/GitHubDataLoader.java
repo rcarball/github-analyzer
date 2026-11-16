@@ -17,6 +17,9 @@
 package es.deusto.prog3.githubanalyzer;
 
 import java.io.IOException;
+import java.io.PrintStream;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -25,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -89,6 +93,28 @@ public class GitHubDataLoader {
     // it reduces bursts without serializing the complete repository analysis.
     private static final long MIN_DELAY_BETWEEN_HEAVY_CALLS_MS = 120;
     private static final AtomicLong LAST_HEAVY_CALL_TS = new AtomicLong(0);
+    private static final DateTimeFormatter LOG_TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final int COMMIT_PROGRESS_INTERVAL = 25;
+
+    private static void trace(String scope, String message) { trace(System.out, scope, message); }
+    private static void trace(PrintStream stream, String scope, String message) {
+        // Keep concurrent repositories on separate complete lines, including metadata containing line breaks.
+        stream.printf("[%s] [%s] %s%n", LocalTime.now().format(LOG_TIME),
+                scope.replaceAll("[\\r\\n\\t]", " "), message.replaceAll("[\\r\\n\\t]", " "));
+    }
+    private static void traceFailure(String scope, String message, Exception error) {
+        StringBuilder reason = new StringBuilder();
+        Throwable cause = error;
+        for (int depth = 0; cause != null && depth < 4; depth++, cause = cause.getCause()) {
+            if (depth > 0) reason.append(": ");
+            reason.append(cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage());
+        }
+        trace(System.err, scope, message + ": " + reason);
+    }
+    private static String elapsed(long started) {
+        return String.format(java.util.Locale.ROOT, "%.1fs", (System.nanoTime() - started) / 1_000_000_000.0);
+    }
+    private static String shortSha(String sha) { return sha == null ? "not downloaded" : sha.substring(0, Math.min(12, sha.length())); }
 
     private GitHubDataLoader() {
         this(() -> Configurator.getInstance().getRepositories());
@@ -183,66 +209,91 @@ public class GitHubDataLoader {
         List<RepoStats> progressiveResults = new ArrayList<>();
         Object resultLock = new Object();
         AtomicInteger confirmedRepositories = new AtomicInteger();
+        AtomicInteger completedRepositories = new AtomicInteger();
         ExecutorService executorService = null;
+        long started = System.nanoTime();
 
         try {
-            System.out.printf("- Analyzing %d repositories...\n\n", repos.size());
-
             int threads = Math.min(MAX_THREADS, Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
+            trace("sync", "Starting GitHub synchronization: " + repos.size() + " repositories, up to " + threads + " parallel tasks.");
             executorService = Executors.newFixedThreadPool(threads);
 
+            trace("sync", "Preparing GitHub access…");
             RepositoryReader reader = repos.isEmpty() ? null : apiSource.get();
 
             List<Future<?>> futures = new ArrayList<>();
 
             for (String repoUrl : repos) {
                 futures.add(executorService.submit(() -> {
-                    RepoStats confirmed = analyzeRepo(repoUrl, reader);
-                    if (confirmed == null) return;
-
-                    // Save each completed repository together with this run's other
-                    // fresh results; older runs are never read or mixed in.
-                    synchronized (resultLock) {
-                        List<RepoStats> updated = replaceResult(progressiveResults, confirmed);
-                        progressiveResults.clear();
-                        progressiveResults.addAll(updated);
-                        resultWriter.accept(new ArrayList<>(progressiveResults));
+                    boolean successful = false;
+                    try {
+                        RepoStats confirmed = analyzeRepo(repoUrl, reader);
+                        if (confirmed == null) return;
+                        synchronized (resultLock) {
+                            List<RepoStats> updated = replaceResult(progressiveResults, confirmed);
+                            progressiveResults.clear();
+                            progressiveResults.addAll(updated);
+                            trace("download " + repositoryName(repoUrl), "Writing progressively calculated statistics…");
+                            resultWriter.accept(new ArrayList<>(progressiveResults));
+                        }
+                        confirmedRepositories.incrementAndGet();
+                        successful = true;
+                    } finally {
+                        synchronized (resultLock) {
+                            trace("sync", "Repository tasks finished: " + completedRepositories.incrementAndGet() + "/" + repos.size()
+                                    + " — " + repositoryName(repoUrl) + (successful ? " ready." : " failed; see the repository error."));
+                        }
                     }
-                    confirmedRepositories.incrementAndGet();
                 }));
             }
 
             for (Future<?> f : futures) {
                 try { f.get(); }
-                catch (Exception e) { System.err.println("\t* Error waiting for task: " + e.getMessage()); }
+                catch (Exception e) { traceFailure("sync", "Repository task failed", e); }
             }
             
             lastConfirmedRepositoryCount = confirmedRepositories.get();
 
         } catch (Exception ex) {
-            System.err.printf("\t* Error getting info from GitHub: %s\n\n", ex.getMessage());
+            traceFailure("sync", "GitHub synchronization failed", ex);
         } finally {
             if (executorService != null) executorService.shutdown();
         }
 
         List<RepoStats> result = readLocalData(false);
+        trace("sync", "Writing derived statistics and CSV for " + result.size() + " available repositories…");
         if (!result.isEmpty() || repos.isEmpty()) resultWriter.accept(result);
         csvWriter.accept(result);
 
-        System.out.printf("- %d of %d repositories confirmed; fresh results saved progressively\n\n",
-                lastConfirmedRepositoryCount, repos.size());
+        trace("sync", "Synchronization finished in " + elapsed(started) + ": " + lastConfirmedRepositoryCount + "/" + repos.size()
+                + " repositories confirmed, " + (repos.size() - lastConfirmedRepositoryCount) + " not confirmed; "
+                + result.size() + " local results available.");
         return result;
     }
 
     private RepoStats analyzeRepo(String repoUrl, RepositoryReader reader) {
+        String scope = "download " + repositoryName(repoUrl);
+        long started = System.nanoTime();
         try {
+            trace(scope, "Reading the last saved original download…");
             RepositorySnapshot previous = snapshotUpdateReader.apply(repoUrl);
-            RepositorySnapshot raw = downloadSnapshot(repoUrl, reader.get(repoUrl), message -> { }, previous);
+            trace(scope, previous == null ? "No usable checkpoint: starting a complete download."
+                    : "Incremental update: " + previous.commits().size() + " original commits already stored.");
+            trace(scope, "Fetching repository metadata from GitHub…");
+            RepositorySnapshot raw = downloadSnapshot(repoUrl, reader.get(repoUrl), message -> trace(scope, message), previous);
             raw.activeCommits();
-            if (raw != previous) snapshotWriter.accept(raw);
-            return calculate(raw, configured(repoUrl), authorshipSource.apply(repoUrl));
+            if (raw != previous) {
+                trace(scope, "Saving complete original download (" + raw.commits().size() + " archived commits)…");
+                snapshotWriter.accept(raw);
+                trace(scope, "Original download saved; branch checkpoints updated.");
+            }
+            trace(scope, "Recalculating statistics locally with saved authorship assignments…");
+            RepoStats result = calculate(raw, configured(repoUrl), authorshipSource.apply(repoUrl));
+            trace(scope, "Ready in " + elapsed(started) + ": " + result.getCommits() + " active commits, "
+                    + result.getUserStats().size() + " people, " + result.getCodeLines() + " Java source lines.");
+            return result;
         } catch (Exception ex) {
-            System.err.printf("* Could not download/analyze '%s': %s%n", repoUrl, ex.getMessage());
+            traceFailure(scope, "Download/analysis failed after " + elapsed(started), ex);
             return null;
         }
     }
@@ -271,24 +322,47 @@ public class GitHubDataLoader {
 
     private List<RepoStats> readLocalData(boolean persist) {
         reloadRepositories();
+        long started = System.nanoTime();
+        trace("local", "Recalculating " + repos.size() + " repositories from saved originals; no GitHub requests.");
         List<RepoStats> result = new ArrayList<>();
         for (RepositoryConfig config : repositoryConfigs.values()) {
+            String scope = "local " + repositoryName(config.url());
             try {
+                trace(scope, "Reading original download and authorship assignments…");
                 RepositorySnapshot raw = snapshotReader.apply(config.url());
-                if (raw != null) result.add(calculate(raw, config, authorshipSource.apply(config.url())));
+                if (raw != null) {
+                    RepoStats stats = calculate(raw, config, authorshipSource.apply(config.url()));
+                    result.add(stats);
+                    trace(scope, "Calculated: " + stats.getCommits() + " active commits, " + stats.getUserStats().size() + " people.");
+                } else trace(scope, "Pending: no original download; a first GitHub download is required.");
             } catch (IllegalStateException ex) {
-                System.err.println("* Local analysis pending for " + config.url() + ": " + ex.getMessage());
+                traceFailure(scope, "Local analysis pending", ex);
             }
         }
         Collections.sort(result);
-        if (persist && (!result.isEmpty() || repos.isEmpty())) { resultWriter.accept(result); csvWriter.accept(result); }
+        if (persist && (!result.isEmpty() || repos.isEmpty())) {
+            trace("local", "Writing derived statistics and CSV…");
+            resultWriter.accept(result); csvWriter.accept(result);
+        }
+        trace("local", "Local recalculation finished in " + elapsed(started) + ": " + result.size() + "/" + repos.size() + " results available.");
         return result;
     }
 
     public RepoStats recalculateRepository(String url, AuthorshipConfig rules) {
         reloadRepositories();
         if (!repositoryConfigs.containsKey(url)) throw new IllegalStateException("Repository is no longer configured.");
-        return calculate(requireRawData(url), configured(url), rules);
+        String scope = "local " + repositoryName(url);
+        long started = System.nanoTime();
+        trace(scope, "Recalculating authorship from saved originals; no GitHub requests.");
+        try {
+            RepoStats result = calculate(requireRawData(url), configured(url), rules);
+            trace(scope, "Authorship recalculated in " + elapsed(started) + ": " + result.getUserStats().size() + " people, "
+                    + result.getCommits() + " active commits.");
+            return result;
+        } catch (Exception ex) {
+            traceFailure(scope, "Local authorship recalculation failed", ex);
+            throw ex;
+        }
     }
 
     /** Explicit download entry point; author editing never calls it. */
@@ -316,32 +390,51 @@ public class GitHubDataLoader {
 
     RepositorySnapshot downloadSnapshot(String url, GHRepository repository, Consumer<String> progress, RepositorySnapshot previous) throws Exception {
         checkInterrupted();
+        progress.accept("Reading remote branch heads and repository metadata…");
         Map<String, GHBranch> branches = repository.getBranches();
         Map<String, String> heads = new TreeMap<>();
         branches.forEach((name, branch) -> heads.put(name, branch.getSHA1()));
         Date pushed = repository.getPushedAt();
         String defaultBranch = repository.getDefaultBranch();
         boolean publicRepository = !repository.isPrivate();
-        if (!hasMetadataChanges(previous, heads, defaultBranch, publicRepository)) return previous;
+        progress.accept("Remote metadata: " + heads.size() + " branches; default=" + defaultBranch + "; visibility=" + (publicRepository ? "public" : "private") + ".");
+        if (!hasMetadataChanges(previous, heads, defaultBranch, publicRepository)) {
+            progress.accept("Remote heads, default branch and visibility unchanged; reusing original download without fetching commit files.");
+            return previous;
+        }
+        for (var branch : heads.entrySet()) {
+            String old = previous == null ? null : previous.branchHeads().get(branch.getKey());
+            progress.accept("Branch " + branch.getKey() + ": checkpoint " + shortSha(old) + " → remote " + shortSha(branch.getValue()) + ".");
+        }
+        if (heads.isEmpty()) progress.accept("No remote branch heads; archived commits will be retained, with no active history.");
         List<SourceFile> files = new ArrayList<>();
         Map<String, GHCommit> unique = new LinkedHashMap<>();
         if (repository.getSize() != 0 || !heads.isEmpty()) {
             if (defaultBranch == null || defaultBranch.isBlank()) throw new IllegalStateException("Missing default branch.");
-            progress.accept("Downloading the default-branch source snapshot…");
             String defaultHead = heads.getOrDefault(defaultBranch, defaultBranch);
-            if (previous != null && defaultHead.equals(previous.branchHeads().get(previous.defaultBranch()))) files.addAll(previous.sourceFiles());
+            if (previous != null && defaultHead.equals(previous.branchHeads().get(previous.defaultBranch()))) {
+                files.addAll(previous.sourceFiles());
+                progress.accept("Default-branch head unchanged; reusing " + files.size() + " source file entries without downloading contents.");
+            }
             else {
+                progress.accept("Reading source snapshot for " + defaultBranch + " at " + shortSha(defaultHead) + "…");
                 Map<String, SourceFile> oldFiles = new HashMap<>();
                 if (previous != null) previous.sourceFiles().forEach(file -> oldFiles.put(file.path(), file));
-                downloadFiles(repository.getDirectoryContent("/", defaultHead), "", files, oldFiles);
+                downloadFiles(repository.getDirectoryContent("/", defaultHead), "", files, oldFiles, progress);
+                long reused = files.stream().filter(file -> oldFiles.get(file.path()) == file).count();
+                long downloaded = files.stream().filter(file -> oldFiles.get(file.path()) != file && file.javaContent() != null).count();
+                progress.accept("Source snapshot ready: " + files.size() + " file entries; " + downloaded + " Java contents downloaded, " + reused + " unchanged entries reused.");
             }
             if (previous == null) for (var branch : heads.entrySet()) {
-                progress.accept("Downloading commits from " + branch.getKey() + "…");
+                progress.accept("Reading full commit history from branch " + branch.getKey() + "…");
+                int scanned = 0;
                 for (GHCommit commit : repository.queryCommits().from(branch.getValue()).list()) {
                     checkInterrupted();
                     if (commit.getSHA1() == null || commit.getSHA1().isBlank()) throw new IllegalStateException("Missing commit SHA.");
                     unique.putIfAbsent(commit.getSHA1(), commit);
+                    if (++scanned % 100 == 0) progress.accept("Branch " + branch.getKey() + ": " + scanned + " history entries read; " + unique.size() + " unique commits discovered.");
                 }
+                progress.accept("Branch " + branch.getKey() + " history read: " + scanned + " entries; " + unique.size() + " unique commits across branches.");
             }
         }
         List<Commit> commits = new ArrayList<>();
@@ -349,36 +442,58 @@ public class GitHubDataLoader {
             Map<String, Commit> known = new LinkedHashMap<>();
             previous.commits().forEach(commit -> known.put(commit.sha(), commit));
             var pending = new java.util.ArrayDeque<>(heads.values());
+            int downloaded = 0;
             while (!pending.isEmpty()) {
                 checkInterrupted();
                 String sha = pending.removeFirst();
                 if (known.containsKey(sha)) continue;
-                progress.accept("Downloading new commit " + sha + "…");
-                GHCommit commit = repository.getCommit(sha);
-                if (!sha.equals(commit.getSHA1())) throw new IllegalStateException("Unexpected commit SHA.");
-                Commit raw = downloadCommit(commit, resolveAuthorRaw(commit));
+                if (downloaded % COMMIT_PROGRESS_INTERVAL == 0) progress.accept("Downloading new commit #" + (downloaded + 1) + " (" + shortSha(sha) + "), including changed files and unknown parents…");
+                Commit raw;
+                try {
+                    GHCommit commit = repository.getCommit(sha);
+                    if (!sha.equals(commit.getSHA1())) throw new IllegalStateException("Unexpected commit SHA.");
+                    raw = downloadCommit(commit, resolveAuthorRaw(commit));
+                } catch (CancellationException ex) {
+                    throw ex;
+                } catch (Exception ex) {
+                    checkInterrupted();
+                    throw new IllegalStateException("Could not download commit " + sha, ex);
+                }
                 known.put(sha, raw);
                 pending.addAll(raw.parents());
+                if (++downloaded % COMMIT_PROGRESS_INTERVAL == 0) progress.accept("Incremental download: " + downloaded + " new commits complete; " + pending.size() + " history references still to check.");
             }
             commits.addAll(known.values());
+            progress.accept("Incremental history ready: " + downloaded + " new commits downloaded; " + previous.commits().size() + " archived originals retained.");
         }
         int index = 0;
         for (GHCommit commit : unique.values()) {
-            progress.accept(String.format("Downloading commit files: %d of %d…", ++index, unique.size()));
-            commits.add(downloadCommit(commit, resolveAuthorRaw(commit)));
+            ++index;
+            if (index == 1 || index % COMMIT_PROGRESS_INTERVAL == 0 || index == unique.size())
+                progress.accept("Downloading changed-file details: " + index + "/" + unique.size() + " commits (" + shortSha(commit.getSHA1()) + ")…");
+            try {
+                commits.add(downloadCommit(commit, resolveAuthorRaw(commit)));
+            } catch (CancellationException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                checkInterrupted();
+                throw new IllegalStateException("Could not download commit " + commit.getSHA1(), ex);
+            }
         }
+        if (previous == null) progress.accept("Full history ready: " + commits.size() + " unique commits downloaded with their changed files.");
         checkInterrupted();
         return new RepositorySnapshot(RepositorySnapshot.CURRENT_VERSION, url, url.substring(url.lastIndexOf('/') + 1),
                 System.currentTimeMillis(), repository.getCreatedAt().getTime(), pushed == null ? -1 : pushed.getTime(),
                 publicRepository, defaultBranch == null ? "" : defaultBranch, heads, commits, files);
     }
 
-    private void downloadFiles(List<GHContent> contents, String prefix, List<SourceFile> result, Map<String, SourceFile> oldFiles) throws Exception {
+    private void downloadFiles(List<GHContent> contents, String prefix, List<SourceFile> result, Map<String, SourceFile> oldFiles, Consumer<String> progress) throws Exception {
         for (GHContent content : contents) {
             checkInterrupted();
             String path = content.getPath();
             if (path == null || path.isBlank()) path = prefix + content.getName();
-            if (content.isDirectory()) { downloadFiles(content.listDirectoryContent().toList(), path + "/", result, oldFiles); continue; }
+            if (content.isDirectory()) { downloadFiles(content.listDirectoryContent().toList(), path + "/", result, oldFiles, progress); continue; }
+            if (result.size() % 25 == 0) progress.accept("Source snapshot: " + result.size() + " file entries processed; reading " + path + "…");
             String blob = content.getSha();
             SourceFile old = oldFiles.get(path);
             if (old != null && blob != null && !blob.isBlank() && blob.equals(old.blobSha())) { result.add(old); continue; }
@@ -407,49 +522,101 @@ public class GitHubDataLoader {
 
     static int countExternalMarkers(String line) { return StatisticsCalculator.countExternalMarkers(line); }
     private static void checkInterrupted() {
-        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Operation cancelled.");
+        if (Thread.currentThread().isInterrupted()) throw new CancellationException("Operation cancelled.");
     }
     public record UpdateStatus(int pendingCommits, boolean headsChanged, String error) { }
 
     /** Metadata-only check: no changed files, source contents, snapshots or rules are written. */
     public void checkForUpdates(java.util.function.BiConsumer<String, UpdateStatus> listener) {
-        reloadRepositories();
-        RepositoryReader reader = apiSource.get();
-        for (String url : new ArrayList<>(repos)) {
+        long started = System.nanoTime();
+        try {
             checkInterrupted();
-            try { listener.accept(url, inspectUpdates(reader.get(url), snapshotReader.apply(url))); }
-            catch (Exception ex) { listener.accept(url, new UpdateStatus(-1, false, ex.getMessage())); }
+            reloadRepositories();
+            trace("check", "Starting remote update checks for " + repos.size() + " repositories (commit IDs and metadata only; no files downloaded).");
+            RepositoryReader reader;
+            try { reader = apiSource.get(); }
+            catch (CancellationException ex) { throw ex; }
+            catch (Exception ex) {
+                checkInterrupted();
+                traceFailure("check", "Could not prepare GitHub access; update checks not started", ex);
+                throw ex;
+            }
+            int checked = 0, failed = 0;
+            for (String url : new ArrayList<>(repos)) {
+                checkInterrupted();
+                String scope = "check " + repositoryName(url);
+                long repoStarted = System.nanoTime();
+                trace(scope, "Checking repository " + (++checked) + "/" + repos.size() + ": fetching remote metadata and reading the local checkpoint…");
+                try {
+                    UpdateStatus status = inspectUpdates(reader.get(url), snapshotReader.apply(url), message -> trace(scope, message));
+                    checkInterrupted();
+                    listener.accept(url, status);
+                    checkInterrupted();
+                    trace(scope, "Check complete in " + elapsed(repoStarted) + ": " + status.pendingCommits() + " commits not downloaded; "
+                            + (status.headsChanged() ? "remote changes pending." : "no remote changes."));
+                } catch (CancellationException ex) {
+                    throw ex;
+                } catch (Exception ex) {
+                    checkInterrupted();
+                    failed++;
+                    traceFailure(scope, "Update check failed after " + elapsed(repoStarted) + "; saved originals unchanged", ex);
+                    listener.accept(url, new UpdateStatus(-1, false, ex.getMessage()));
+                }
+            }
+            trace("check", "Remote checks finished in " + elapsed(started) + ": " + (checked - failed) + "/" + checked + " successful, " + failed + " failed.");
+        } catch (CancellationException ex) {
+            trace("check", "Remote update checks cancelled after " + elapsed(started) + "; saved originals unchanged.");
+            throw ex;
         }
     }
 
     UpdateStatus inspectUpdates(GHRepository repository, RepositorySnapshot previous) throws Exception {
+        return inspectUpdates(repository, previous, message -> { });
+    }
+
+    private UpdateStatus inspectUpdates(GHRepository repository, RepositorySnapshot previous, Consumer<String> progress) throws Exception {
         repository.setCompareUsePaginatedCommits(true);
+        progress.accept("Reading remote branch heads…");
         Map<String, String> heads = new TreeMap<>();
         repository.getBranches().forEach((name, branch) -> heads.put(name, branch.getSHA1()));
         java.util.Set<String> known = new java.util.HashSet<>();
         if (previous != null) previous.commits().forEach(commit -> known.add(commit.sha()));
+        progress.accept("Comparing " + heads.size() + " remote branches against " + known.size() + " stored original commits.");
         java.util.Set<String> missing = new java.util.HashSet<>();
         for (var branch : heads.entrySet()) {
             checkInterrupted();
             String old = previous == null ? null : previous.branchHeads().get(branch.getKey());
-            if (known.contains(branch.getValue())) continue;
+            progress.accept("Branch " + branch.getKey() + ": checkpoint " + shortSha(old) + " → remote " + shortSha(branch.getValue()) + ".");
+            if (known.contains(branch.getValue())) {
+                progress.accept("Branch " + branch.getKey() + ": head already downloaded; no commit comparison needed.");
+                continue;
+            }
             if (old != null) {
                 try {
+                    progress.accept("Comparing branch " + branch.getKey() + " with paginated commit IDs…");
+                    int scanned = 0;
                     for (GHCommit commit : repository.getCompare(old, branch.getValue()).listCommits()) {
                         checkInterrupted();
                         if (commit.getSHA1() == null) throw new IllegalStateException("Missing comparison SHA.");
                         if (!known.contains(commit.getSHA1())) missing.add(commit.getSHA1());
+                        if (++scanned % 100 == 0) progress.accept("Branch " + branch.getKey() + ": " + scanned + " comparison IDs read; " + missing.size() + " distinct commits pending across checked branches.");
                     }
+                    progress.accept("Branch " + branch.getKey() + ": comparison complete (" + scanned + " IDs); " + missing.size() + " distinct commits pending so far.");
                     continue;
                 } catch (org.kohsuke.github.GHFileNotFoundException ex) {
                     // A rewritten/deleted base may no longer be comparable. Read IDs from the new history.
+                    progress.accept("Branch " + branch.getKey() + ": comparison base unavailable; falling back to history IDs.");
                 }
             }
+            progress.accept("Reading history IDs for branch " + branch.getKey() + " without downloading changed files…");
+            int scanned = 0;
             for (GHCommit commit : repository.queryCommits().from(branch.getValue()).list()) {
                 checkInterrupted();
                 if (commit.getSHA1() == null) throw new IllegalStateException("Missing history SHA.");
                 if (!known.contains(commit.getSHA1())) missing.add(commit.getSHA1());
+                if (++scanned % 100 == 0) progress.accept("Branch " + branch.getKey() + ": " + scanned + " history IDs read; " + missing.size() + " distinct commits pending so far.");
             }
+            progress.accept("Branch " + branch.getKey() + ": history IDs checked (" + scanned + "); " + missing.size() + " distinct commits pending so far.");
         }
         return new UpdateStatus(missing.size(), hasMetadataChanges(previous, heads, repository.getDefaultBranch(), !repository.isPrivate()), null);
     }
@@ -556,7 +723,7 @@ public class GitHubDataLoader {
                 Thread.sleep(MIN_DELAY_BETWEEN_HEAVY_CALLS_MS - delta);
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
-                throw new java.util.concurrent.CancellationException("Analysis cancelled.");
+                throw new CancellationException("Analysis cancelled.");
             }
         }
     }

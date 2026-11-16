@@ -145,7 +145,8 @@ public class MainWindowRefreshTest {
                 }
             });
             var scroll = MainWindow.repositoryTreeScrollPane(tree);
-            scroll.setSize(scroll.getPreferredSize().width, 180);
+            // Start with room for the plain label, independently of the sidebar's configured width.
+            scroll.setSize(tree.getPreferredSize().width + 30, 180);
             layoutTreeScrollPane(scroll);
             var path = new javax.swing.tree.TreePath(node.getPath());
             tree.setSelectionPath(path);
