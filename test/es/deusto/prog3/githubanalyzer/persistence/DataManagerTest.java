@@ -146,4 +146,32 @@ public class DataManagerTest {
         List<RepoStats> loaded = DataManager.getInstance().loadData(file);
         assertTrue(loaded.isEmpty(), "A non-List root object must yield an empty cache");
     }
+    @Test
+    public void csvIncludesTeamSizeIdentitiesRolesAndTheSameSharesAsTheGui(@TempDir Path tmp) throws Exception {
+        RepoStats repo = new RepoStats(); repo.setTeamSize(4); repo.setAuthorCount(3);
+        UserStats member = new UserStats("student", "student@example.org", 2, 1, 50, 0, 50, -1, -1);
+        member.setPerson("student-id", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER);
+        UserStats bot = new UserStats("bot", "bot@example.org", 3, 1, 500, 0, 500, -1, -1);
+        bot.setPerson("bot-id", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.EXCLUDED);
+        repo.addUserStats(member); repo.addUserStats(bot);
+        Path file = tmp.resolve("stats.csv"); DataManager.getInstance().storeCSV(List.of(repo), file);
+        List<String> lines = Files.readAllLines(file);
+        assertTrue(lines.get(0).endsWith("TEAM_SIZE_DECLARED;CONTRIBUTORS;AUTHOR_IDENTITIES;TEAM_SIZE_EFFECTIVE;EXPECTED_SHARE;PERSON_ID;PARTICIPATION"));
+        assertTrue(lines.get(1).contains(";50;0;50;1.000000;"));
+        assertTrue(lines.get(1).endsWith(";4;1;3;4;0.250000;\"student-id\";\"MEMBER\""));
+        assertTrue(lines.get(2).contains(";500;0;500;-;"));
+        assertTrue(lines.get(2).endsWith(";\"EXCLUDED\""));
+    }
+
+    @Test
+    public void serializableResultsRetainStablePeopleAndDeclaredTeamMetadata(@TempDir Path tmp) throws Exception {
+        RepoStats repo = new RepoStats(); repo.setTeamSize(4); repo.setAuthorCount(3); repo.setAnalysisComplete(true);
+        UserStats user = new UserStats("renamed", "mail@example.org", 1, 1, 3, 0, 3, 0, 0);
+        user.setPerson("stable", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.TEACHER); repo.addUserStats(user);
+        Path file = tmp.resolve("stats.dat"); writeObject(file, new ArrayList<>(List.of(repo)));
+        RepoStats loaded = DataManager.getInstance().loadData(file).get(0);
+        assertEquals(4, loaded.getTeamSize()); assertEquals(3, loaded.getAuthorCount()); assertTrue(loaded.isAnalysisComplete());
+        assertEquals("stable", loaded.getUserStats().get(0).getPersonId());
+        assertEquals(user.getParticipationRole(), loaded.getUserStats().get(0).getParticipationRole());
+    }
 }

@@ -46,22 +46,22 @@ public class Configurator {
 			"# IMPORTANT: never commit this file with a real token.\n" +
 			"github.user=\n" +
 			"github.token=\n" +
-			"update.from.github=yes\n" +
 			"repositories.file=" + REPOSITORIES_FILE + "\n" +
 			"stats.file=" + STATS_FILE + "\n" +
 			"stats.csv=" + STATS_CSV + "\n" +
+            "authorship.directory=resources/authorship\n" +
+            "raw.directory=resources/raw-data\n" +
 			"teacher.user=\n" +
 			"teacher.email=\n";
 
 	private static final String DEFAULT_REPOS =
-			"# One repository URL per line. Optionally append ;GROUP-ID.\n" +
-			"# Example: https://github.com/OWNER/REPO;GROUP-01\n";
+			"# URL[;GROUP][;TEAM_SIZE]. Positive team size is optional.\n" +
+			"# Example: https://github.com/OWNER/REPO;GROUP-01;4\n";
 
 	private Properties properties;
 
 	private String githubUser = null;
 	private String githubToken = null;
-	private boolean loadFromGithub = true;
 	private String statsFile = "";
 	private String repositoriesFile = "";
 	private String statsCSV = "";
@@ -89,7 +89,6 @@ public class Configurator {
 			}
 			githubUser = properties.getProperty("github.user");
 			githubToken = properties.getProperty("github.token");
-			loadFromGithub = "YES".equalsIgnoreCase(properties.getProperty("update.from.github"));
 			statsFile = resolvePath(properties.getProperty("stats.file", STATS_FILE));
 			repositoriesFile = resolvePath(properties.getProperty("repositories.file", REPOSITORIES_FILE));
 			statsCSV = resolvePath(properties.getProperty("stats.csv", STATS_CSV));
@@ -128,7 +127,7 @@ public class Configurator {
 	}
 
 	/** Persists the given config values to config.properties and updates memory. */
-	public synchronized void save(String user, String token, boolean online,
+	public synchronized void save(String user, String token,
 	                              String tUser, String tEmail) {
 		// The dialog does not edit resource paths, so preserve the values originally
 		// read from disk instead of silently resetting custom locations to defaults.
@@ -139,10 +138,11 @@ public class Configurator {
         Properties saved = new Properties();
         saved.setProperty("github.user", nz(user));
         saved.setProperty("github.token", nz(token));
-        saved.setProperty("update.from.github", online ? "yes" : "no");
         saved.setProperty("repositories.file", repositoriesPath);
         saved.setProperty("stats.file", statsPath);
         saved.setProperty("stats.csv", csvPath);
+        saved.setProperty("authorship.directory", pathToPersist(properties, "authorship.directory", "resources/authorship"));
+        saved.setProperty("raw.directory", pathToPersist(properties, "raw.directory", "resources/raw-data"));
         saved.setProperty("teacher.user", nz(tUser));
         saved.setProperty("teacher.email", nz(tEmail));
         try {
@@ -150,7 +150,6 @@ public class Configurator {
             properties = saved;
 			this.githubUser = user;
 			this.githubToken = token;
-			this.loadFromGithub = online;
 			this.teacherUser = tUser;
 			this.teacherEmail = tEmail;
 		} catch (Exception ex) {
@@ -221,7 +220,19 @@ public class Configurator {
 		return Paths.get("").toAbsolutePath();
 	}
 
-	public boolean isConfigured() {
+    public Path getRawDataDirectory() {
+        String path = properties.getProperty("raw.directory", "resources/raw-data");
+        if (path.isBlank()) throw new IllegalStateException("raw.directory must not be empty.");
+        return Paths.get(resolvePath(path));
+    }
+
+	public Path getAuthorshipDirectory() {
+        String path = properties.getProperty("authorship.directory", "resources/authorship");
+        if (path.isBlank()) throw new IllegalStateException("authorship.directory must not be empty.");
+        return Paths.get(resolvePath(path));
+    }
+
+    public boolean isConfigured() {
 		return githubUser != null &&
 			   githubToken != null &&
 			   !githubUser.isEmpty() &&
@@ -240,9 +251,6 @@ public class Configurator {
 		return githubToken;
 	}
 
-	public boolean isLoadFromGithub() {
-		return loadFromGithub;
-	}
 
 	public String getStatsFile() {
 		return statsFile;

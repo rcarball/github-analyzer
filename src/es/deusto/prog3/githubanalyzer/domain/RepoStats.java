@@ -30,6 +30,22 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 	private String url;
 	private String name;
 	private String group;
+    private Integer teamSize;
+    private int authorCount;
+    private boolean analysisComplete;
+    private long dataCapturedAt;
+    public long getDataCapturedAt() { return dataCapturedAt; }
+    public void setDataCapturedAt(long capturedAt) { dataCapturedAt = capturedAt; }
+
+    public Integer getTeamSize() { return teamSize; }
+    public void setTeamSize(Integer size) {
+        if (size != null && size <= 0) throw new IllegalArgumentException("Team size must be positive.");
+        teamSize = size;
+    }
+    public int getAuthorCount() { return authorCount; }
+    public void setAuthorCount(int count) { authorCount = count; }
+    public boolean isAnalysisComplete() { return analysisComplete; }
+    public void setAnalysisComplete(boolean complete) { analysisComplete = complete; }
 	private List<UserStats> userStats = new ArrayList<>();
 	private long creationDate;
 	private long firstCommit = -1;

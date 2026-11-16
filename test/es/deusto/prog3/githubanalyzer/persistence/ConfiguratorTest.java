@@ -27,6 +27,38 @@ import org.junit.jupiter.api.Test;
 public class ConfiguratorTest {
 
     @Test
+    public void configurationTemplateLoadsWithExactValuesAndPaths(@TempDir Path dir) throws Exception {
+        Configurator config = new Configurator(dir);
+        Files.copy(Path.of("resources/config.properties.example"), dir.resolve("resources/config.properties"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        config.reload();
+
+        assertEquals("_USERNAME_", config.getGithubUser());
+        assertEquals("_TOKEN_", config.getGithubToken());
+        assertEquals(dir.resolve("resources/repositories.txt"), Path.of(config.getRepositoriesFile()));
+        assertEquals(dir.resolve("resources/stats.dat"), Path.of(config.getStatsFile()));
+        assertEquals(dir.resolve("resources/stats.csv"), Path.of(config.getStatsCSV()));
+        assertEquals(dir.resolve("resources/authorship"), config.getAuthorshipDirectory());
+        assertEquals("_TEACHER_USERNAME_", config.getTeacherUser());
+        assertEquals("_TEACHER_EMAIL_", config.getTeacherEmail());
+    }
+
+    @Test
+    public void readmeConfigurationExampleMatchesTheTemplate() throws Exception {
+        String readme = Files.readString(Path.of("README.md"), StandardCharsets.UTF_8);
+        var block = java.util.regex.Pattern.compile("```properties\\R(.*?)\\R```", java.util.regex.Pattern.DOTALL)
+                .matcher(readme);
+        assertTrue(block.find(), "README must include a copyable configuration example");
+        Properties documented = new Properties();
+        documented.load(new java.io.StringReader(block.group(1)));
+        Properties template = new Properties();
+        try (Reader reader = Files.newBufferedReader(Path.of("resources/config.properties.example"), StandardCharsets.UTF_8)) {
+            template.load(reader);
+        }
+        assertEquals(template, documented, "README and the template must describe the same usable settings");
+    }
+
+    @Test
     public void repositoryListDistinguishesUtf8ContentFromAnExplicitlyEmptyFile(@TempDir Path dir) throws Exception {
         Configurator config = new Configurator(dir);
         String text = "https://github.com/course/team;Grupo-Á\n";
@@ -75,25 +107,23 @@ public class ConfiguratorTest {
     @Test
     public void failedConfigurationSaveKeepsPreviousMemoryAndCanBeRetried(@TempDir Path dir) throws Exception {
         Configurator config = new Configurator(dir);
-        config.save("previous-user", "previous-token", false, "previous-teacher", "previous@example.org");
+        config.save("previous-user", "previous-token", "previous-teacher", "previous@example.org");
         Path destination = dir.resolve("resources/config.properties");
         Files.delete(destination);
         Files.createDirectory(destination);
 
         assertThrows(IllegalStateException.class,
-                () -> config.save("next-user", "next-token", true, "next-teacher", "next@example.org"));
+                () -> config.save("next-user", "next-token", "next-teacher", "next@example.org"));
         assertEquals("previous-user", config.getGithubUser());
         assertEquals("previous-token", config.getGithubToken());
-        assertFalse(config.isLoadFromGithub());
         assertEquals("previous-teacher", config.getTeacherUser());
         assertEquals("previous@example.org", config.getTeacherEmail());
 
         Files.delete(destination);
-        config.save("next-user", "next-token", true, "next-teacher", "next@example.org");
+        config.save("next-user", "next-token", "next-teacher", "next@example.org");
         Configurator restarted = new Configurator(dir);
         assertEquals("next-user", restarted.getGithubUser());
         assertEquals("next-token", restarted.getGithubToken());
-        assertTrue(restarted.isLoadFromGithub());
         assertEquals("next-teacher", restarted.getTeacherUser());
         assertEquals("next@example.org", restarted.getTeacherEmail());
     }
@@ -157,5 +187,42 @@ public class ConfiguratorTest {
             twice.load(reader);
             assertEquals(values, twice);
         }
+    }
+    @Test
+    public void savingSettingsPreservesCustomAuthorshipDirectoryAndDoesNotCreateRules(@TempDir Path dir) throws Exception {
+        Configurator config = new Configurator(dir);
+        Path settings = dir.resolve("resources/config.properties");
+        String original = Files.readString(settings).replace("authorship.directory=resources/authorship", "authorship.directory=course-data/people");
+        Files.writeString(settings, original);
+        config.reload();
+        assertEquals(dir.resolve("course-data/people"), config.getAuthorshipDirectory());
+        config.save("user", "test-token", "teacher", "teacher@example.org");
+        Configurator restarted = new Configurator(dir);
+        assertEquals(dir.resolve("course-data/people"), restarted.getAuthorshipDirectory());
+        assertFalse(Files.exists(restarted.getAuthorshipDirectory()), "Rules are created only when the author editor explicitly saves");
+    }
+    @Test
+    public void blankAuthorshipDirectoryCannotWriteRulesIntoTheWorkingDirectory(@TempDir Path dir) throws Exception {
+        Configurator config = new Configurator(dir);
+        Path settings = dir.resolve("resources/config.properties");
+        Files.writeString(settings, Files.readString(settings).replace("authorship.directory=resources/authorship", "authorship.directory="));
+        config.reload();
+        assertThrows(IllegalStateException.class, config::getAuthorshipDirectory);
+    }
+    @Test
+    public void rawDirectoryIsPreservedAndObsoleteUpdateFlagIsIgnoredOnSave(@TempDir Path dir) throws Exception {
+        Configurator config = new Configurator(dir);
+        Path settings = dir.resolve("resources/config.properties");
+        String text = Files.readString(settings).replace("raw.directory=resources/raw-data", "raw.directory=course-data/originals");
+        Files.writeString(settings, text + "update.from.github=no\n"); config.reload();
+        assertEquals(dir.resolve("course-data/originals"), config.getRawDataDirectory());
+        config.save("test-user", "test-token", "teacher", "teacher@example.org");
+        Properties values = new Properties();
+        try (Reader reader = Files.newBufferedReader(settings)) { values.load(reader); }
+        assertFalse(values.containsKey("update.from.github"));
+        assertEquals("course-data/originals", values.getProperty("raw.directory"));
+        assertFalse(Files.exists(config.getRawDataDirectory()));
+        Files.writeString(settings, Files.readString(settings).replace("raw.directory=course-data/originals", "raw.directory=")); config.reload();
+        assertThrows(IllegalStateException.class, config::getRawDataDirectory);
     }
 }

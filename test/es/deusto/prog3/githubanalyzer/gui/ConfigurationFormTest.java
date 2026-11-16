@@ -23,7 +23,7 @@ public class ConfigurationFormTest {
     @Test
     public void missingListStillAllowsSavingOtherSettingsWithoutRecreatingIt(@TempDir Path dir) throws Exception {
         Configurator config = ConfigurationFixtures.create(dir);
-        config.save("old-user", "old-token", true, "old-teacher", "old@example.org");
+        config.save("old-user", "old-token", "old-teacher", "old@example.org");
         Path repositories = Path.of(config.getRepositoriesFile());
         Files.delete(repositories);
         Path cache = Path.of(config.getStatsFile());
@@ -37,12 +37,10 @@ public class ConfigurationFormTest {
             assertFalse(form.reposArea.isEnabled());
             assertTrue(form.userField.isEnabled());
             assertTrue(form.tokenField.isEnabled());
-            assertTrue(form.onlineBox.isEnabled());
             form.userField.setText("new-user");
             form.tokenField.setText("new-token");
             form.teacherUserField.setText("new-teacher");
             form.teacherEmailField.setText("new@example.org");
-            form.onlineBox.setSelected(false);
             form.save();
         });
 
@@ -51,7 +49,6 @@ public class ConfigurationFormTest {
         assertEquals("new-token", restarted.getGithubToken());
         assertEquals("new-teacher", restarted.getTeacherUser());
         assertEquals("new@example.org", restarted.getTeacherEmail());
-        assertFalse(restarted.isLoadFromGithub());
         assertFalse(Files.exists(repositories));
         assertArrayEquals(previousCache, Files.readAllBytes(cache));
     }
@@ -68,14 +65,12 @@ public class ConfigurationFormTest {
             assertFalse(form.repositoriesAvailable);
             assertFalse(form.reposArea.isEditable());
             form.teacherUserField.setText("new-teacher");
-            form.onlineBox.setSelected(false);
             form.save();
         });
 
         assertArrayEquals(invalidUtf8, Files.readAllBytes(repositories));
         Configurator restarted = ConfigurationFixtures.create(dir);
         assertEquals("new-teacher", restarted.getTeacherUser());
-        assertFalse(restarted.isLoadFromGithub());
     }
 
     @Test
@@ -114,5 +109,33 @@ public class ConfigurationFormTest {
         });
 
         assertArrayEquals(previousList, Files.readAllBytes(repositories));
+    }
+    @Test
+    public void invalidTeamSizeIsRejectedBeforeSavingAnySettings(@TempDir Path dir) throws Exception {
+        Configurator config = ConfigurationFixtures.create(dir);
+        byte[] previousSettings = Files.readAllBytes(dir.resolve("resources/config.properties"));
+        byte[] previousList = Files.readAllBytes(Path.of(config.getRepositoriesFile()));
+        SwingUtilities.invokeAndWait(() -> {
+            ConfigurationForm form = new ConfigurationForm(config);
+            form.userField.setText("must-not-save");
+            form.reposArea.setText("https://github.com/course/team,G01,0");
+            assertThrows(IllegalStateException.class, form::save);
+        });
+        assertArrayEquals(previousSettings, Files.readAllBytes(dir.resolve("resources/config.properties")));
+        assertArrayEquals(previousList, Files.readAllBytes(Path.of(config.getRepositoriesFile())));
+    }
+    @Test
+    public void semicolonGroupAndTeamSizeCanBeSavedAndReadByTheEditor(@TempDir Path dir) throws Exception {
+        Configurator config = ConfigurationFixtures.create(dir);
+        String line = "https://github.com/course/team;G01;4\n";
+        SwingUtilities.invokeAndWait(() -> {
+            ConfigurationForm form = new ConfigurationForm(config);
+            form.reposArea.setText(line);
+            form.save();
+        });
+        assertEquals(line, config.readRepositoriesText());
+        var parsed = es.deusto.prog3.githubanalyzer.domain.RepositoryConfig.parseLines(config.getRepositories()).get(0);
+        assertEquals("G01", parsed.group());
+        assertEquals(4, parsed.teamSize());
     }
 }

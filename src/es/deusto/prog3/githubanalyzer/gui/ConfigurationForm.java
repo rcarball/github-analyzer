@@ -21,7 +21,6 @@ final class ConfigurationForm extends JPanel {
     private final Configurator config;
     final JTextField userField;
     final JPasswordField tokenField;
-    final JCheckBox onlineBox;
     final JTextField teacherUserField;
     final JTextField teacherEmailField;
     final JTextArea reposArea;
@@ -44,14 +43,13 @@ final class ConfigurationForm extends JPanel {
         char echo = tokenField.getEchoChar();
         JCheckBox showToken = new JCheckBox("show");
         showToken.addActionListener(event -> tokenField.setEchoChar(showToken.isSelected() ? (char) 0 : echo));
-        onlineBox = new JCheckBox("Fetch from GitHub (online)", config.isLoadFromGithub());
         teacherUserField = new JTextField(nzs(config.getTeacherUser()), 28);
         teacherEmailField = new JTextField(nzs(config.getTeacherEmail()), 28);
         reposArea = new JTextArea(repositoriesText, 8, 40);
         reposArea.setEditable(repositoriesAvailable);
         reposArea.setEnabled(repositoriesAvailable);
         reposArea.setToolTipText(repositoriesAvailable
-                ? "One repository URL per line. Optionally append ;GROUP-ID. Lines starting with # are ignored."
+                ? "One repository URL per line. Format: URL[;GROUP][;TEAM_SIZE]. Comma-separated input is also accepted. Lines starting with # are ignored."
                 : "Repository list unavailable. Saving other settings will leave this file unchanged.");
 
         JPanel tokenPanel = new JPanel(new BorderLayout(4, 0));
@@ -67,13 +65,12 @@ final class ConfigurationForm extends JPanel {
         c.gridx = 1; add(userField, c);
         c.gridx = 0; c.gridy = 1; add(new JLabel("Token:"), c);
         c.gridx = 1; add(tokenPanel, c);
-        c.gridx = 1; c.gridy = 2; add(onlineBox, c);
         c.gridx = 0; c.gridy = 3; add(new JLabel("Teacher user:"), c);
         c.gridx = 1; add(teacherUserField, c);
         c.gridx = 0; c.gridy = 4; add(new JLabel("Teacher email:"), c);
         c.gridx = 1; add(teacherEmailField, c);
         c.gridx = 0; c.gridy = 5; c.anchor = GridBagConstraints.NORTHWEST;
-        add(new JLabel("<html>Repositories<br>(one URL/line,<br>optional ;GROUP):</html>"), c);
+        add(new JLabel("<html>Repositories<br>(one URL/line,<br>optional ;GROUP;SIZE):</html>"), c);
         c.gridx = 1; c.fill = GridBagConstraints.BOTH; c.weightx = 1; c.weighty = 1;
         add(new JScrollPane(reposArea), c);
 
@@ -85,8 +82,15 @@ final class ConfigurationForm extends JPanel {
     }
 
     void save() {
+        if (repositoriesAvailable) {
+            try {
+                es.deusto.prog3.githubanalyzer.domain.RepositoryConfig.parseLines(reposArea.getText().lines().toList());
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalStateException(ex.getMessage(), ex);
+            }
+        }
         config.save(userField.getText().trim(), new String(tokenField.getPassword()).trim(),
-                onlineBox.isSelected(), teacherUserField.getText().trim(), teacherEmailField.getText().trim());
+                teacherUserField.getText().trim(), teacherEmailField.getText().trim());
         if (repositoriesAvailable) config.saveRepositories(reposArea.getText());
     }
 

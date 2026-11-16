@@ -15,7 +15,8 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 - 🧾 When you select a repo, shows **repository-level** metrics.
 - 👥 Per-author table with commits/lines metrics (focused on `.java`).
 - 🧩 Summary of **file types** in the default-branch snapshot.
-- 🔄 Refresh from GitHub or work **offline** using a cache (`stats.dat`).
+- 🔄 Incremental GitHub downloads, local recalculation and background update checks.
+- 🔗 Explicit per-repository authorship assignments and optional declared team size.
 
 ---
 
@@ -88,7 +89,7 @@ resolve relative to the JAR's location). Those files stay
 **external and editable** and are never bundled, since they hold your token and
 student data.
 
-To reuse the existing project configuration and cache when running the local JAR,
+To reuse the existing project configuration, original downloads, authorship rules and output locations when running the local JAR,
 create a directory link **once**, if `dist/resources` does not already exist:
 
 ```bash
@@ -102,7 +103,12 @@ On Windows, from Command Prompt in the repository root:
 mklink /J dist\resources "%CD%\resources"
 ```
 
-The link is local and ignored by Git; it shares the same files with Eclipse.
+The link is local and ignored by Git; it shares files configured with the default
+`resources/...` paths with Eclipse. It does not share other relative locations:
+for example, `stats.file=cache/stats.dat` refers to `<project>/cache/stats.dat`
+from Eclipse, but `<project>/dist/cache/stats.dat` from the local JAR. Use absolute
+paths for custom files outside `resources/` that must be shared between both modes.
+
 For a standalone installation, keep the JAR and its own `resources/` folder together
 in the installation directory. Build and release scripts package only the JAR
 and its checksum, and never copy local credentials or statistics into it.
@@ -177,28 +183,135 @@ and also runs in CI.
 ### 1) `resources/config.properties`
 
 ```properties
-github.user=_USERNAME_                         # Required configuration field (not used for authentication)
-github.token=_TOKEN_                           # Required for online refresh; use a read-only token
-update.from.github=_<yes|no>_                  # yes: online refresh | no: offline (use stats.dat)
-repositories.file=resources/repositories.txt   # Repo list
-stats.file=resources/stats.dat                 # Binary cache of last refresh
-stats.csv=resources/stats.csv                  # CSV export
+# Required configuration field (not used for authentication)
+github.user=_USERNAME_
+# Required for online refresh; use a read-only token
+github.token=_TOKEN_
+# Repo list
+repositories.file=resources/repositories.txt
+# Derived statistics output (regenerated from raw.directory)
+stats.file=resources/stats.dat
+# CSV export
+stats.csv=resources/stats.csv
+# Local per-repository authorship assignments
+authorship.directory=resources/authorship
+# Original incremental downloads
+raw.directory=resources/raw-data
 
 # (Optional) Exclude teacher account from expected-share calculations
 teacher.user=_TEACHER_USERNAME_
 teacher.email=_TEACHER_EMAIL_
 ```
 
-Custom paths for the repository list, binary cache and CSV export are supported.
+Custom paths for the repository list, binary output, CSV export, authorship directory and raw-data directory are supported.
 Saving user/token/teacher settings from the Config dialog preserves those paths.
+Relative paths resolve against the working directory in Eclipse/CLI, or the
+directory containing the runnable JAR. Use absolute paths to share custom data
+locations between these modes. Put comments on separate lines: a trailing `#`
+and its text become part of the value in Java properties files.
 
 ### 2) `resources/repositories.txt`
-One URL per line (GROUP-ID is optional):
+One repository per line, separated with **`;`**. Group and team size are optional:
 
 ```txt
-https://github.com/OWNER/REPO1;GROUP-ID1
-https://github.com/OWNER/REPO2;GROUP-ID2
+https://github.com/OWNER/REPO1
+https://github.com/OWNER/REPO2;GROUP-02
+https://github.com/OWNER/REPO3;4
+https://github.com/OWNER/REPO4;GROUP-04;4
 ```
+
+A numeric second field is the declared team size; a nonnumeric one is the group.
+With three fields, the second is always the group, so `URL;12;4` represents numeric
+group `12` with four members; `URL;12;` represents that group without a declared size.
+`URL;;4` is also accepted. Sizes must be positive integers. Blank lines and lines
+starting with `#` are ignored. Duplicate URLs may supply complementary settings,
+but conflicting groups or sizes are rejected with a line number. Existing
+`URL;GROUP` entries with nonnumeric groups remain valid. A numeric second field
+means team size; numeric groups without a declared size need a trailing separator
+(`URL;12;`). Comma-separated input is also accepted for compatibility. Existing
+files are not automatically rewritten. Quoted fields and mixed separators on the
+same line are not supported.
+
+The semicolon-separated UTF-8 CSV retains its existing columns and appends
+`TEAM_SIZE_DECLARED`, `CONTRIBUTORS`, `AUTHOR_IDENTITIES`, `TEAM_SIZE_EFFECTIVE`,
+`EXPECTED_SHARE`, `PERSON_ID` and `PARTICIPATION`. An absent declared size is blank;
+an undefined expected share or an excluded person's observed share is `-`.
+`PERSON_ID` is stable across display-name changes. Consumers assuming an exact
+column count must be updated.
+
+### 3) Manage authorship
+
+The app opens with locally regenerated statistics and checks repository updates in
+the background when credentials are configured. The tree suffix `(N)` is the number
+of unique commits not downloaded yet, deduplicated across branches; `(0)` means no
+new commits and `(?)` means the check failed. The check reads metadata only. It does
+not download changed files or alter local original data. Branch changes can exist
+with zero new commits (for example after branch deletion or moving a head backwards);
+these are shown as `(0; changes pending)` so they are not mistaken for an up-to-date download.
+The repository panel provides horizontal scrolling when needed to read long names
+and update suffixes in full, including while background checks update the labels.
+
+**Refresh from GitHub** downloads missing commits in the background. After the first
+complete download it follows each branch head and fetches only unknown SHAs and their
+missing parents, including side histories introduced by merges. Existing commit
+records remain unchanged. Default-branch files are pinned to the checked head SHA;
+unchanged blob contents are reused. A failed download never advances its checkpoint
+or overwrites the previous complete original data.
+
+Select a repository and click **Manage authorship…** to work entirely locally:
+
+1. Select identities using Ctrl/Cmd or Shift and click **Unify selected identities**.
+   Their work is assigned to the first selected person's group.
+2. Select a person below to highlight all their identities. In the lower table,
+   **Visible name**, **Email** and **GitHub account** offer dropdowns of distinct
+   values from that person's grouped identities. Email and account choices exclude
+   empty values and are read-only when none exist. You can also type a custom visible
+   name or use **Rename person…**. Choices are saved per repository; the selected email
+   is used in derived statistics and CSV. **Separate selected identities** splits
+   aliases again; contact values fall back to an available value if the selected
+   identity leaves the group. **Change participation…** sets member/teacher/excluded roles.
+3. Review Java commits, observed shares and the expected team split in the local
+   preview. Teachers and excluded accounts stay visible but do not enter the team share.
+4. **Restore original identities** removes groupings and restores separate original
+   identities with their initial teacher/member roles. This is a draft until applied.
+5. **Apply and recalculate locally** saves assignments and regenerates statistics
+   and CSV without contacting GitHub. **Cancel** discards the draft.
+
+A linked GitHub account takes precedence over a freely chosen Git name when
+initializing teacher roles. Explicit saved roles take precedence afterwards. New
+identities start as separate people; names, logins or email local-parts never cause
+an automatic fusion. Temporarily absent identities retain their saved assignments.
+
+Original downloads live in `raw.directory` (default `resources/raw-data/`, ignored
+by Git), independently of assignments under `authorship.directory`. Their versioned
+files contain immutable original author metadata, SHAs, parents, dates, changed file
+paths and additions/deletions, plus the default-branch Java source snapshot. They
+contain no credentials or objects from the GitHub API. Commits made unreachable by
+a force push or branch deletion are retained in the original archive; current
+statistics cover commits reachable from the latest downloaded branch heads.
+
+Update checks also detect default-branch and public/private visibility changes,
+even when there are no new commits. If an original download is unreadable, an
+explicit **Refresh from GitHub** first preserves its exact bytes in
+`raw.directory/recovery/`, using a unique dated filename, then downloads it again
+in full. If the backup fails, reconstruction stops. If the download fails, both
+the damaged original and its recovery copy remain; ordinary local reads never
+start recovery or overwrite these files.
+
+`stats.dat` and `stats.csv` are derived outputs, never the source of local
+recalculation. Existing old statistics lack original commits: **one initial download
+is required after this upgrade**. They are not migrated or fabricated into raw data.
+After that, author management, restoring identities, team-size changes and local
+startup work without a token or network. Only update checks and incremental downloads
+require GitHub credentials. `update.from.github` is obsolete, ignored when reading old
+properties and omitted when saving settings. Existing local files are not rewritten
+until you explicitly save or download through the app. Custom directories must be
+kept outside version control and must not be blank.
+
+The overview distinguishes original author identities, resolved contributors with
+Java activity, and declared/inferred team size. Its author tooltip shows the original
+download timestamp. A declared size changes the expected share only; differences
+from observed contributors are flagged. People without commits cannot be inferred.
 
 ---
 
@@ -251,10 +364,10 @@ For private repositories and to reduce throttling, use a token with **read** acc
 
 ### 👤 Per-author table metrics
 
-> Identity: uses GitHub login when available; otherwise derived from commit author info.  
-> Some identities may be merged (e.g., `noreply`, same email local-part) to reduce duplicates.
-
-> **Teaching-oriented identity matching:** Students who are new to Git often make commits from different computers or IDEs without configuring the same name and email. To avoid splitting one student's work across several rows, the analyzer deliberately merges likely identities using GitHub login, email local-part and, when supported by another signal, normalized name. This prioritizes recovering a student's full contribution over strict Git-identity matching. In the uncommon case of students with coincident details, review the commit history before drawing conclusions.
+> Identity: each row represents one explicitly configured person. Original Git
+> identities remain separate until assigned to the same person in Manage authorship.
+> File counts are distinct paths across all of that person's original commits;
+> merging aliases never sums duplicate paths.
 
 - **✅ Java commits**  
   Non-merge commits that touched at least one `.java` file.
@@ -267,8 +380,8 @@ For private repositories and to reduce throttling, use a token with **read** acc
   ✅ Better than “added only” because it accounts for refactors and fixes.
 
 - **📊 % Java churn**  
-  The user's share of the **team churn** — the total Java churn of the active contributors, **excluding the teacher account**.  
-  Team shares sum to 100%. The teacher row shows `-` (excluded from the share model).
+  The user's share of the **team churn** — the total Java churn of the active contributors, **excluding teachers and other excluded accounts**.
+  Team shares sum to 100%. Teacher and other excluded rows show `-` (outside the share model).
 
 - **🧩 Java files**  
   Number of distinct `.java` files modified by the user.
@@ -282,21 +395,21 @@ For private repositories and to reduce throttling, use a token with **read** acc
 
 The GUI adds a quick interpretation per person based on two concepts:
 
-1) **Churn share**: the person's share of the **team churn** (active contributors, excluding the teacher)  
+1) **Churn share**: the person's share of the **team churn** (active contributors, excluding teachers and other excluded accounts)
    \[
    share = \frac{userChurn}{teamChurn}
    \]
-   where `teamChurn` is the total Java churn of the active contributors (excluding the teacher).
+   where `teamChurn` is the total Java churn of the active contributors (excluding teachers and other excluded accounts).
 
-2) **Expected share**: what a balanced split would look like among active contributors (excluding the teacher account)  
+2) **Expected share**: what a balanced split would look like for the declared or inferred team size
    \[
    expected = \frac{1}{n}
    \]
-   where `n` is the number of “real” contributors: `userChurn > 0` OR `javaCommits > 0`, excluding teacher.
+   where `n` is the declared team size if provided, otherwise the number of resolved contributors with `userChurn > 0` OR `javaCommits > 0`, excluding teachers and other excluded accounts.
 
-> Both `share` and `expected` are computed over the **same** population (active
-> contributors, excluding the teacher), so they are directly comparable and the
-> team shares add up to 100%.
+> Observed shares sum to 100% of actual team churn. Declaring a team size changes
+> only the expected share, not observed percentages: two equal contributors in a
+> declared team of four each have an observed 50% share versus an expected 25%.
 
 > Important: these are **indicators**, not an automatic grading system.  
 > Use them to guide review, interviews, and code defense.
@@ -317,15 +430,16 @@ system.
 
 ### How the badge is computed (rules)
 
-With `expected = 1/n` and `share = userChurn/teamChurn` (both over the same
-population — active contributors excluding the teacher):
+With `expected = 1/n` (declared or inferred size) and
+`share = userChurn/teamChurn` (actual contributors, excluding teachers and excluded accounts):
 
 - `veryLow = expected * 0.5`
 - `okMin   = expected * 0.8`
 - `okMax   = expected * 1.2`
 
 Final badge (contiguous ranges, no gaps):
-- **TEACHER** if the user matches `teacher.user` or `teacher.email`
+- **TEACHER** for people assigned the teacher role
+- **EXCLUDED** for other excluded accounts (no expected-share interpretation)
 - **VERY_LOW** if `userChurn == 0` OR `javaCommits == 0` OR `share < veryLow`
 - **BELOW** if `veryLow <= share < okMin`
 - **BALANCED** if `okMin <= share <= okMax`
@@ -422,8 +536,8 @@ Interpretation:
 
 - **LOC (Lines of Code)**: Number of lines in files (here, `.java`) on the default branch. This is a *size snapshot*, not effort.
 - **Churn**: `added + deleted` lines. Used as a proxy for “how much code was edited”.
-- **Share (churn share)**: A user’s churn divided by the **team churn** (active contributors, excluding the teacher). Team shares sum to 100%; used to compare relative contribution within a team.
-- **Expected share**: `1/n`, where `n` is the number of active contributors (excluding teacher). A baseline for “balanced” teams.
+- **Share (churn share)**: A user’s churn divided by the **team churn** (active contributors, excluding teachers and other excluded accounts). Team shares sum to 100%; used to compare relative contribution within a team.
+- **Expected share**: `1/n`, where `n` is the declared team size or, when absent, the resolved active-contributor count excluding teachers and excluded accounts.
 - **Non-merge commit**: A commit that is not a merge commit. This app focuses on non-merge commits to better approximate authored edits.
 - **Deletion ratio**: `deleted / (added + deleted)`. High ratios often indicate refactoring or cleanup.
 - **Churn per commit**: `userChurn / javaCommits`. Spikes may indicate large pastes or generated code.
@@ -456,10 +570,9 @@ GitHub enforces API **rate limits** (roughly 5,000 requests/hour with a token, a
 only ~60/hour without one). Analyzing many repositories — or repos with lots of
 commits/branches — can hit that limit. The app requires a configured token for any
 online refresh, and that token also needs access when repositories are private.
-When fewer repos come back than configured, the app warns you; retry later, use a
-token, or work offline with the cached `stats.dat`. Confirmed repositories are saved
-progressively; if one repository fails during a refresh, its previous cached entry is
-kept instead of being erased.
+When fewer repositories finish than configured, the app warns you. Retry later or
+check token access. Complete original downloads are saved progressively. Failed repositories retain
+their previous original data and pending counts; retries resume from those checkpoints.
 
 ---
 

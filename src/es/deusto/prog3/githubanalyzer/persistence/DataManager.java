@@ -178,7 +178,8 @@ public class DataManager {
             // applications. Text cells are quoted and formula-hardened below.
             out.write(UTF8_BOM);
             writeCsvRow(out, "GROUP", "URL", "USERNAME", "EMAIL", "JAVA_ADDED", "JAVA_DELETED",
-                    "JAVA_CHURN", "JAVA_CHURN_SHARE", "JAVA_FILES", "JAVA_COMMITS", "LAST_COMMIT", "FIRST_COMMIT");
+                    "JAVA_CHURN", "JAVA_CHURN_SHARE", "JAVA_FILES", "JAVA_COMMITS", "LAST_COMMIT", "FIRST_COMMIT",
+                    "TEAM_SIZE_DECLARED", "CONTRIBUTORS", "AUTHOR_IDENTITIES", "TEAM_SIZE_EFFECTIVE", "EXPECTED_SHARE", "PERSON_ID", "PARTICIPATION");
 
             for (RepoStats repo : (data == null ? java.util.Collections.<RepoStats>emptyList() : data)) {
                 if (repo == null || repo.getUserStats() == null) continue;
@@ -205,7 +206,15 @@ public class DataManager {
                             Integer.toString(u.getJavaFiles()),
                             Integer.toString(u.getCommits()),
                             fmtDateOrDash(sdf, u.getLastCommit()),
-                            fmtDateOrDash(sdf, u.getFirstCommit()));
+                            fmtDateOrDash(sdf, u.getFirstCommit()),
+                            repo.getTeamSize() == null ? "" : repo.getTeamSize().toString(),
+                            Integer.toString(ContributionMetrics.activeContributors(repo).size()),
+                            Integer.toString(repo.getAuthorCount()),
+                            Integer.toString(ContributionMetrics.effectiveTeamSize(repo)),
+                            Float.isNaN(ContributionMetrics.expectedShare(repo)) ? "-"
+                                    : String.format(java.util.Locale.ROOT, "%.6f", ContributionMetrics.expectedShare(repo)),
+                            csvTextCell(u.getPersonId()),
+                            csvTextCell(u.getParticipationRole() == null ? (ContributionMetrics.isTeacher(u) ? "TEACHER" : "MEMBER") : u.getParticipationRole().name()));
                 }
             }
 

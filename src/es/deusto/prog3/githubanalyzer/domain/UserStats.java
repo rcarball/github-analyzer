@@ -23,6 +23,15 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 
 	private static final long serialVersionUID = 1L;
 	private String username, email;
+    private String personId;
+    private AuthorshipConfig.Role participationRole;
+
+    public String getPersonId() { return personId; }
+    public AuthorshipConfig.Role getParticipationRole() { return participationRole; }
+    public void setPerson(String id, AuthorshipConfig.Role role) {
+        personId = id;
+        participationRole = role;
+    }
 	private int commits, javaFiles;
 	private int added, deleted, changed;
 	private long firstCommit, lastCommit;
@@ -87,6 +96,7 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 
 	@Override
 	public int hashCode() {
+        if (personId != null) return personId.hashCode();
 		String e = (email == null) ? "" : email.toLowerCase();
 		String u = (username == null) ? "" : username.toLowerCase();
 		return Objects.hash(e, u);
@@ -101,6 +111,7 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		if (getClass() != obj.getClass())
 			return false;
 		UserStats other = (UserStats) obj;
+        if (personId != null || other.personId != null) return Objects.equals(personId, other.personId);
 		
 		String thisEmail = (this.email == null) ? "" : this.email.toLowerCase();
 		String otherEmail = (other.email == null) ? "" : other.email.toLowerCase();

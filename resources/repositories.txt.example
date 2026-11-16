@@ -1,6 +1,10 @@
-# Copy this file to "repositories.txt" and add one repository URL per line.
-# Optionally append ";GROUP-ID" to label each repo with its team/group code.
-# NOTE: repositories.txt is git-ignored because student repo URLs are personal data.
+# Copy this file to "repositories.txt". One URL[;GROUP][;TEAM_SIZE] per line.
+# Group and positive integer team size are optional. A numeric second field is the size.
+# For a numeric group without a declared size use: URL;12;
+# Comma-separated input is also accepted; do not mix separators on the same line.
+# repositories.txt contains personal data and must stay ignored by Git.
 
-https://github.com/OWNER/REPO1;GROUP-ID1
-https://github.com/OWNER/REPO2;GROUP-ID2
+https://github.com/OWNER/REPO1;GROUP-01;4
+https://github.com/OWNER/REPO2;GROUP-02
+https://github.com/OWNER/REPO3;3
+https://github.com/OWNER/REPO4
