@@ -11,3 +11,9 @@ build/
 /github-analyzer-*.jar
 /release/
 /.DS_Store
+
+# Local per-repository authorship rules
+/resources/authorship/
+
+# Original downloaded repository data
+/resources/raw-data/

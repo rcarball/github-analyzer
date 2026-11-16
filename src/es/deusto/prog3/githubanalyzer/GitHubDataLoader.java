@@ -16,17 +16,14 @@
 
 package es.deusto.prog3.githubanalyzer;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,8 +31,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.kohsuke.github.GHBranch;
@@ -46,33 +43,40 @@ import org.kohsuke.github.GHUser;
 import org.kohsuke.github.GitHub;
 import org.kohsuke.github.GitHubBuilder;
 import org.kohsuke.github.GitUser;
-import org.kohsuke.github.PagedIterable;
 
+import es.deusto.prog3.githubanalyzer.domain.AuthorIdentity;
+import es.deusto.prog3.githubanalyzer.domain.AuthorSummary;
+import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig;
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
-import es.deusto.prog3.githubanalyzer.domain.SimpleGitUser;
-import es.deusto.prog3.githubanalyzer.domain.UserStats;
+import es.deusto.prog3.githubanalyzer.domain.RepositoryConfig;
+import es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot;
+import es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot.ChangedFile;
+import es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot.Commit;
+import es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot.SourceFile;
+import es.deusto.prog3.githubanalyzer.persistence.AuthorshipStore;
 import es.deusto.prog3.githubanalyzer.persistence.Configurator;
+import es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics;
 import es.deusto.prog3.githubanalyzer.persistence.DataManager;
+import es.deusto.prog3.githubanalyzer.persistence.RawDataStore;
 
 public class GitHubDataLoader {
 
     private static final GitHubDataLoader instance = new GitHubDataLoader();
     private final Supplier<List<String>> repositorySource;
-    private final Map<String, String> groupsRepoMap = new HashMap<>();
+    private final Function<String, AuthorshipConfig> authorshipSource;
+    @FunctionalInterface
+    interface RepositoryReader { GHRepository get(String url) throws IOException; }
+    private final Supplier<RepositoryReader> apiSource;
+    private final Consumer<List<RepoStats>> resultWriter;
+    private final Consumer<List<RepoStats>> csvWriter;
+    private final Function<String, RepositorySnapshot> snapshotReader;
+    private final Function<String, RepositorySnapshot> snapshotUpdateReader;
+    private final Consumer<RepositorySnapshot> snapshotWriter;
+    private final Map<String, RepositorySnapshot> memorySnapshots = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile Map<String, RepositoryConfig> repositoryConfigs = Map.of();
     private volatile List<String> repos = Collections.emptyList();
-    // Updated after each load so the GUI can distinguish a fresh result from a
-    // cached value retained because that repository could not be reached.
+    // Successful repositories in the most recent full analysis.
     private volatile int lastConfirmedRepositoryCount;
-
-    // Standalone markers students place in comments to flag external / AI-assisted
-    // code. Word boundaries (\b) avoid false positives inside identifiers, e.g. the
-    // "IAG" in "DIAGNOSTIC" or "DIAGRAM".
-    private static final Pattern EXTERNAL_PATTERN = Pattern.compile("\\bIAG\\b|\\bFUENTE-EXTERNA\\b");
-    private static final String LINES_KEY = "LINES";
-    private static final String REF_KEY = "REF";
-    private static final String JAVA_EXTENSION = ".java";
-    // Also invalidate contributor calculations cached before identity/path fixes.
-    private static final int FILE_SNAPSHOT_VERSION = 3;
 
     // Repositories are independent, so they can be analyzed in parallel. Calls
     // that expand a commit into its changed files are much more expensive, hence
@@ -90,50 +94,70 @@ public class GitHubDataLoader {
         this(() -> Configurator.getInstance().getRepositories());
     }
 
-    // Read the list at refresh time, so an I/O failure cannot become an empty cache
-    // or prevent opening the GUI with the previously saved data.
+    // Read and validate the repository list before starting an analysis.
     GitHubDataLoader(Supplier<List<String>> repositorySource) {
+        this(repositorySource, url -> new AuthorshipStore(Configurator.getInstance().getAuthorshipDirectory()).load(url));
+    }
+
+    GitHubDataLoader(Supplier<List<String>> repositorySource, Function<String, AuthorshipConfig> authorshipSource) {
+        this(repositorySource, authorshipSource, GitHubDataLoader::openReader,
+                data -> DataManager.getInstance().storeData(data), data -> DataManager.getInstance().storeCSV(data),
+                url -> new RawDataStore(Configurator.getInstance().getRawDataDirectory()).load(url),
+                raw -> new RawDataStore(Configurator.getInstance().getRawDataDirectory()).save(raw),
+                url -> new RawDataStore(Configurator.getInstance().getRawDataDirectory()).loadForUpdate(url));
+    }
+
+    GitHubDataLoader(Supplier<List<String>> repositorySource, Function<String, AuthorshipConfig> authorshipSource,
+                     Supplier<RepositoryReader> apiSource, Consumer<List<RepoStats>> resultWriter,
+                     Consumer<List<RepoStats>> csvWriter) {
+        this(repositorySource, authorshipSource, apiSource, resultWriter, csvWriter, null, null);
+    }
+
+    GitHubDataLoader(Supplier<List<String>> repositorySource, Function<String, AuthorshipConfig> authorshipSource,
+                     Supplier<RepositoryReader> apiSource, Consumer<List<RepoStats>> resultWriter,
+                     Consumer<List<RepoStats>> csvWriter, Function<String, RepositorySnapshot> snapshotReader,
+                     Consumer<RepositorySnapshot> snapshotWriter) {
+        this(repositorySource, authorshipSource, apiSource, resultWriter, csvWriter, snapshotReader, snapshotWriter, null);
+    }
+
+    GitHubDataLoader(Supplier<List<String>> repositorySource, Function<String, AuthorshipConfig> authorshipSource,
+                     Supplier<RepositoryReader> apiSource, Consumer<List<RepoStats>> resultWriter,
+                     Consumer<List<RepoStats>> csvWriter, Function<String, RepositorySnapshot> snapshotReader,
+                     Consumer<RepositorySnapshot> snapshotWriter, Function<String, RepositorySnapshot> snapshotUpdateReader) {
         this.repositorySource = repositorySource;
+        this.authorshipSource = authorshipSource;
+        this.apiSource = apiSource;
+        this.resultWriter = resultWriter;
+        this.csvWriter = csvWriter;
+        this.snapshotReader = snapshotReader == null ? memorySnapshots::get : snapshotReader;
+        this.snapshotUpdateReader = snapshotUpdateReader == null ? this.snapshotReader : snapshotUpdateReader;
+        this.snapshotWriter = snapshotWriter == null ? raw -> memorySnapshots.put(raw.url(), raw) : snapshotWriter;
     }
 
-    /**
-     * (Re)reads {@code repositories.txt} via {@link Configurator} and rebuilds the
-     * de-duplicated repo list and the repo→group map. Called at startup and again
-     * by the Refresh button / config dialog so file edits take effect without a restart.
-     */
+    private static RepositoryReader openReader() {
+        try {
+            GitHub github = new GitHubBuilder().withOAuthToken(Configurator.getInstance().getGithubToken()).build();
+            return url -> github.getRepository(repositoryName(url));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not initialize GitHub access.", ex);
+        }
+    }
+
+    /** Validate the complete input before replacing the last known configuration. */
     public synchronized void reloadRepositories() {
-        List<String> originalRepos = repositorySource.get();
-
-    	groupsRepoMap.clear();
-    	LinkedHashSet<String> uniqueRepos = new LinkedHashSet<>();
-
-    	if (originalRepos != null) {
-    	    for (String line : originalRepos) {
-    	        if (line == null) continue;
-
-    	        String trimmed = line.trim();
-    	        // Skip blank lines and comments (lines starting with '#').
-    	        if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
-
-    	        String[] parts = trimmed.split(";", 2);
-    	        String repoUrl = parts[0].trim();
-
-    	        if (repoUrl.isEmpty()) continue;
-
-    	        uniqueRepos.add(repoUrl);
-
-    	        // Mapa: repoURL -> groupCode
-    	        if (parts.length == 2) {
-    	            String groupCode = parts[1].trim();
-    	            if (!groupCode.isEmpty()) {
-    	                groupsRepoMap.putIfAbsent(repoUrl, groupCode);
-    	            }
-    	        }
-    	    }
-    	}
-
-    	this.repos = new ArrayList<>(uniqueRepos);
+        List<RepositoryConfig> parsed;
+        try {
+            parsed = RepositoryConfig.parseLines(repositorySource.get());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException(ex.getMessage(), ex);
+        }
+        Map<String, RepositoryConfig> configs = new LinkedHashMap<>();
+        for (RepositoryConfig config : parsed) configs.put(config.url(), config);
+        repositoryConfigs = Collections.unmodifiableMap(configs);
+        repos = new ArrayList<>(configs.keySet());
     }
+
+    public List<RepositoryConfig> getRepositoryConfigs() { return new ArrayList<>(repositoryConfigs.values()); }
 
     public static GitHubDataLoader getInstance() {
         return instance;
@@ -149,27 +173,15 @@ public class GitHubDataLoader {
         return lastConfirmedRepositoryCount;
     }
 
-    public List<RepoStats> loadData(List<RepoStats> statsMap) {
-        return loadData(statsMap, false);
-    }
+    /** Compatibility entry points: previous results are deliberately ignored. */
+    public List<RepoStats> loadData(List<RepoStats> ignored) { return loadData(); }
+    public List<RepoStats> loadData(List<RepoStats> ignored, boolean forceRefresh) { return loadData(); }
 
-    public List<RepoStats> loadData(List<RepoStats> initialStats, boolean forceRefresh) {
-        // Must succeed before filtering or persisting any cached repositories.
+    public synchronized List<RepoStats> loadData() {
         reloadRepositories();
-        if (initialStats == null) initialStats = new ArrayList<>();
         lastConfirmedRepositoryCount = 0;
-
-        // Keep only the cache entries still configured. Each successful analysis
-        // replaces its own entry and is immediately written to disk. Therefore a
-        // timeout or a failed repository leaves its previous cache entry intact.
-        Set<String> configuredUrls = new HashSet<>(repos);
-        List<RepoStats> progressiveCache = new ArrayList<>();
-        for (RepoStats cached : initialStats) {
-            if (cached != null && configuredUrls.contains(cached.getUrl())) {
-                progressiveCache.add(cached);
-            }
-        }
-        Object progressiveCacheLock = new Object();
+        List<RepoStats> progressiveResults = new ArrayList<>();
+        Object resultLock = new Object();
         AtomicInteger confirmedRepositories = new AtomicInteger();
         ExecutorService executorService = null;
 
@@ -179,26 +191,22 @@ public class GitHubDataLoader {
             int threads = Math.min(MAX_THREADS, Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
             executorService = Executors.newFixedThreadPool(threads);
 
-            GitHub github = new GitHubBuilder()
-                    .withOAuthToken(Configurator.getInstance().getGithubToken())
-                    .build();
+            RepositoryReader reader = repos.isEmpty() ? null : apiSource.get();
 
-            final List<RepoStats> finalStatsMap = initialStats;
             List<Future<?>> futures = new ArrayList<>();
 
             for (String repoUrl : repos) {
                 futures.add(executorService.submit(() -> {
-                    RepoStats confirmed = analyzeRepo(repoUrl, github, finalStatsMap, forceRefresh);
+                    RepoStats confirmed = analyzeRepo(repoUrl, reader);
                     if (confirmed == null) return;
 
-                    // Serialize the replacement and the write. storeData writes a
-                    // temporary file then atomically replaces the cache, so every
-                    // completed repository becomes durable independently.
-                    synchronized (progressiveCacheLock) {
-                        List<RepoStats> updated = replaceCachedRepository(progressiveCache, confirmed);
-                        progressiveCache.clear();
-                        progressiveCache.addAll(updated);
-                        DataManager.getInstance().storeData(new ArrayList<>(progressiveCache));
+                    // Save each completed repository together with this run's other
+                    // fresh results; older runs are never read or mixed in.
+                    synchronized (resultLock) {
+                        List<RepoStats> updated = replaceResult(progressiveResults, confirmed);
+                        progressiveResults.clear();
+                        progressiveResults.addAll(updated);
+                        resultWriter.accept(new ArrayList<>(progressiveResults));
                     }
                     confirmedRepositories.incrementAndGet();
                 }));
@@ -217,146 +225,257 @@ public class GitHubDataLoader {
             if (executorService != null) executorService.shutdown();
         }
 
-        List<RepoStats> result;
-        synchronized (progressiveCacheLock) {
-            result = new ArrayList<>(progressiveCache);
-        }
-        Collections.sort(result);
-        result.forEach(r -> Collections.sort(r.getUserStats()));
-        // An explicitly empty repository list has always meant that the cache is
-        // cleared. Normal refreshes, in contrast, are persisted per repository
-        // above so an individual failure cannot erase older data.
-        if (repos.isEmpty()) DataManager.getInstance().storeData(result);
-        DataManager.getInstance().storeCSV(result);
+        List<RepoStats> result = readLocalData(false);
+        if (!result.isEmpty() || repos.isEmpty()) resultWriter.accept(result);
+        csvWriter.accept(result);
 
-        System.out.printf("- %d of %d repositories confirmed; cache preserved progressively\n\n",
+        System.out.printf("- %d of %d repositories confirmed; fresh results saved progressively\n\n",
                 lastConfirmedRepositoryCount, repos.size());
         return result;
     }
 
-    /**
-     * Analyzes one repository and returns its confirmed state. Returning
-     * {@code null} means that no cache replacement must be made for this URL.
-     */
-    private RepoStats analyzeRepo(String repoUrl,
-                                  GitHub github,
-                                  List<RepoStats> cache,
-                                  boolean forceRefresh) {
-
+    private RepoStats analyzeRepo(String repoUrl, RepositoryReader reader) {
         try {
-            String[] tokens = repoUrl.split("/");
-            String owner = tokens[tokens.length - 2];
-            String repoName = tokens[tokens.length - 1];
-            return analyzeRepository(repoUrl, github.getRepository(owner + "/" + repoName), cache, forceRefresh);
-        } catch (Exception e) {
-            System.err.printf("\t* Error analyzing '%s': %s\n\n", repoUrl, e.getMessage());
+            RepositorySnapshot previous = snapshotUpdateReader.apply(repoUrl);
+            RepositorySnapshot raw = downloadSnapshot(repoUrl, reader.get(repoUrl), message -> { }, previous);
+            raw.activeCommits();
+            if (raw != previous) snapshotWriter.accept(raw);
+            return calculate(raw, configured(repoUrl), authorshipSource.apply(repoUrl));
+        } catch (Exception ex) {
+            System.err.printf("* Could not download/analyze '%s': %s%n", repoUrl, ex.getMessage());
             return null;
         }
     }
 
-    // Package-visible so failed API reads can be tested without a network connection.
-    RepoStats analyzeRepository(String repoUrl, GHRepository repository,
-                                List<RepoStats> cache, boolean forceRefresh) {
-        StringBuilder buffer = new StringBuilder();
-        try {
-            String[] tokens = repoUrl.split("/");
-            String repoName = tokens[tokens.length - 1];
-            buffer.append(String.format("- Analyzing repository: %s ...\n", repository.getFullName()));
+    // Compatibility test entry point: never persists fixtures into the user's raw directory.
+    RepoStats analyzeRepository(String url, GHRepository repository, List<RepoStats> ignored, boolean forceRefresh) {
+        try { return calculate(downloadSnapshot(url, repository, message -> { }), configured(url), authorshipSource.apply(url)); }
+        catch (Exception ex) { System.err.println("* Incomplete analysis: " + ex.getMessage()); return null; }
+    }
 
-            if (forceRefresh) {
-        	    buffer.append("\t* Force refresh enabled (ignoring cache)\n");
-        	}
-            
-            RepoStats oldRepoStats = cache.stream()
-                    .filter(r -> repoUrl.equals(r.getUrl()))
-                    .findFirst()
-                    .orElse(null);
+    private RepositoryConfig configured(String url) {
+        return repositoryConfigs.getOrDefault(url, new RepositoryConfig(url, "", null));
+    }
+    private static RepoStats calculate(RepositorySnapshot raw, RepositoryConfig config, AuthorshipConfig rules) {
+        return StatisticsCalculator.calculate(raw, config, rules, ContributionMetrics::defaultRole);
+    }
 
-            Date pushedAt = repository.getPushedAt();
-            long lastPushTime = (pushedAt != null) ? pushedAt.getTime() : -1;
-            
-            // The cache is reusable only when GitHub reports no new push and the
-            // stored snapshot follows the current metric definition. The version
-            // check makes semantic changes refresh old cached data once.
-            if (oldRepoStats != null && !forceRefresh
-                    && oldRepoStats.getLastPushTime() == lastPushTime
-                    && oldRepoStats.getFileSnapshotVersion() == FILE_SNAPSHOT_VERSION) {
-                // A removed group must clear the old cached assignment too.
-                oldRepoStats.setGroup(groupsRepoMap.getOrDefault(repoUrl, ""));
-                buffer.append(String.format("\t* %s repository has not changed (using cache).\n", repoUrl));
-                return oldRepoStats;
+    public RepositorySnapshot requireRawData(String url) {
+        RepositorySnapshot raw = snapshotReader.apply(url);
+        if (raw == null) throw new IllegalStateException("No original download is available. Use Refresh from GitHub once before managing authorship.");
+        return raw;
+    }
+
+    /** Rebuild derived results from saved original data, without initializing a GitHub client. */
+    public synchronized List<RepoStats> loadLocalData() { return readLocalData(true); }
+
+    private List<RepoStats> readLocalData(boolean persist) {
+        reloadRepositories();
+        List<RepoStats> result = new ArrayList<>();
+        for (RepositoryConfig config : repositoryConfigs.values()) {
+            try {
+                RepositorySnapshot raw = snapshotReader.apply(config.url());
+                if (raw != null) result.add(calculate(raw, config, authorshipSource.apply(config.url())));
+            } catch (IllegalStateException ex) {
+                System.err.println("* Local analysis pending for " + config.url() + ": " + ex.getMessage());
             }
+        }
+        Collections.sort(result);
+        if (persist && (!result.isEmpty() || repos.isEmpty())) { resultWriter.accept(result); csvWriter.accept(result); }
+        return result;
+    }
 
-            RepoStats repoStats = new RepoStats();
-            repoStats.setGroup(groupsRepoMap.getOrDefault(repoUrl, ""));
+    public RepoStats recalculateRepository(String url, AuthorshipConfig rules) {
+        reloadRepositories();
+        if (!repositoryConfigs.containsKey(url)) throw new IllegalStateException("Repository is no longer configured.");
+        return calculate(requireRawData(url), configured(url), rules);
+    }
 
-            repoStats.setUrl(repoUrl);
-            repoStats.setName(repoName);
-            repoStats.setLastPushTime(lastPushTime);
-			repoStats.setFileSnapshotVersion(FILE_SNAPSHOT_VERSION);
+    /** Explicit download entry point; author editing never calls it. */
+    public RepoStats refreshRepository(String url) {
+        reloadRepositories();
+        if (!repositoryConfigs.containsKey(url)) throw new IllegalStateException("Repository is no longer configured.");
+        RepoStats result = analyzeRepo(url, apiSource.get());
+        if (result == null) throw new IllegalStateException("Download failed. The previous original download has been kept.");
+        return result;
+    }
 
-            Map<String, GHBranch> branches = repository.getBranches();
-            repoStats.setBranches(branches.size());
-            repoStats.setCreationDate(repository.getCreatedAt().getTime());
-            repoStats.setPublic(!repository.isPrivate());
+    public List<AuthorSummary> discoverAuthors(String url) {
+        checkInterrupted();
+        return StatisticsCalculator.authors(requireRawData(url));
+    }
+    public List<AuthorSummary> discoverAuthors(String url, Consumer<String> progress) {
+        checkInterrupted();
+        progress.accept("Reading authors from the local original download…");
+        return discoverAuthors(url);
+    }
 
-            if (repository.getSize() == 0) {
-                buffer.append(String.format("\t* %s repository is empty :(\n", repoUrl));
-                repoStats.setCodeLines(0);
-                repoStats.setExternalReferences(0);
-                repoStats.setLinesAdded(0);
-                repoStats.setLinesDeleted(0);
-                repoStats.setLinesChanged(0);
-                repoStats.setCommits(0);
-                repoStats.setFirstCommit(-1);
-                repoStats.setLastCommit(-1);
-                return repoStats;
+    RepositorySnapshot downloadSnapshot(String url, GHRepository repository, Consumer<String> progress) throws Exception {
+        return downloadSnapshot(url, repository, progress, null);
+    }
+
+    RepositorySnapshot downloadSnapshot(String url, GHRepository repository, Consumer<String> progress, RepositorySnapshot previous) throws Exception {
+        checkInterrupted();
+        Map<String, GHBranch> branches = repository.getBranches();
+        Map<String, String> heads = new TreeMap<>();
+        branches.forEach((name, branch) -> heads.put(name, branch.getSHA1()));
+        Date pushed = repository.getPushedAt();
+        String defaultBranch = repository.getDefaultBranch();
+        boolean publicRepository = !repository.isPrivate();
+        if (!hasMetadataChanges(previous, heads, defaultBranch, publicRepository)) return previous;
+        List<SourceFile> files = new ArrayList<>();
+        Map<String, GHCommit> unique = new LinkedHashMap<>();
+        if (repository.getSize() != 0 || !heads.isEmpty()) {
+            if (defaultBranch == null || defaultBranch.isBlank()) throw new IllegalStateException("Missing default branch.");
+            progress.accept("Downloading the default-branch source snapshot…");
+            String defaultHead = heads.getOrDefault(defaultBranch, defaultBranch);
+            if (previous != null && defaultHead.equals(previous.branchHeads().get(previous.defaultBranch()))) files.addAll(previous.sourceFiles());
+            else {
+                Map<String, SourceFile> oldFiles = new HashMap<>();
+                if (previous != null) previous.sourceFiles().forEach(file -> oldFiles.put(file.path(), file));
+                downloadFiles(repository.getDirectoryContent("/", defaultHead), "", files, oldFiles);
             }
+            if (previous == null) for (var branch : heads.entrySet()) {
+                progress.accept("Downloading commits from " + branch.getKey() + "…");
+                for (GHCommit commit : repository.queryCommits().from(branch.getValue()).list()) {
+                    checkInterrupted();
+                    if (commit.getSHA1() == null || commit.getSHA1().isBlank()) throw new IllegalStateException("Missing commit SHA.");
+                    unique.putIfAbsent(commit.getSHA1(), commit);
+                }
+            }
+        }
+        List<Commit> commits = new ArrayList<>();
+        if (previous != null) {
+            Map<String, Commit> known = new LinkedHashMap<>();
+            previous.commits().forEach(commit -> known.put(commit.sha(), commit));
+            var pending = new java.util.ArrayDeque<>(heads.values());
+            while (!pending.isEmpty()) {
+                checkInterrupted();
+                String sha = pending.removeFirst();
+                if (known.containsKey(sha)) continue;
+                progress.accept("Downloading new commit " + sha + "…");
+                GHCommit commit = repository.getCommit(sha);
+                if (!sha.equals(commit.getSHA1())) throw new IllegalStateException("Unexpected commit SHA.");
+                Commit raw = downloadCommit(commit, resolveAuthorRaw(commit));
+                known.put(sha, raw);
+                pending.addAll(raw.parents());
+            }
+            commits.addAll(known.values());
+        }
+        int index = 0;
+        for (GHCommit commit : unique.values()) {
+            progress.accept(String.format("Downloading commit files: %d of %d…", ++index, unique.size()));
+            commits.add(downloadCommit(commit, resolveAuthorRaw(commit)));
+        }
+        checkInterrupted();
+        return new RepositorySnapshot(RepositorySnapshot.CURRENT_VERSION, url, url.substring(url.lastIndexOf('/') + 1),
+                System.currentTimeMillis(), repository.getCreatedAt().getTime(), pushed == null ? -1 : pushed.getTime(),
+                publicRepository, defaultBranch == null ? "" : defaultBranch, heads, commits, files);
+    }
 
-            // File-based metrics describe the repository's current project state, so
-            // inspect only GitHub's default branch. Commit history below deliberately
-            // still traverses every branch and deduplicates commit SHAs.
-            Map<String, Integer> fileCounters = filesStatisticsDefaultBranch(
-                    repository, repository.getDefaultBranch(), buffer);
-
-            repoStats.setCodeLines(fileCounters.getOrDefault(LINES_KEY, 0));
-            fileCounters.remove(LINES_KEY);
-            repoStats.setExternalReferences(fileCounters.getOrDefault(REF_KEY, 0));
-            fileCounters.remove(REF_KEY);
-            repoStats.setFileTypeMap(fileCounters);
-
-            Map<RawIdentity, List<GHCommit>> rawCommits = collectCommitsAllBranches(repository, branches, repoStats, buffer);
-        	Map<SimpleGitUser, List<GHCommit>> commitsPerUser = resolveAndMergeAuthors(rawCommits);
-        	        	
-        	fillUserStatsFromCommits(commitsPerUser, repoStats, buffer);
-        	
-            repoStats.setLinesAdded(repoStats.getUserStats().stream().mapToInt(UserStats::getAdded).sum());
-            repoStats.setLinesDeleted(repoStats.getUserStats().stream().mapToInt(UserStats::getDeleted).sum());
-            repoStats.setLinesChanged(repoStats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());            
-
-            return repoStats;
-        } catch (Exception e) {
-            System.err.printf("\t* Error analyzing '%s': %s\n\n", repoUrl, e.getMessage());
-            return null;
-        } finally {
-            if (buffer != null) System.out.println(buffer);
+    private void downloadFiles(List<GHContent> contents, String prefix, List<SourceFile> result, Map<String, SourceFile> oldFiles) throws Exception {
+        for (GHContent content : contents) {
+            checkInterrupted();
+            String path = content.getPath();
+            if (path == null || path.isBlank()) path = prefix + content.getName();
+            if (content.isDirectory()) { downloadFiles(content.listDirectoryContent().toList(), path + "/", result, oldFiles); continue; }
+            String blob = content.getSha();
+            SourceFile old = oldFiles.get(path);
+            if (old != null && blob != null && !blob.isBlank() && blob.equals(old.blobSha())) { result.add(old); continue; }
+            String text = null;
+            if (path.toLowerCase(java.util.Locale.ROOT).endsWith(".java")) {
+                try (var input = content.read()) { text = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8); }
+            }
+            result.add(new SourceFile(path, text, blob));
         }
     }
 
+    Commit downloadCommit(GHCommit commit, AuthorIdentity author) throws Exception {
+        checkInterrupted();
+        List<GHCommit> parents = commit.getParents();
+        List<String> parentShas = new ArrayList<>();
+        if (parents != null) for (GHCommit parent : parents) {
+            String sha = parent.getSHA1();
+            if (sha == null) throw new IllegalStateException("Missing parent SHA.");
+            parentShas.add(sha);
+        }
+        List<ChangedFile> files = new ArrayList<>();
+        for (GHCommit.File file : safeListFiles(commit, new StringBuilder()))
+            files.add(new ChangedFile(file.getFileName(), file.getPreviousFilename(), file.getLinesAdded(), file.getLinesDeleted()));
+        return new Commit(commit.getSHA1(), author, commit.getCommitDate().getTime(), parentShas, files);
+    }
+
+    static int countExternalMarkers(String line) { return StatisticsCalculator.countExternalMarkers(line); }
+    private static void checkInterrupted() {
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Operation cancelled.");
+    }
+    public record UpdateStatus(int pendingCommits, boolean headsChanged, String error) { }
+
+    /** Metadata-only check: no changed files, source contents, snapshots or rules are written. */
+    public void checkForUpdates(java.util.function.BiConsumer<String, UpdateStatus> listener) {
+        reloadRepositories();
+        RepositoryReader reader = apiSource.get();
+        for (String url : new ArrayList<>(repos)) {
+            checkInterrupted();
+            try { listener.accept(url, inspectUpdates(reader.get(url), snapshotReader.apply(url))); }
+            catch (Exception ex) { listener.accept(url, new UpdateStatus(-1, false, ex.getMessage())); }
+        }
+    }
+
+    UpdateStatus inspectUpdates(GHRepository repository, RepositorySnapshot previous) throws Exception {
+        repository.setCompareUsePaginatedCommits(true);
+        Map<String, String> heads = new TreeMap<>();
+        repository.getBranches().forEach((name, branch) -> heads.put(name, branch.getSHA1()));
+        java.util.Set<String> known = new java.util.HashSet<>();
+        if (previous != null) previous.commits().forEach(commit -> known.add(commit.sha()));
+        java.util.Set<String> missing = new java.util.HashSet<>();
+        for (var branch : heads.entrySet()) {
+            checkInterrupted();
+            String old = previous == null ? null : previous.branchHeads().get(branch.getKey());
+            if (known.contains(branch.getValue())) continue;
+            if (old != null) {
+                try {
+                    for (GHCommit commit : repository.getCompare(old, branch.getValue()).listCommits()) {
+                        checkInterrupted();
+                        if (commit.getSHA1() == null) throw new IllegalStateException("Missing comparison SHA.");
+                        if (!known.contains(commit.getSHA1())) missing.add(commit.getSHA1());
+                    }
+                    continue;
+                } catch (org.kohsuke.github.GHFileNotFoundException ex) {
+                    // A rewritten/deleted base may no longer be comparable. Read IDs from the new history.
+                }
+            }
+            for (GHCommit commit : repository.queryCommits().from(branch.getValue()).list()) {
+                checkInterrupted();
+                if (commit.getSHA1() == null) throw new IllegalStateException("Missing history SHA.");
+                if (!known.contains(commit.getSHA1())) missing.add(commit.getSHA1());
+            }
+        }
+        return new UpdateStatus(missing.size(), hasMetadataChanges(previous, heads, repository.getDefaultBranch(), !repository.isPrivate()), null);
+    }
+
+    /** Keep the metadata-only check and the download's reuse decision consistent. */
+    private static boolean hasMetadataChanges(RepositorySnapshot previous, Map<String, String> heads,
+                                               String defaultBranch, boolean publicRepository) {
+        return previous == null || !heads.equals(previous.branchHeads())
+                || !previous.defaultBranch().equals(defaultBranch == null ? "" : defaultBranch)
+                || previous.publicRepository() != publicRepository;
+    }
+
+    private static String repositoryName(String url) { return java.net.URI.create(url).getPath().replaceFirst("^/", ""); }
+
     /**
-     * Replaces exactly one repository entry while retaining all others. This is
-     * the core rule behind progressive persistence: a failed repository is not
-     * passed here, so its older cached value survives the refresh unchanged.
+     * Replaces one result within the current analysis, retaining other fresh results.
      * Package-visible for a focused unit test.
      */
-    static List<RepoStats> replaceCachedRepository(List<RepoStats> cache, RepoStats confirmed) {
+    static List<RepoStats> replaceResult(List<RepoStats> results, RepoStats confirmed) {
         List<RepoStats> updated = new ArrayList<>();
         if (confirmed == null) return updated;
 
         boolean replaced = false;
         String url = confirmed.getUrl();
-        if (cache != null) {
-            for (RepoStats existing : cache) {
+        if (results != null) {
+            for (RepoStats existing : results) {
                 if (existing != null && java.util.Objects.equals(url, existing.getUrl())) {
                     if (!replaced) updated.add(confirmed);
                     replaced = true;
@@ -369,352 +488,7 @@ public class GitHubDataLoader {
         return updated;
     }
 
-    // ---------------- FILES ----------------
-
-    /**
-     * Builds the file snapshot from the repository's default branch only. This
-     * keeps Java LOC, file types and external-reference markers aligned with the
-     * state a visitor sees when opening the repository, rather than including
-     * abandoned or unmerged work from other branches.
-     */
-    private Map<String, Integer> filesStatisticsDefaultBranch(GHRepository repository,
-                                                                String defaultBranch,
-                                                                StringBuilder buffer) {
-        Map<String, Integer> result = new TreeMap<>();
-        result.put(LINES_KEY, 0);
-        result.put(REF_KEY, 0);
-
-        if (defaultBranch == null || defaultBranch.isBlank()) {
-            buffer.append("\t* Could not determine the default branch for the file snapshot.\n");
-            throw new IllegalStateException("Missing default branch for file snapshot");
-        }
-
-        try {
-            List<GHContent> allFiles = repository.getDirectoryContent("/", defaultBranch);
-            buffer.append(String.format("\t* File snapshot branch: %s\n", defaultBranch));
-            processFiles(allFiles, result, buffer);
-        } catch (Exception ex) {
-            buffer.append(String.format("\t* Error processing files from default branch '%s': %s\n",
-                    defaultBranch, ex.getMessage()));
-            throw new IllegalStateException("Incomplete file snapshot", ex);
-        }
-
-        return result;
-    }
-
-    private void processFiles(List<GHContent> contentList,
-                              Map<String, Integer> result,
-                              StringBuilder buffer) {
-        for (GHContent content : contentList) {
-            fileStatistics(result, content, buffer);
-        }
-    }
-
-    private void fileStatistics(Map<String, Integer> counters,
-                                GHContent content,
-                                StringBuilder buffer) {
-        try {
-            if (content.isDirectory()) {
-                for (GHContent c : content.listDirectoryContent()) {
-                    fileStatistics(counters, c, buffer);
-                }
-                return;
-            }
-
-            String name = content.getName();
-            if (name == null || !name.contains(".")) return;
-
-            String type = name.substring(name.lastIndexOf(".")).toLowerCase();
-            counters.put(type, counters.getOrDefault(type, 0) + 1);
-
-            if (name.toLowerCase().endsWith(JAVA_EXTENSION)) {
-                try (BufferedReader in = new BufferedReader(new InputStreamReader(content.read()))) {
-                    String line;
-                    while ((line = in.readLine()) != null) {
-                        counters.put(LINES_KEY, counters.get(LINES_KEY) + 1);
-                        counters.put(REF_KEY, counters.get(REF_KEY) + countExternalMarkers(line));
-                    }
-                } catch (Exception ex) {
-                    buffer.append(String.format("\t* Error processing file '%s': %s\n", name, ex.getMessage()));
-                    throw new IllegalStateException("Incomplete file: " + name, ex);
-                }
-            }
-        } catch (Exception ex) {
-            buffer.append(String.format("\t* Error processing content '%s': %s\n",
-                    safeContentName(content), ex.getMessage()));
-            throw new IllegalStateException("Incomplete repository content", ex);
-        }
-    }
-
-    private String safeContentName(GHContent c) {
-        try { return (c == null) ? "null" : c.getName(); }
-        catch (Exception e) { return "unknown"; }
-    }
-
-    /**
-     * Counts standalone external/AI-reference markers ({@code IAG},
-     * {@code FUENTE-EXTERNA}) in a single line. Uses word boundaries, so markers
-     * embedded in longer identifiers (e.g. {@code DIAGNOSTIC}) are not counted.
-     * Package-visible for testing.
-     */
-    static int countExternalMarkers(String line) {
-        if (line == null) return 0;
-        int count = 0;
-        Matcher matcher = EXTERNAL_PATTERN.matcher(line);
-        while (matcher.find()) count++;
-        return count;
-    }
-
-    // Package-visible for unit testing of the identity-merging logic.
-    static class RawIdentity {
-        final String name;
-        final String email;
-        final String login;
-
-        RawIdentity(String name, String email, String login) {
-            this.name = name;
-            this.email = email;
-            this.login = login;
-        }
-    }
-    
-    private static String norm(String s) {
-        if (s == null) return "";
-        return s.trim().toLowerCase(java.util.Locale.ROOT);
-    }
-
-    private static String stripAccents(String s) {
-        if (s == null) return "";
-        String n = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD);
-        return n.replaceAll("\\p{M}", "");
-    }
-
-    private static String normName(String name) {
-        String x = stripAccents(norm(name));
-        x = x.replaceAll("[^a-z0-9 ]+", " ");
-        x = x.replaceAll("\\s+", " ").trim();
-        return x;
-    }
-
-    private static String emailLocalPart(String email) {
-        String e = norm(email);
-        int at = e.indexOf('@');
-        if (at <= 0) return "";
-        return e.substring(0, at);
-    }
-
-    private static String loginFromNoReply(String email) {
-        String e = norm(email);
-        if (!e.endsWith("@users.noreply.github.com")) return "";
-        String lp = emailLocalPart(e);
-        int plus = lp.indexOf('+');
-        if (plus >= 0 && plus + 1 < lp.length()) return lp.substring(plus + 1);        
-        return lp;
-    }
-
-    /**
-     * Disjoint-set union (union-find) keeps the transitive identity matches in
-     * one cluster: if A matches B and B matches C, all three represent one user.
-     * Path compression and rank keep repeated merges close to constant time.
-     */
-    private static class DSU {
-        int[] parent;
-        int[] rank;
-
-        DSU(int n) {
-            parent = new int[n];
-            rank = new int[n];
-            for (int i = 0; i < n; i++) parent[i] = i;
-        }
-
-        int find(int x) {
-            return parent[x] == x ? x : (parent[x] = find(parent[x]));
-        }
-
-        void union(int nodeA, int nodeB) {
-            nodeA = find(nodeA);
-            nodeB = find(nodeB);
-            if (nodeA == nodeB) return;
-            if (rank[nodeA] < rank[nodeB]) parent[nodeA] = nodeB;
-            else if (rank[nodeA] > rank[nodeB]) parent[nodeB] = nodeA;
-            else { parent[nodeB] = nodeA; rank[nodeA]++; }
-        }
-    }
-
-    // Package-visible for unit testing of the representative-selection rules.
-    static RawIdentity pickBetterRep(RawIdentity a, RawIdentity b) {
-        boolean aLogin = a.login != null && !a.login.isBlank();
-        boolean bLogin = b.login != null && !b.login.isBlank();
-        if (aLogin && !bLogin) return a;
-        if (bLogin && !aLogin) return b;
-
-        String ae = norm(a.email), be = norm(b.email);
-        boolean aOpen = ae.endsWith("@opendeusto.es");
-        boolean bOpen = be.endsWith("@opendeusto.es");
-        if (aOpen && !bOpen) return a;
-        if (bOpen && !aOpen) return b;
-
-        boolean aNoReply = ae.endsWith("@users.noreply.github.com");
-        boolean bNoReply = be.endsWith("@users.noreply.github.com");
-        if (!aNoReply && bNoReply) return a;
-        if (!bNoReply && aNoReply) return b;
-
-        int al = (a.name == null) ? 0 : a.name.length();
-        int bl = (b.name == null) ? 0 : b.name.length();
-        return (bl > al) ? b : a;
-    }
-
-    /**
-     * Converts raw commit identities into one representative user per cluster.
-     * Clustering decides who belongs together; representative selection decides
-     * which login/name/email is clearest to show in the GUI and CSV.
-     */
-    static Map<SimpleGitUser, List<GHCommit>> resolveAndMergeAuthors(Map<RawIdentity, List<GHCommit>> rawMap) {
-        List<RawIdentity> ids = new ArrayList<>(rawMap.keySet());
-        int[] root = clusterIdentities(ids);
-
-        Map<Integer, List<GHCommit>> commitsByRoot = new HashMap<>();
-        Map<Integer, RawIdentity> repByRoot = new HashMap<>();
-
-        for (int i = 0; i < ids.size(); i++) {
-            int r = root[i];
-            commitsByRoot.computeIfAbsent(r, k -> new ArrayList<>()).addAll(rawMap.get(ids.get(i)));
-            repByRoot.merge(r, ids.get(i), GitHubDataLoader::pickBetterRep);
-        }
-
-        Map<SimpleGitUser, List<GHCommit>> out = new HashMap<>();
-        for (Map.Entry<Integer, List<GHCommit>> e : commitsByRoot.entrySet()) {
-            RawIdentity rep = repByRoot.get(e.getKey());
-            String bestName = (rep.login != null && !rep.login.isBlank()) ? rep.login : rep.name;
-            String bestEmail = rep.email;
-            // Distinct weak clusters can still have the same display identity.
-            // Keep all their commits instead of overwriting an earlier cluster.
-            out.computeIfAbsent(new SimpleGitUser(bestName, bestEmail), k -> new ArrayList<>())
-                    .addAll(e.getValue());
-        }
-
-        return out;
-    }
-
-    /**
-     * Clusters raw identities that (very likely) belong to the same person and
-     * returns, for each identity, the index of its cluster representative root.
-     * Two identities are merged when they share a GitHub login, share a
-     * non-noreply email local-part, or share a normalized display name that is
-     * anchored by at least one "strong" identity (has a login or a resolvable
-     * email). This is the pure, side-effect-free core of
-     * {@link #resolveAndMergeAuthors(Map)} and is package-visible for testing.
-     *
-     * @param ids the raw identities (order defines the returned indices)
-     * @return an array {@code root} where {@code root[i]} is the cluster id of
-     *         {@code ids.get(i)}; two identities share a cluster iff their roots
-     *         are equal
-     */
-    static int[] clusterIdentities(List<RawIdentity> ids) {
-        DSU dsu = new DSU(ids.size());
-
-        Map<String, Integer> seenLogin = new HashMap<>();
-        Map<String, Integer> seenEmailLocal = new HashMap<>();
-        Map<String, List<Integer>> byNormName = new HashMap<>();
-
-        for (int i = 0; i < ids.size(); i++) {
-            RawIdentity id = ids.get(i);
-
-            String login = norm(id.login);
-            if (!login.isEmpty()) {
-                seenLogin.merge("login:" + login, i, (oldI, newI) -> { dsu.union(oldI, newI); return oldI; });
-            }
-
-            String em = norm(id.email);
-            String lp = emailLocalPart(em);
-            if (!lp.isEmpty() && !em.endsWith("@users.noreply.github.com")) {
-                seenEmailLocal.merge("lp:" + lp, i, (oldI, newI) -> { dsu.union(oldI, newI); return oldI; });
-            }
-
-            String nn = normName(id.name);
-            if (!nn.isEmpty()) byNormName.computeIfAbsent(nn, k -> new ArrayList<>()).add(i);
-        }
-
-        for (List<Integer> idxs : byNormName.values()) {
-            if (idxs.size() < 2) continue;
-
-            Integer anchor = null;
-            for (int idx : idxs) {
-                RawIdentity id = ids.get(idx);
-                boolean strong =
-                        !norm(id.login).isEmpty()
-                        || !loginFromNoReply(id.email).isEmpty()
-                        || (!emailLocalPart(id.email).isEmpty() && !norm(id.email).endsWith("@users.noreply.github.com"));
-
-                if (strong) { anchor = idx; break; }
-            }
-            if (anchor == null) continue;
-
-            for (int idx : idxs) dsu.union(anchor, idx);
-        }
-
-        int[] root = new int[ids.size()];
-        for (int i = 0; i < ids.size(); i++) root[i] = dsu.find(i);
-        return root;
-    }
-
-    
-    // ---------------- COMMITS ----------------
-
-    /**
-     * Traverses every branch to capture the repository's complete known history.
-     * A commit reachable from more than one branch is processed only once by SHA;
-     * otherwise merged branches would inflate repository and author totals.
-     */
-    private Map<RawIdentity, List<GHCommit>> collectCommitsAllBranches(GHRepository repository,
-                                                                        Map<String, GHBranch> branches,
-                                                                        RepoStats repoStats,
-                                                                        StringBuilder buffer) {
-    	Map<RawIdentity, List<GHCommit>> result = new HashMap<>();
-        Set<String> processedCommits = new HashSet<>();
-
-        long repoFirstCommitDate = Long.MAX_VALUE;
-        long repoLastCommitDate = Long.MIN_VALUE;
-        int mergeCommits = 0;
-
-        for (Map.Entry<String, GHBranch> branchEntry : branches.entrySet()) {
-            GHBranch branch = branchEntry.getValue();
-            try {
-                PagedIterable<GHCommit> commits = repository.queryCommits().from(branch.getSHA1()).list();
-
-                for (GHCommit c : commits) {
-                    String sha = c.getSHA1();
-                    if (sha == null || processedCommits.contains(sha)) continue;
-                    processedCommits.add(sha);
-
-                    long t = c.getCommitDate().getTime();
-                    repoFirstCommitDate = Math.min(repoFirstCommitDate, t);
-                    repoLastCommitDate = Math.max(repoLastCommitDate, t);
-
-                    // A merge commit has more than one parent. These inflate the total
-                    // commit count but are excluded from the per-user Java stats.
-                    if (c.getParents() != null && c.getParents().size() > 1) mergeCommits++;
-
-                    RawIdentity author = resolveAuthorRaw(c);
-                    result.computeIfAbsent(author, k -> new ArrayList<>()).add(c);
-                }
-
-            } catch (Exception ex) {
-                buffer.append(String.format("\t* Error reading commits from branch '%s': %s\n",
-                        branchEntry.getKey(), ex.getMessage()));
-                throw new IllegalStateException("Incomplete commit history", ex);
-            }
-        }
-
-        repoStats.setCommits(processedCommits.size());
-        repoStats.setMergeCommits(mergeCommits);
-        repoStats.setFirstCommit(repoFirstCommitDate == Long.MAX_VALUE ? -1 : repoFirstCommitDate);
-        repoStats.setLastCommit(repoLastCommitDate == Long.MIN_VALUE ? -1 : repoLastCommitDate);
-
-        return result;
-    }
-
-    private RawIdentity resolveAuthorRaw(GHCommit c) {
+    AuthorIdentity resolveAuthorRaw(GHCommit c) {
         String name = "unknown";
         String email = "";
         String login = null;
@@ -728,7 +502,6 @@ public class GitHubDataLoader {
                 // per commit, quickly exhausting the rate limit on large repos). The git
                 // author email/name below come inline from the commit itself.
                 login = ghAuthor.getLogin();
-                if (login != null && !login.isBlank()) name = login;
             }
         } catch (Exception ex) {
             throw new IllegalStateException("Incomplete commit author", ex);
@@ -737,108 +510,14 @@ public class GitHubDataLoader {
         try {
             GitUser authorInfo = c.getCommitShortInfo().getAuthor();
             if (authorInfo != null) {
-                if ((name == null || "unknown".equals(name)) && authorInfo.getName() != null) name = authorInfo.getName();
+                if (authorInfo.getName() != null) name = authorInfo.getName();
                 if (authorInfo.getEmail() != null) email = authorInfo.getEmail();
             }
         } catch (Exception ex) {
             throw new IllegalStateException("Incomplete commit author", ex);
         }
 
-        if ((login == null || login.isBlank())) {
-            String nr = loginFromNoReply(email);
-            if (!nr.isBlank()) login = nr;
-        }
-
-        return new RawIdentity(name, email, login);
-    }    
-
-    private void fillUserStatsFromCommits(Map<SimpleGitUser, List<GHCommit>> commitsPerUser,
-                                         RepoStats repoStats,
-                                         StringBuilder buffer) {
-
-        for (Map.Entry<SimpleGitUser, List<GHCommit>> entry : commitsPerUser.entrySet()) {
-            SimpleGitUser user = entry.getKey();
-            List<GHCommit> commits = entry.getValue();
-
-            UserStats stats = computeUserStatsFromCommits(commits, user.getName(), user.getEmail(), buffer);
-            repoStats.addUserStats(stats);
-
-            buffer.append(String.format("\t* '%s' processed: rawCommits=%d, javaCommits=%d, churn=%d\n",
-                    user.getName(),
-                    commits.size(),
-                    stats.getCommits(),
-                    stats.getChanged()));
-        }
-    }
-
-    /**
-     * Calculates Java-specific work for one resolved author. Merge commits are
-     * skipped because their file list aggregates work already attributed to their
-     * parent commits; a commit counts only when it changes at least one .java file.
-     */
-    UserStats computeUserStatsFromCommits(List<GHCommit> commits,
-                                                  String username,
-                                                  String email,
-                                                  StringBuilder buffer) {
-
-        Set<String> javaFilesSet = new HashSet<>();
-        int linesAdded = 0;
-        int linesDeleted = 0;
-
-        long firstCommitDate = Long.MAX_VALUE;
-        long lastCommitDate = Long.MIN_VALUE;
-
-        int commitsJava = 0;
-
-        for (GHCommit commit : commits) {
-            try {
-                if (commit.getParents() != null && commit.getParents().size() > 1) {
-                    continue;
-                }
-
-                long commitTime = commit.getCommitDate().getTime();
-                if (commitTime != -1) {
-                    firstCommitDate = Math.min(firstCommitDate, commitTime);
-                    lastCommitDate = Math.max(lastCommitDate, commitTime);
-                }
-
-                List<GHCommit.File> files = safeListFiles(commit, buffer);
-
-                boolean touchedJava = false;
-                for (GHCommit.File file : files) {
-                    String fileName = (file.getFileName() == null) ? "" : file.getFileName();
-                    if (fileName.toLowerCase(java.util.Locale.ROOT).endsWith(JAVA_EXTENSION)) {
-                        touchedJava = true;
-                        linesAdded += file.getLinesAdded();
-                        linesDeleted += file.getLinesDeleted();
-                        javaFilesSet.add(fileName);
-                    }
-                }
-
-                if (touchedJava) commitsJava++;
-
-            } catch (Exception ex) {
-                buffer.append(String.format("\t  - Error processing commit for '%s': %s\n", username, ex.getMessage()));
-                throw new IllegalStateException("Incomplete contributor statistics", ex);
-            }
-        }
-
-        int churnJava = linesAdded + linesDeleted;
-
-        long first = (firstCommitDate == Long.MAX_VALUE) ? -1 : firstCommitDate;
-        long last = (lastCommitDate == Long.MIN_VALUE) ? -1 : lastCommitDate;
-
-        return new UserStats(
-                username,
-                email,
-                commitsJava,           
-                javaFilesSet.size(),
-                linesAdded,
-                linesDeleted,
-                churnJava,             
-                first,
-                last
-        );
+        return new AuthorIdentity(name, email, login);
     }
 
     /**
@@ -853,7 +532,10 @@ public class GitHubDataLoader {
             acquired = true;
 
             throttleHeavyCalls();
-            return commit.listFiles().toList();
+            checkInterrupted();
+            List<GHCommit.File> files = commit.listFiles().toList();
+            checkInterrupted();
+            return files;
 
         } catch (Exception ex) {
             buffer.append(String.format("\t  - Error listFiles() for commit %s: %s\n",
@@ -872,8 +554,9 @@ public class GitHubDataLoader {
         if (last != 0 && delta < MIN_DELAY_BETWEEN_HEAVY_CALLS_MS) {
             try {
                 Thread.sleep(MIN_DELAY_BETWEEN_HEAVY_CALLS_MS - delta);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
+                throw new java.util.concurrent.CancellationException("Analysis cancelled.");
             }
         }
     }

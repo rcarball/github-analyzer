@@ -75,6 +75,9 @@ import javax.swing.tree.DefaultTreeModel;
 
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader;
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
+import es.deusto.prog3.githubanalyzer.domain.RepositoryConfig;
+import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig;
+import es.deusto.prog3.githubanalyzer.persistence.AuthorshipStore;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
 import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 import es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics;
@@ -93,6 +96,9 @@ public class MainWindow extends JFrame {
 	private JLabel lblLinesChanged;
 	private JLabel lblExternalRefs;
 	private JLabel lblURL;
+    private JLabel lblTeamSize;
+    private JLabel lblContributors;
+    private JLabel lblAuthors;
 	private JLabel lblStatus = new JLabel(" ");
 	private SimpleDateFormat dateFormatShort = new SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
 	private SimpleDateFormat dateFormatLong = new SimpleDateFormat("yyyy-MMM-dd - hh:mm", java.util.Locale.ROOT);
@@ -104,9 +110,13 @@ public class MainWindow extends JFrame {
 
 	private JButton btnRefresh = new JButton("Refresh from GitHub");
 	private JButton btnConfig = new JButton("Config");
+    private JButton btnAuthorship = new JButton("Manage authorship…");
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
+    private final Map<String, GitHubDataLoader.UpdateStatus> remoteUpdates = new HashMap<>();
+    private int checkGeneration;
+    private SwingWorker<?, ?> updateWorker;
 
 	// Per-user interpretation cache for the currently loaded repo, so the table
 	// renderers/tooltips don't recompute it (with streams) on every cell repaint.
@@ -122,6 +132,9 @@ public class MainWindow extends JFrame {
 		TEACHER("TEACHER.png", Color.DARK_GRAY,
 		        "Teacher account",
 		        "Teacher account: excluded from expected-share calculations."),
+
+        EXCLUDED("TEACHER.png", Color.DARK_GRAY,
+                "Excluded account", "Excluded account: visible activity, excluded from team calculations."),
 
 		VERY_LOW("VERY_LOW.png", new Color(234, 23, 68),
 		        "Very low / no contribution",
@@ -224,15 +237,12 @@ public class MainWindow extends JFrame {
 	
 	/** Keeps configuration locked until refresh completion, including error handling. */
 	static abstract class RefreshWorker extends SwingWorker<List<RepoStats>, String> {
-	    private final JButton refreshButton;
-	    private final JButton configButton;
+        private final JButton[] buttons;
 
-	    RefreshWorker(JButton refreshButton, JButton configButton) {
-	        this.refreshButton = refreshButton;
-	        this.configButton = configButton;
-	        refreshButton.setEnabled(false);
-	        configButton.setEnabled(false);
-	    }
+        RefreshWorker(JButton... buttons) {
+            this.buttons = buttons;
+            for (JButton button : buttons) button.setEnabled(false);
+        }
 
 	    protected abstract void refreshFinished();
 
@@ -241,8 +251,7 @@ public class MainWindow extends JFrame {
 	        try {
 	            refreshFinished();
 	        } finally {
-	            refreshButton.setEnabled(true);
-	            configButton.setEnabled(true);
+                for (JButton button : buttons) button.setEnabled(true);
 	        }
 	    }
 	}
@@ -266,19 +275,25 @@ public class MainWindow extends JFrame {
 				// Check if the node represents a RepoStats object
 				if (userObject instanceof RepoStats) {
 					RepoStats repoStats = (RepoStats) userObject;
-					iconFile = repoStats.isPublic() ? "public.png" : "private.png";
+					iconFile = !repoStats.isAnalysisComplete() ? "github.png" : repoStats.isPublic() ? "public.png" : "private.png";
 
 					setText(repoStats.getGroup() != null && !repoStats.getGroup().isEmpty() ? repoStats.getGroup() : repoStats.getName());
 
 					// If the repository is empty (no commits), change the text color to orange
-					if (repoStats.getCommits() == 0) {
+					if (!repoStats.isAnalysisComplete()) {
+                        component.setForeground(Color.GRAY);
+                        setText(getText() + " (analysis pending)");
+                    } else if (repoStats.getCommits() == 0) {
 						component.setForeground(new Color(245, 143, 41));
 						setText(getText() + " (empty repository)");
 					} else {
 						component.setForeground(new Color(54, 130, 127));
 					}
 
-					setToolTipText(repoStats.getName());
+                    GitHubDataLoader.UpdateStatus update = remoteUpdates.get(repoStats.getUrl());
+                    setText(getText() + pendingSuffix(update));
+                    setToolTipText(update != null && update.error() != null ? update.error()
+                            : repoStats.getName() + (update != null && update.headsChanged() ? " — remote changes pending" : ""));
 				} else {
 					component.setForeground(Color.BLACK);
 				}
@@ -314,7 +329,7 @@ public class MainWindow extends JFrame {
 		// Initialize the user stats table
 		initTable();
 
-		JScrollPane reposJScrollPane = new JScrollPane(jTreeRepos);
+		JScrollPane reposJScrollPane = repositoryTreeScrollPane(jTreeRepos);
 
 		JPanel reposPanel = new JPanel(new BorderLayout());
 		reposPanel.setBorder(new TitledBorder("Repositories"));
@@ -322,7 +337,7 @@ public class MainWindow extends JFrame {
 
 		JPanel panelDetails = new JPanel();
 		panelDetails.setBorder(new TitledBorder("Repository overview"));
-		panelDetails.setLayout(new GridLayout(4, 2, 0, 0));
+		panelDetails.setLayout(new GridLayout(4, 3, 12, 0));
 
 		lblCommits       = new JLabel("• Total commits (unique):");
 		lblCreationDate  = new JLabel("• Created:");
@@ -332,6 +347,11 @@ public class MainWindow extends JFrame {
 		lblLinesChanged  = new JLabel("• Java churn (added+deleted):");
 		lblExternalRefs  = new JLabel("• External references (default branch):");
 		lblURL           = new JLabel("• Open repository:");
+        lblTeamSize = new JLabel("• Team size:");
+        lblContributors = new JLabel("• Contributors:");
+        lblAuthors = new JLabel("• Author identities:");
+        lblContributors.setToolTipText("People after explicit assignments, with Java activity, excluding teachers and excluded accounts.");
+        lblAuthors.setToolTipText("Distinct original Git author identities before assignments, across all branches and file types.");
 		
 		lblCommits.setToolTipText("<html><b>Unique commits</b> across all branches (deduplicated by SHA).<br>This is a global activity indicator (not the same as “Java commits per person”).</html>");
 		lblCreationDate.setToolTipText("Repository creation date (from GitHub).");
@@ -389,12 +409,16 @@ public class MainWindow extends JFrame {
 
 		panelDetails.add(lblCommits);
 		panelDetails.add(lblCreationDate);
+        panelDetails.add(lblTeamSize);
 		panelDetails.add(lblCodeLines);
 		panelDetails.add(lblFirstCommit);
+        panelDetails.add(lblContributors);
 		panelDetails.add(lblLinesChanged);
 		panelDetails.add(lblLastCommit);
+        panelDetails.add(lblAuthors);
 		panelDetails.add(lblExternalRefs);
-		panelDetails.add(lblURL);		
+		panelDetails.add(lblURL);
+        panelDetails.add(new JLabel());
 
 		JScrollPane usersJScrollPane = new JScrollPane(jTableUserStats);
 		usersJScrollPane.setBorder(new TitledBorder("People (authors / contributors)"));
@@ -433,35 +457,32 @@ public class MainWindow extends JFrame {
 		// Config button action
 		btnConfig.setToolTipText("Edit configuration and repositories");
 		btnConfig.addActionListener(event -> showConfigDialog());
+        btnAuthorship.setToolTipText("Unify or separate downloaded author identities locally");
+        btnAuthorship.addActionListener(event -> discoverAuthorship());
 
 		// Refresh button action
 		btnRefresh.setToolTipText("Re-read the config files and fetch fresh data from GitHub");
 		btnRefresh.addActionListener(event -> {
 			// Give immediate feedback and prevent overlapping refreshes.
 			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-			setStatusText("Refreshing from GitHub…");
+            checkGeneration++;
+            if (updateWorker != null) updateWorker.cancel(true);
+            remoteUpdates.clear();
+            setStatusText("Downloading new commits from GitHub…");
 
 			// SwingWorker keeps network I/O off Swing's event-dispatch thread (EDT).
 			// Its done() method runs on the EDT, where it is safe to update components.
-		        RefreshWorker worker = new RefreshWorker(btnRefresh, btnConfig) {
+		        RefreshWorker worker = new RefreshWorker(btnRefresh, btnConfig, btnAuthorship) {
 
 	            @Override
 	            protected List<RepoStats> doInBackground() throws Exception {
-	                // Reload settings here; loadData reads the repository list once before updating the cache.
+	                // Reload settings here; loadData validates the repository list before starting a fresh analysis.
 	                Configurator.getInstance().reload();
 	                if (!Configurator.getInstance().isConfigured()) {
 	                    throw new IllegalStateException("Configure a GitHub user and token before refreshing.");
 	                }
-	                // Start from the existing cache: entries for repositories that
-	                // fail this refresh remain available while confirmed entries
-	                // are persisted one by one by the loader.
-	                List<RepoStats> cachedStats = DataManager.getInstance().loadData();
-	                List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData(cachedStats, true);
-	                int configured = GitHubDataLoader.getInstance().getConfiguredRepositoryCount();
-	                if (!DataManager.shouldStoreRefresh(configured, newStats)) {
-	                    throw new IllegalStateException("No repositories could be refreshed; the existing cache was kept.");
-	                }
-	                // Return the new data
+	                List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData();
+                // Return the new data
 	                return newStats;
 	            }
 
@@ -487,7 +508,7 @@ public class MainWindow extends JFrame {
 								String.format(
 									"Refresh finished, but only %d of %d repositories could be refreshed.\n\n"
 									+ "For repositories that failed (private / no access, GitHub rate limits, "
-									+ "or an invalid token), their previous cached data was kept. See the console log for details.",
+									+ "or an invalid token), the last complete original download is kept. See pending counts and the console log for details.",
 									confirmed, expected),
 		    	    			    "Refresh completed with warnings",
 		    	    			    JOptionPane.WARNING_MESSAGE
@@ -512,8 +533,9 @@ public class MainWindow extends JFrame {
 						}
 					} finally {
 						setCursor(Cursor.getDefaultCursor());
-						setStatusText(" ");
-					}
+                        setStatusText(" ");
+                        checkForUpdates();
+                    }
 	            }
 	        };
 
@@ -533,6 +555,7 @@ public class MainWindow extends JFrame {
 				
 		JPanel topButtons = new JPanel();
 		topButtons.add(btnConfig);
+        topButtons.add(btnAuthorship);
 		topButtons.add(btnRefresh);
 		JPanel topPanel = new JPanel(new BorderLayout());
 		topPanel.add(topButtons, BorderLayout.EAST);
@@ -554,10 +577,11 @@ public class MainWindow extends JFrame {
 		ToolTipManager.sharedInstance().setDismissDelay(20000); // show for 20 segundos
 		ToolTipManager.sharedInstance().setReshowDelay(100);    // reshow after 0.1 segundos
 		
-		this.setVisible(true);
+        this.setVisible(true);
+        SwingUtilities.invokeLater(this::checkForUpdates);
 
 		// First run / not configured yet: prompt the user to set things up.
-		if (!Configurator.getInstance().isConfigured()) {
+		if (!Configurator.getInstance().isConfigured() && allRepos.stream().noneMatch(RepoStats::isAnalysisComplete)) {
 			SwingUtilities.invokeLater(() -> {
 				setStatusText("Not configured yet — fill in your GitHub user and token.");
 				showConfigDialog();
@@ -565,14 +589,33 @@ public class MainWindow extends JFrame {
 		}
 	}
 
-	private void updateReposJTree(List<RepoStats> data) {
-		repoStatsMap.clear();
+    /** Include selectable pending repositories without presenting invented or old metrics. */
+    static List<RepoStats> withConfiguredRepositories(List<RepoStats> data, List<RepositoryConfig> configs) {
+        Map<String, RepoStats> fresh = new HashMap<>();
+        if (data != null) for (RepoStats repo : data) if (repo != null && repo.isAnalysisComplete()) fresh.put(repo.getUrl(), repo);
+        List<RepoStats> result = new ArrayList<>();
+        for (RepositoryConfig config : configs) {
+            RepoStats repo = fresh.get(config.url());
+            if (repo == null || !java.util.Objects.equals(repo.getTeamSize(), config.teamSize())
+                    || !java.util.Objects.equals(repo.getGroup(), config.group())) {
+                repo = new RepoStats();
+                repo.setUrl(config.url());
+                repo.setName(config.url().substring(config.url().lastIndexOf('/') + 1));
+                repo.setGroup(config.group());
+                repo.setTeamSize(config.teamSize());
+            }
+            result.add(repo);
+        }
+        return result;
+    }
 
-		allRepos = (data == null) ? new ArrayList<>() : data;
-		allRepos.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
-
-		rebuildRepoTree();
-	}
+    private void updateReposJTree(List<RepoStats> data) {
+        repoStatsMap.clear();
+        List<RepositoryConfig> configs = GitHubDataLoader.getInstance().getRepositoryConfigs();
+        allRepos = withConfiguredRepositories(data, configs);
+        allRepos.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
+        rebuildRepoTree();
+    }
 
 	/** Rebuilds the repository tree with every configured repository. */
 	private void rebuildRepoTree() {
@@ -807,12 +850,30 @@ public class MainWindow extends JFrame {
 	    });
 	}
 
-	private void loadRepoStats(RepoStats repoStats) {
+    private void loadRepoStats(RepoStats repoStats) {
+        if (repoStats != null && !repoStats.isAnalysisComplete()) {
+            loadRepoStats(null);
+            lblTeamSize.setText(repoStats.getTeamSize() == null ? "• Team size: pending" : "• Team size: " + repoStats.getTeamSize() + " (declared)");
+            lblCommits.setText("• Analysis pending: refresh from GitHub");
+            setStatusText("Analysis pending. Stored statistics are not reused.");
+            return;
+        }
 		// Precompute interpretations once for this repo; renderers/tooltips reuse them.
 		rebuildInterpretationCache(repoStats);
 
 		if (repoStats != null) {
 			// Update labels with repository stats
+            int observed = ContributionMetrics.activeContributors(repoStats).size();
+            int size = ContributionMetrics.effectiveTeamSize(repoStats);
+            lblTeamSize.setText("• Team size: " + size + (repoStats.getTeamSize() == null ? " (inferred)" : " (declared)")
+                    + (repoStats.getTeamSize() != null && size != observed ? " ⚠" : ""));
+            lblTeamSize.setToolTipText(repoStats.getTeamSize() != null && size != observed
+                    ? "Declared size differs from observed contributors: " + observed
+                    : "Expected share uses this size; observed churn share always uses actual team work.");
+            lblContributors.setText("• Contributors: " + observed);
+            lblAuthors.setText("• Author identities: " + repoStats.getAuthorCount());
+            lblAuthors.setToolTipText("Original download: " + (repoStats.getDataCapturedAt() > 0
+                    ? new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(repoStats.getDataCapturedAt())) : "unknown"));
 			lblCreationDate.setText(String.format("• Creation date: %s", dateFormatLong.format(new Date(repoStats.getCreationDate()))));
 			
 			if (repoStats.getFirstCommit() == -1) {
@@ -882,6 +943,10 @@ public class MainWindow extends JFrame {
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
 		} else {
+            lblTeamSize.setText("• Team size:");
+            lblTeamSize.setToolTipText(null);
+            lblContributors.setText("• Contributors:");
+            lblAuthors.setText("• Author identities:");
 			lblCreationDate.setText("• Creation date:");
 			lblFirstCommit.setText("• First commit:");
 			lblLastCommit.setText("• Last commit:");
@@ -980,10 +1045,207 @@ public class MainWindow extends JFrame {
 	}
 
 
+    private void discoverAuthorship() {
+        if (!btnAuthorship.isEnabled()) return;
+        String url = selectedRepo;
+        if (url == null) {
+            JOptionPane.showMessageDialog(this, "Select a repository first.", "Manage authorship", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        btnRefresh.setEnabled(false);
+        btnConfig.setEnabled(false);
+        btnAuthorship.setEnabled(false);
+        JDialog dialog = new JDialog(this, "Manage authorship — " + url, true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        final AuthorshipConfig[] accepted = {null};
+        final AuthorshipStore[] ruleStore = {null};
+        AuthorshipDiscoveryPanel loading = new AuthorshipDiscoveryPanel(progress -> {
+            Configurator config = Configurator.getInstance();
+            config.reload();
+            GitHubDataLoader loader = GitHubDataLoader.getInstance();
+            loader.reloadRepositories();
+            RepositoryConfig repository = loader.getRepositoryConfigs().stream().filter(r -> url.equals(r.url()))
+                    .findFirst().orElseThrow(() -> new IllegalStateException("Repository is no longer configured."));
+            AuthorshipStore store = new AuthorshipStore(config.getAuthorshipDirectory());
+            AuthorshipConfig rules = store.load(url);
+            progress.accept("Reading the local original download…");
+            var source = loader.requireRawData(url);
+            return new AuthorshipDiscoveryPanel.Result(es.deusto.prog3.githubanalyzer.StatisticsCalculator.authors(source), rules, store, repository.teamSize(), source);
+        }, result -> {
+            ruleStore[0] = result.store();
+            populateAuthorshipDialog(dialog, result, accepted);
+        }, failure -> {
+            JOptionPane.showMessageDialog(dialog, "Could not discover original authors. Configuration was not changed.\n"
+                    + failure.getMessage(), "Manage authorship", JOptionPane.ERROR_MESSAGE);
+            dialog.dispose();
+        }, dialog::dispose);
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowClosing(java.awt.event.WindowEvent event) { loading.cancel(); }
+        });
+        dialog.add(loading, BorderLayout.CENTER);
+        boolean reprocessing = false;
+        try {
+            dialog.pack();
+            dialog.setLocationRelativeTo(this);
+            loading.start();
+            dialog.setVisible(true);
+            if (accepted[0] != null) {
+                List<RepoStats> remaining = allRepos.stream().filter(r -> !url.equals(r.getUrl()) && r.isAnalysisComplete()).toList();
+                reprocessAuthorship(url, remaining, accepted[0], ruleStore[0]);
+                reprocessing = true;
+            }
+        } finally {
+            loading.cancel();
+            if (!reprocessing) {
+                btnRefresh.setEnabled(true);
+                btnConfig.setEnabled(true);
+                btnAuthorship.setEnabled(true);
+            }
+        }
+    }
+
+    static JScrollPane repositoryTreeScrollPane(JTree tree) {
+        JScrollPane scroll = new JScrollPane(tree, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        scroll.setPreferredSize(new Dimension(300, scroll.getPreferredSize().height));
+        return scroll;
+    }
+
+    /** Renderer-only suffix changes must invalidate the cached node widths as well as repaint. */
+    static void refreshRepositoryTreeLabels(JTree tree) {
+        DefaultTreeModel model = (DefaultTreeModel) tree.getModel();
+        DefaultMutableTreeNode root = (DefaultMutableTreeNode) model.getRoot();
+        int[] indices = java.util.stream.IntStream.range(0, root.getChildCount()).toArray();
+        if (indices.length > 0) model.nodesChanged(root, indices);
+    }
+
+    static String pendingSuffix(GitHubDataLoader.UpdateStatus update) {
+        if (update == null) return "";
+        if (update.pendingCommits() < 0) return " (?)";
+        if (update.pendingCommits() == 0 && update.headsChanged()) return " (0; changes pending)";
+        return " (" + update.pendingCommits() + ")";
+    }
+
+    private void checkForUpdates() {
+        final int generation = ++checkGeneration;
+        if (updateWorker != null) updateWorker.cancel(true);
+        remoteUpdates.clear();
+        refreshRepositoryTreeLabels(jTreeRepos);
+        if (!Configurator.getInstance().isConfigured()) {
+            setStatusText("Local data ready. Configure a token to check GitHub updates.");
+            return;
+        }
+        SwingWorker<Void, Map.Entry<String, GitHubDataLoader.UpdateStatus>> worker = new SwingWorker<>() {
+            @Override protected Void doInBackground() {
+                GitHubDataLoader.getInstance().checkForUpdates((url, status) -> {
+                    if (isCancelled()) throw new java.util.concurrent.CancellationException();
+                    publish(Map.entry(url, status));
+                });
+                return null;
+            }
+            @Override protected void process(List<Map.Entry<String, GitHubDataLoader.UpdateStatus>> updates) {
+                if (generation != checkGeneration) return;
+                updates.forEach(entry -> remoteUpdates.put(entry.getKey(), entry.getValue()));
+                refreshRepositoryTreeLabels(jTreeRepos);
+            }
+            @Override protected void done() {
+                if (generation != checkGeneration) return;
+                try { get(); setStatusText("Update check complete. Parentheses show commits not downloaded."); }
+                catch (Exception ex) { setStatusText("Could not check updates. Local data remains available."); }
+            }
+        };
+        updateWorker = worker;
+        worker.execute();
+    }
+
+    private void selectRepository(String url) {
+        DefaultMutableTreeNode root = (DefaultMutableTreeNode) jTreeRepos.getModel().getRoot();
+        for (int index = 0; index < root.getChildCount(); index++) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) root.getChildAt(index);
+            if (node.getUserObject() instanceof RepoStats repo && url.equals(repo.getUrl())) {
+                jTreeRepos.setSelectionPath(new javax.swing.tree.TreePath(node.getPath()));
+                return;
+            }
+        }
+    }
+
+    private void recalculateLocalData() {
+        checkGeneration++;
+        if (updateWorker != null) updateWorker.cancel(true);
+        setStatusText("Recalculating downloaded data locally…");
+        new RefreshWorker(btnRefresh, btnConfig, btnAuthorship) {
+            @Override protected List<RepoStats> doInBackground() { return GitHubDataLoader.getInstance().loadLocalData(); }
+            @Override protected void refreshFinished() {
+                try { updateReposJTree(get()); selectedRepo = null; loadRepoStats(null); setStatusText("Local statistics updated. Download missing data with Refresh from GitHub."); }
+                catch (Exception ex) { showRefreshFailedDialog(errorMessage(ex)); }
+                checkForUpdates();
+            }
+        }.execute();
+    }
+
+    private static String errorMessage(Exception ex) {
+        return ex instanceof ExecutionException && ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
+    }
+
+    private void populateAuthorshipDialog(JDialog dialog, AuthorshipDiscoveryPanel.Result result, AuthorshipConfig[] accepted) {
+        AuthorshipForm form = new AuthorshipForm(result.source(), result.rules(), result.teamSize());
+        dialog.getContentPane().removeAll();
+        dialog.add(form, BorderLayout.CENTER);
+        JButton save = new JButton("Apply and recalculate locally");
+        JButton cancel = new JButton("Cancel");
+        JPanel actions = new JPanel();
+        actions.add(cancel);
+        actions.add(save);
+        dialog.add(actions, BorderLayout.SOUTH);
+        cancel.addActionListener(event -> dialog.dispose());
+        save.addActionListener(event -> {
+            try {
+                javax.swing.JTextArea changes = new javax.swing.JTextArea(form.changeSummary(), 16, 65);
+                changes.setEditable(false);
+                if (JOptionPane.showConfirmDialog(dialog, new JScrollPane(changes), "Confirm authorship assignments",
+                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE) != JOptionPane.OK_OPTION) return;
+                accepted[0] = form.snapshot();
+                dialog.dispose();
+            } catch (IllegalStateException ex) {
+                JOptionPane.showMessageDialog(dialog, ex.getMessage(), "Could not save authorship", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.revalidate();
+        dialog.repaint();
+    }
+
+    private void reprocessAuthorship(String url, List<RepoStats> remaining, AuthorshipConfig rules, AuthorshipStore store) {
+        setStatusText("Recalculating locally from the original download…");
+        new RefreshWorker(btnRefresh, btnConfig, btnAuthorship) {
+            @Override protected List<RepoStats> doInBackground() throws Exception {
+                RepoStats fresh = GitHubDataLoader.getInstance().recalculateRepository(url, rules);
+                store.save(url, rules);
+                List<RepoStats> results = new ArrayList<>(remaining);
+                results.add(fresh);
+                DataManager.getInstance().storeData(results);
+                DataManager.getInstance().storeCSV(results);
+                return results;
+            }
+            @Override protected void refreshFinished() {
+                try {
+                    updateReposJTree(get());
+                    selectRepository(url);
+                    setStatusText("Authorship applied locally. Original commits unchanged.");
+                } catch (Exception ex) {
+                    if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+                    setStatusText("Could not apply authorship. Previous results retained.");
+                    showRefreshFailedDialog("Local recalculation failed.\n" + errorMessage(ex));
+                }
+            }
+        }.execute();
+    }
+
 	/**
-	 * Opens a modal dialog to edit the configuration (user, token, online mode,
+	 * Opens a modal dialog to edit the configuration (user, token,
 	 * teacher) and the repository list. An unreadable list is left untouched while
-	 * other settings remain editable. After saving a readable list, offers to fetch.
+	 * other settings remain editable. After saving, recalculates locally.
 	 * The same files can still be edited by hand outside the app.
 	 */
 	private void showConfigDialog() {
@@ -1012,16 +1274,8 @@ public class MainWindow extends JFrame {
 						"Configuration", JOptionPane.ERROR_MESSAGE);
 				return;
 			}
-			dialog.dispose();
-			setStatusText(form.repositoriesAvailable ? "Configuration saved."
-					: "Configuration saved; repository list unchanged.");
-
-			if (form.repositoriesAvailable && cfg.isConfigured() && form.onlineBox.isSelected()) {
-				int ans = JOptionPane.showConfirmDialog(this,
-						"Configuration saved. Fetch data from GitHub now?",
-						"Refresh", JOptionPane.YES_NO_OPTION);
-				if (ans == JOptionPane.YES_OPTION) btnRefresh.doClick();
-			}
+            dialog.dispose();
+            recalculateLocalData();
 		});
 
 		dialog.pack();
@@ -1033,7 +1287,7 @@ public class MainWindow extends JFrame {
 		JOptionPane.showMessageDialog(
 				this,
 				"Refresh failed.\n\nTip: GitHub may throttle requests when refreshing many repositories.\n"
-						+ "Try again later or use offline mode (cached data).",
+						+ "Try again later. Repositories remain pending until a successful GitHub analysis.",
 				"Refresh failed",
 			JOptionPane.WARNING_MESSAGE);
 	}
@@ -1041,7 +1295,7 @@ public class MainWindow extends JFrame {
 	private void showRefreshFailedDialog(String reason) {
 		JOptionPane.showMessageDialog(
 				this,
-				reason + "\n\nTry again later or use offline mode (cached data).",
+				reason + "\n\nTry again later. Repositories remain pending until a successful GitHub analysis.",
 				"Refresh failed",
 				JOptionPane.WARNING_MESSAGE);
 	}
@@ -1214,17 +1468,16 @@ public class MainWindow extends JFrame {
 
 	    // Teacher is always a special case (excluded from expected-share calculations)
 	    if (isTeacher(u)) return new Interpretation(ContributionBadge.TEACHER, List.of());
+        if (ContributionMetrics.isExcluded(u)) return new Interpretation(ContributionBadge.EXCLUDED, List.of());
 
-	    // Expected contribution share is computed over "real contributors" only (excluding teacher).
-	    // The share denominator is the SAME population's churn (team churn), so
-	    // share and expected=1/n are directly comparable and shares sum to 1.
+	    // Observed shares use actual team work; a declared size overrides only expected share.
 	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
 
 	    int teamChurn = contributors.stream().mapToInt(UserStats::getChurn).sum();
 	    int uChurn = userChurn(u);
 	    int commitsJava = u.getCommits();
 
-	    ContributionBadge badge = classifyBadge(uChurn, commitsJava, teamChurn, contributors.size());
+	    ContributionBadge badge = classifyBadge(uChurn, commitsJava, teamChurn, ContributionMetrics.effectiveTeamSize(repo));
 
 	    // Additional alert flags (secondary indicators)
 	    List<AlertFlag> flags = new ArrayList<>();
@@ -1241,7 +1494,7 @@ public class MainWindow extends JFrame {
 	 * Pure contribution-badge classification (excluding the TEACHER case, which
 	 * the caller decides). Package-visible for unit testing.
 	 *
-	 * <p>With {@code expected = 1/n} (n = active contributors, min 1) and
+	 * <p>With {@code expected = 1/n} (n = declared or inferred team size, min 1) and
 	 * {@code share = round(userChurn/teamChurn, 4)} where {@code teamChurn} is the
 	 * total churn of those same active contributors, the badge is chosen over
 	 * contiguous ranges: {@code share < 0.5*expected} → VERY_LOW,
@@ -1291,13 +1544,15 @@ public class MainWindow extends JFrame {
 	private String buildInterpretationTooltip(RepoStats repo, UserStats u) {
 	    Interpretation it = interpretationFor(repo, u);
 
-	    List<UserStats> contributors = realContributorsExcludingTeacher(repo);
-	    int n = Math.max(1, contributors.size());
-	    float expected = 1f / n;
+        int observed = ContributionMetrics.activeContributors(repo).size();
+        int n = ContributionMetrics.effectiveTeamSize(repo);
+        float expected = ContributionMetrics.expectedShare(repo);
 
 	    StringBuilder sb = new StringBuilder("<html>");
 	    sb.append("<b>Interpretation</b><br>");
-	    sb.append(String.format("Active contributors (excluding teacher): <b>%d</b> → expected ≈ <b>%.0f%%</b><br><br>", n, expected * 100));
+	    sb.append(String.format("Contributors: <b>%d</b> · Team size: <b>%d (%s)</b><br>Expected share: <b>%s</b><br><br>",
+                observed, n, repo.getTeamSize() == null ? "inferred" : "declared",
+                Float.isNaN(expected) ? "—" : String.format(java.util.Locale.ROOT, "%.2f%%", expected * 100)));
 	    sb.append("<b>").append(it.badge.shortLabel).append("</b>");
 	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");
 

@@ -3,12 +3,20 @@
 # Create a token with the minimum scope needed (read access to the repos) at:
 #   https://github.com/settings/tokens
 
-github.user=_USERNAME_                         # Your GitHub username (informational)
-github.token=_TOKEN_                           # Personal Access Token (read-only). Keep it secret.
-update.from.github=yes                         # yes: online refresh | no: offline (use stats.dat)
-repositories.file=resources/repositories.txt   # Repo list (see repositories.txt.example)
-stats.file=resources/stats.dat                 # Binary cache of the last refresh
-stats.csv=resources/stats.csv                  # CSV export (may contain personal data: do not commit)
+# Your GitHub username (informational)
+github.user=_USERNAME_
+# Personal Access Token (read-only). Keep it secret.
+github.token=_TOKEN_
+# Repo list (see repositories.txt.example)
+repositories.file=resources/repositories.txt
+# Derived statistics output (regenerated from raw.directory)
+stats.file=resources/stats.dat
+# CSV export (may contain personal data: do not commit)
+stats.csv=resources/stats.csv
+# Local per-repository authorship assignments (ignored by Git)
+authorship.directory=resources/authorship
+# Original incremental downloads (ignored by Git)
+raw.directory=resources/raw-data
 
 # (Optional) Exclude the teacher account from expected-share calculations
 teacher.user=_TEACHER_USERNAME_
