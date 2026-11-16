@@ -2,7 +2,7 @@
 # Compile and run the unit tests from the command line (macOS / Linux).
 # Eclipse users can just use "Run as > JUnit Test"; this is the CLI equivalent.
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 OUT=build/test-classes
 JUNIT=lib/junit-platform-console-standalone-6.1.3.jar

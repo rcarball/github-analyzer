@@ -1,15 +1,15 @@
 @echo off
 REM Build a SELF-CONTAINED runnable JAR (Windows).
 REM
-REM Produces github-analyzer-<version>.jar with the application classes, all GUI icons AND
+REM Produces dist\github-analyzer-<version>.jar with the application classes, all GUI icons AND
 REM all third-party libraries bundled inside — no lib\ folder needed at runtime.
 REM
 REM Run it (from any directory) with:
-REM     java -jar github-analyzer-1.3.1.jar
+REM     java -jar dist\github-analyzer-1.3.1.jar
 REM Keep a resources\ folder (with your config.properties and repositories.txt)
 REM next to the jar — those files stay EXTERNAL and editable (never bundled).
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 set OUT=build\jar-classes
 set STAGE=build\fat
@@ -20,7 +20,7 @@ if not defined VERSION (
     echo Missing version in CITATION.cff
     exit /b 1
 )
-set JAR=github-analyzer-%VERSION%.jar
+set JAR=dist\github-analyzer-%VERSION%.jar
 set MAIN=es.deusto.prog3.githubanalyzer.Main
 set LIB=%CD%\lib
 
@@ -28,6 +28,7 @@ if exist "%OUT%" rmdir /s /q "%OUT%"
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 mkdir "%OUT%"
 mkdir "%STAGE%"
+if not exist dist mkdir dist
 
 REM 1) Compile application sources (tests excluded).
 dir /s /b src\*.java > "%TEMP%\ga-src.txt"
@@ -49,7 +50,9 @@ mkdir "%STAGE%\images" 2>nul
 copy /y resources\images\*.png "%STAGE%\images\" >nul
 
 REM 5) Include the license and attribution notices in the binary distribution.
-for %%F in (LICENSE NOTICE THIRD_PARTY_NOTICES.md) do copy /y "%%F" "%STAGE%\" >nul
+for %%F in (LICENSE NOTICE) do copy /y "%%F" "%STAGE%\" >nul
+mkdir "%STAGE%\docs"
+copy /y docs\THIRD_PARTY_NOTICES.md "%STAGE%\docs\" >nul
 
 REM 6) Package a single self-contained runnable jar (Main-Class via -e).
 jar cfe "%JAR%" "%MAIN%" -C "%STAGE%" .

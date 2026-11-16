@@ -2,7 +2,7 @@
 REM Compile and run the unit tests from the command line (Windows).
 REM Eclipse users can just use "Run as > JUnit Test"; this is the CLI equivalent.
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 set OUT=build\test-classes
 set JUNIT=lib\junit-platform-console-standalone-6.1.3.jar

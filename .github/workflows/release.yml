@@ -63,10 +63,24 @@ jobs:
           java-version: "17"
 
       - name: Run automated tests
-        run: ./run-tests.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f scripts/run-tests.sh ]; then
+            ./scripts/run-tests.sh
+          else
+            ./run-tests.sh
+          fi
 
       - name: Build the runnable JAR
-        run: ./build-jar.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f scripts/build-jar.sh ]; then
+            ./scripts/build-jar.sh
+          else
+            ./build-jar.sh
+          fi
 
       - name: Generate checksum
         env:
@@ -75,16 +89,22 @@ jobs:
         run: |
           set -euo pipefail
           jar="github-analyzer-$VERSION.jar"
-          test -f "$jar"
-          mkdir -p dist
-          cp "$jar" dist/
+          if [ -f scripts/build-jar.sh ]; then
+            test -f "dist/$jar"
+          else
+            test -f "$jar"
+            mkdir -p dist
+            cp "$jar" "dist/$jar"
+          fi
           (cd dist && sha256sum "$jar" > "$jar.sha256")
 
       - name: Save verified release files
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ steps.version.outputs.version }}
-          path: dist/*
+          path: |
+            dist/github-analyzer-${{ steps.version.outputs.version }}.jar
+            dist/github-analyzer-${{ steps.version.outputs.version }}.jar.sha256
           if-no-files-found: error
           retention-days: 7
 
