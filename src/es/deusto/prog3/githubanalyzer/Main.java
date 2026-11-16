@@ -37,13 +37,17 @@ public class Main {
     	// Only hit GitHub when there is a usable configuration. Otherwise open the
     	// GUI anyway so the user can fill it in via the config dialog.
     	if (config.isConfigured() && config.isLoadFromGithub()) {
-	    GitHubDataLoader loader = GitHubDataLoader.getInstance();
-	    List<RepoStats> refreshedStats = loader.loadData(statsMap, false);
-	    if (DataManager.shouldStoreRefresh(loader.getConfiguredRepositoryCount(), refreshedStats)) {
-	        statsMap = refreshedStats;
-	        System.out.format("- Cache now contains %d repositories.\n", statsMap.size());
-	    } else {
-	        System.err.println("* Refresh returned no repositories; keeping the existing cache.");
+	    try {
+	        GitHubDataLoader loader = GitHubDataLoader.getInstance();
+	        List<RepoStats> refreshedStats = loader.loadData(statsMap, false);
+	        if (DataManager.shouldStoreRefresh(loader.getConfiguredRepositoryCount(), refreshedStats)) {
+	            statsMap = refreshedStats;
+	            System.out.format("- Cache now contains %d repositories.\n", statsMap.size());
+	        } else {
+	            System.err.println("* Refresh returned no repositories; keeping the existing cache.");
+	        }
+	    } catch (IllegalStateException ex) {
+	        System.err.println("* Refresh failed; opening the existing cache: " + ex.getMessage());
 	    }
     	} else if (!config.isConfigured()) {
     		System.out.println("- Not configured yet: opening the app so you can set it up (Config).");

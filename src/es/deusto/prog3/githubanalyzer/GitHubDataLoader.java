@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.Supplier;
 
 import org.kohsuke.github.GHBranch;
 import org.kohsuke.github.GHCommit;
@@ -56,6 +57,7 @@ import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 public class GitHubDataLoader {
 
     private static final GitHubDataLoader instance = new GitHubDataLoader();
+    private final Supplier<List<String>> repositorySource;
     private final Map<String, String> groupsRepoMap = new HashMap<>();
     private volatile List<String> repos = Collections.emptyList();
     // Updated after each load so the GUI can distinguish a fresh result from a
@@ -69,7 +71,8 @@ public class GitHubDataLoader {
     private static final String LINES_KEY = "LINES";
     private static final String REF_KEY = "REF";
     private static final String JAVA_EXTENSION = ".java";
-    private static final int FILE_SNAPSHOT_VERSION = 2;
+    // Also invalidate contributor calculations cached before identity/path fixes.
+    private static final int FILE_SNAPSHOT_VERSION = 3;
 
     // Repositories are independent, so they can be analyzed in parallel. Calls
     // that expand a commit into its changed files are much more expensive, hence
@@ -84,7 +87,13 @@ public class GitHubDataLoader {
     private static final AtomicLong LAST_HEAVY_CALL_TS = new AtomicLong(0);
 
     private GitHubDataLoader() {
-    	reloadRepositories();
+        this(() -> Configurator.getInstance().getRepositories());
+    }
+
+    // Read the list at refresh time, so an I/O failure cannot become an empty cache
+    // or prevent opening the GUI with the previously saved data.
+    GitHubDataLoader(Supplier<List<String>> repositorySource) {
+        this.repositorySource = repositorySource;
     }
 
     /**
@@ -93,7 +102,7 @@ public class GitHubDataLoader {
      * by the Refresh button / config dialog so file edits take effect without a restart.
      */
     public synchronized void reloadRepositories() {
-    	List<String> originalRepos = Configurator.getInstance().getRepositories();
+        List<String> originalRepos = repositorySource.get();
 
     	groupsRepoMap.clear();
     	LinkedHashSet<String> uniqueRepos = new LinkedHashSet<>();
@@ -145,6 +154,8 @@ public class GitHubDataLoader {
     }
 
     public List<RepoStats> loadData(List<RepoStats> initialStats, boolean forceRefresh) {
+        // Must succeed before filtering or persisting any cached repositories.
+        reloadRepositories();
         if (initialStats == null) initialStats = new ArrayList<>();
         lastConfirmedRepositoryCount = 0;
 
@@ -558,7 +569,7 @@ public class GitHubDataLoader {
      * Clustering decides who belongs together; representative selection decides
      * which login/name/email is clearest to show in the GUI and CSV.
      */
-    private Map<SimpleGitUser, List<GHCommit>> resolveAndMergeAuthors(Map<RawIdentity, List<GHCommit>> rawMap) {
+    static Map<SimpleGitUser, List<GHCommit>> resolveAndMergeAuthors(Map<RawIdentity, List<GHCommit>> rawMap) {
         List<RawIdentity> ids = new ArrayList<>(rawMap.keySet());
         int[] root = clusterIdentities(ids);
 
@@ -576,7 +587,10 @@ public class GitHubDataLoader {
             RawIdentity rep = repByRoot.get(e.getKey());
             String bestName = (rep.login != null && !rep.login.isBlank()) ? rep.login : rep.name;
             String bestEmail = rep.email;
-            out.put(new SimpleGitUser(bestName, bestEmail), e.getValue());
+            // Distinct weak clusters can still have the same display identity.
+            // Keep all their commits instead of overwriting an earlier cluster.
+            out.computeIfAbsent(new SimpleGitUser(bestName, bestEmail), k -> new ArrayList<>())
+                    .addAll(e.getValue());
         }
 
         return out;
@@ -792,8 +806,8 @@ public class GitHubDataLoader {
 
                 boolean touchedJava = false;
                 for (GHCommit.File file : files) {
-                    String fileName = (file.getFileName() == null) ? "" : file.getFileName().toLowerCase();
-                    if (fileName.endsWith(JAVA_EXTENSION)) {
+                    String fileName = (file.getFileName() == null) ? "" : file.getFileName();
+                    if (fileName.toLowerCase(java.util.Locale.ROOT).endsWith(JAVA_EXTENSION)) {
                         touchedJava = true;
                         linesAdded += file.getLinesAdded();
                         linesDeleted += file.getLinesDeleted();
