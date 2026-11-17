@@ -56,6 +56,7 @@ public class DataManagerTest {
             for (Locale locale : new Locale[] {Locale.US, Locale.forLanguageTag("es-ES"), Locale.forLanguageTag("ar-EG"), Locale.forLanguageTag("th-TH")}) {
                 Locale.setDefault(locale);
                 Path file = tmp.resolve("stats.csv"); DataManager.getInstance().storeCSV(List.of(repo), file);
+                try (var files = Files.list(tmp)) { assertEquals(List.of(file), files.toList(), "Successful replacement leaves no temporary files"); }
                 byte[] bytes = Files.readAllBytes(file);
                 if (reference == null) reference = bytes;
                 else org.junit.jupiter.api.Assertions.assertArrayEquals(reference, bytes, "Locale must not alter the CSV bytes");
@@ -79,6 +80,53 @@ public class DataManagerTest {
         } finally {
             Locale.setDefault(original); Locale.setDefault(Locale.Category.FORMAT, format); Locale.setDefault(Locale.Category.DISPLAY, display);
         }
+    }
+
+    @Test void failedCsvGenerationKeepsPreviousBytesOrAbsenceAndRemovesTemporaryFiles(@TempDir Path dir) throws Exception {
+        for (boolean existing : new boolean[] {false, true}) {
+            Path folder = Files.createDirectory(dir.resolve(Boolean.toString(existing)));
+            Path csv = folder.resolve("stats.csv"); byte[] previous = "previous export\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (existing) Files.write(csv, previous);
+            RepoStats repo = new RepoStats();
+            UserStats first = new UserStats("José".repeat(5000), "first@example.org", 1, 1, 1, 0, 1, -1, -1);
+            UserStats broken = new UserStats("broken", "broken@example.org", 1, 1, 1, 0, 1, -1, -1) {
+                private static final long serialVersionUID = 1L;
+                @Override public String getEmail() { throw new IllegalStateException("Simulated row failure after writing the first row"); }
+            };
+            first.setPerson("first", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER);
+            broken.setPerson("broken", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER);
+            repo.setUserStats(List.of(first, broken));
+            CsvExportException failure = org.junit.jupiter.api.Assertions.assertThrows(CsvExportException.class,
+                    () -> DataManager.getInstance().storeCSV(List.of(repo), csv));
+            assertTrue(failure.getMessage().contains(csv.toString()));
+            assertEquals("Simulated row failure after writing the first row", failure.getCause().getMessage());
+            if (existing) org.junit.jupiter.api.Assertions.assertArrayEquals(previous, Files.readAllBytes(csv));
+            else assertFalse(Files.exists(csv));
+            try (var files = Files.list(folder)) { assertEquals(existing ? List.of(csv) : List.of(), files.toList()); }
+        }
+    }
+
+    @Test void failedCsvReplacementKeepsDestinationAndReturnsCalculatedResults(@TempDir Path dir) throws Exception {
+        Path csv = Files.createDirectory(dir.resolve("stats.csv"));
+        Files.writeString(csv.resolve("keep"), "previous destination");
+        RepoStats repo = new RepoStats(); List<RepoStats> results = new ArrayList<>(List.of(repo));
+        CsvExportException failure = org.junit.jupiter.api.Assertions.assertThrows(CsvExportException.class,
+                () -> DataManager.getInstance().storeCSV(results, csv));
+        org.junit.jupiter.api.Assertions.assertInstanceOf(java.io.IOException.class, failure.getCause());
+        assertTrue(failure.getMessage().contains(csv.toString()));
+        assertEquals("previous destination", Files.readString(csv.resolve("keep")));
+        results.clear(); assertEquals(List.of(repo), failure.results());
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class, () -> failure.results().clear());
+        try (var files = Files.list(dir)) { assertEquals(List.of(csv), files.toList(), "Remove the fully written temporary after replacement fails"); }
+    }
+
+    @Test void missingCsvDirectoryReportsTheCauseWithoutCreatingAnExport(@TempDir Path dir) throws Exception {
+        Path csv = dir.resolve("missing/stats.csv");
+        CsvExportException failure = org.junit.jupiter.api.Assertions.assertThrows(CsvExportException.class,
+                () -> DataManager.getInstance().storeCSV(List.of(), csv));
+        org.junit.jupiter.api.Assertions.assertInstanceOf(java.nio.file.NoSuchFileException.class, failure.getCause());
+        assertTrue(failure.getMessage().contains(csv.toString()));
+        try (var files = Files.list(dir)) { assertEquals(0, files.count()); }
     }
 
     private static double parseSpanish(String text) {

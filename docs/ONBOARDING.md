@@ -196,6 +196,15 @@ interactive windows and the Windows runner were not exercised locally.
   with six decimals, not percentage strings. `NumberFormats` owns CSV fraction and
   UI percentage presentation; all UI percentages use `25,00 %`, independent of the
   default locale. Do not feed display rounding back into metric calculations.
+  Write and close a unique `.csv-export-*.tmp` sibling before atomic replacement;
+  do not fall back to truncation or a non-atomic move. On failure, clean up the
+  temporary when possible and throw `CsvExportException` with the destination,
+  cause and calculated results. The UI uses those results and reports the export
+  error separately from network/calculation failures, including on startup.
+  Config/authorship changes and saved statistics are not rolled back by a CSV
+  failure. The exception snapshots the result list; it does not recalculate it.
+  Abrupt process termination can leave an ignored temporary; this is not a
+  multi-file transaction or a guarantee against hardware/storage failure.
 - **Legacy deserialization is filtered.** `DataManager` uses an `ObjectInputFilter`
   (allow-list + limits). If you add a serialized field type outside `java.util`/`java.lang`
   /`…domain`, extend the filter pattern.
