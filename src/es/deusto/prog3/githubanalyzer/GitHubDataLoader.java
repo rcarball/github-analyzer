@@ -427,54 +427,29 @@ public class GitHubDataLoader {
                 long downloaded = files.stream().filter(file -> oldFiles.get(file.path()) != file && file.javaContent() != null).count();
                 progress.accept("Source snapshot ready: " + files.size() + " file entries; " + downloaded + " Java contents downloaded, " + reused + " unchanged entries reused.");
             }
-            if (previous == null) for (var branch : heads.entrySet()) {
-                progress.accept("Reading full commit history from branch " + branch.getKey() + "…");
+            if (previous == null && !heads.isEmpty()) {
+                String branch = heads.containsKey(defaultBranch) ? defaultBranch : heads.keySet().iterator().next();
+                progress.accept("Reading full commit history from branch " + branch + "…");
                 int scanned = 0;
-                for (GHCommit commit : repository.queryCommits().from(branch.getValue()).list()) {
+                for (GHCommit commit : repository.queryCommits().from(heads.get(branch)).list()) {
                     checkInterrupted();
                     if (commit.getSHA1() == null || commit.getSHA1().isBlank()) throw new IllegalStateException("Missing commit SHA.");
                     unique.putIfAbsent(commit.getSHA1(), commit);
-                    if (++scanned % 100 == 0) progress.accept("Branch " + branch.getKey() + ": " + scanned + " history entries read; " + unique.size() + " unique commits discovered.");
+                    if (++scanned % 100 == 0) progress.accept("Branch " + branch + ": " + scanned + " history entries read; " + unique.size() + " unique commits discovered.");
                 }
-                progress.accept("Branch " + branch.getKey() + " history read: " + scanned + " entries; " + unique.size() + " unique commits across branches.");
+                progress.accept("Branch " + branch + " history read: " + scanned + " entries; reusing this history across all branches.");
             }
         }
-        List<Commit> commits = new ArrayList<>();
-        if (previous != null) {
-            Map<String, Commit> known = new LinkedHashMap<>();
-            previous.commits().forEach(commit -> known.put(commit.sha(), commit));
-            var pending = new java.util.ArrayDeque<>(heads.values());
-            int downloaded = 0;
-            while (!pending.isEmpty()) {
-                checkInterrupted();
-                String sha = pending.removeFirst();
-                if (known.containsKey(sha)) continue;
-                if (downloaded % COMMIT_PROGRESS_INTERVAL == 0) progress.accept("Downloading new commit #" + (downloaded + 1) + " (" + shortSha(sha) + "), including changed files and unknown parents…");
-                Commit raw;
-                try {
-                    GHCommit commit = repository.getCommit(sha);
-                    if (!sha.equals(commit.getSHA1())) throw new IllegalStateException("Unexpected commit SHA.");
-                    raw = downloadCommit(commit, resolveAuthorRaw(commit));
-                } catch (CancellationException ex) {
-                    throw ex;
-                } catch (Exception ex) {
-                    checkInterrupted();
-                    throw new IllegalStateException("Could not download commit " + sha, ex);
-                }
-                known.put(sha, raw);
-                pending.addAll(raw.parents());
-                if (++downloaded % COMMIT_PROGRESS_INTERVAL == 0) progress.accept("Incremental download: " + downloaded + " new commits complete; " + pending.size() + " history references still to check.");
-            }
-            commits.addAll(known.values());
-            progress.accept("Incremental history ready: " + downloaded + " new commits downloaded; " + previous.commits().size() + " archived originals retained.");
-        }
+        Map<String, Commit> known = new LinkedHashMap<>();
+        if (previous != null) previous.commits().forEach(commit -> known.put(commit.sha(), commit));
         int index = 0;
         for (GHCommit commit : unique.values()) {
             ++index;
             if (index == 1 || index % COMMIT_PROGRESS_INTERVAL == 0 || index == unique.size())
                 progress.accept("Downloading changed-file details: " + index + "/" + unique.size() + " commits (" + shortSha(commit.getSHA1()) + ")…");
             try {
-                commits.add(downloadCommit(commit, resolveAuthorRaw(commit)));
+                Commit raw = downloadCommit(commit, resolveAuthorRaw(commit));
+                known.put(raw.sha(), raw);
             } catch (CancellationException ex) {
                 throw ex;
             } catch (Exception ex) {
@@ -482,7 +457,37 @@ public class GitHubDataLoader {
                 throw new IllegalStateException("Could not download commit " + commit.getSHA1(), ex);
             }
         }
+        // A commit's complete parent list, rather than history-list ordering,
+        // determines where branches join. Visit unknown parents exactly once,
+        // including every merge parent and histories with unrelated roots.
+        var pending = new java.util.ArrayDeque<>(new java.util.LinkedHashSet<>(heads.values()));
+        if (previous == null) known.values().forEach(commit -> commit.parents().stream()
+                .filter(parent -> !known.containsKey(parent)).forEach(pending::addLast));
+        int downloaded = 0;
+        while (!pending.isEmpty()) {
+            checkInterrupted();
+            String sha = pending.removeFirst();
+            if (known.containsKey(sha)) continue;
+            if (downloaded % COMMIT_PROGRESS_INTERVAL == 0) progress.accept("Downloading new commit #" + (downloaded + 1) + " (" + shortSha(sha) + "), including changed files and unknown parents…");
+            checkInterrupted();
+            Commit raw;
+            try {
+                GHCommit commit = repository.getCommit(sha);
+                if (!sha.equals(commit.getSHA1())) throw new IllegalStateException("Unexpected commit SHA.");
+                raw = downloadCommit(commit, resolveAuthorRaw(commit));
+            } catch (CancellationException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                checkInterrupted();
+                throw new IllegalStateException("Could not download commit " + sha, ex);
+            }
+            known.put(sha, raw);
+            pending.addAll(raw.parents());
+            if (++downloaded % COMMIT_PROGRESS_INTERVAL == 0) progress.accept("Shared history: " + downloaded + " new commits complete; " + pending.size() + " history references still to check.");
+        }
+        List<Commit> commits = new ArrayList<>(known.values());
         if (previous == null) progress.accept("Full history ready: " + commits.size() + " unique commits downloaded with their changed files.");
+        else progress.accept("Incremental history ready: " + downloaded + " new commits downloaded; " + previous.commits().size() + " archived originals retained.");
         checkInterrupted();
         return new RepositorySnapshot(RepositorySnapshot.CURRENT_VERSION, url, url.substring(url.lastIndexOf('/') + 1),
                 System.currentTimeMillis(), repository.getCreatedAt().getTime(), pushed == null ? -1 : pushed.getTime(),
@@ -509,16 +514,16 @@ public class GitHubDataLoader {
 
     Commit downloadCommit(GHCommit commit, AuthorIdentity author) throws Exception {
         checkInterrupted();
-        List<GHCommit> parents = commit.getParents();
-        List<String> parentShas = new ArrayList<>();
-        if (parents != null) for (GHCommit parent : parents) {
-            String sha = parent.getSHA1();
-            if (sha == null) throw new IllegalStateException("Missing parent SHA.");
-            parentShas.add(sha);
-        }
         List<ChangedFile> files = new ArrayList<>();
         for (GHCommit.File file : safeListFiles(commit, new StringBuilder()))
             files.add(new ChangedFile(file.getFileName(), file.getPreviousFilename(), file.getLinesAdded(), file.getLinesDeleted()));
+        // listFiles populates this commit's metadata. Reading its parent IDs is
+        // local; getParents would eagerly fetch each parent's metadata, even at
+        // a branch join where we already have the complete original commit.
+        List<String> parentShas = new ArrayList<>(commit.getParentSHA1s());
+        for (String sha : parentShas) {
+            if (sha == null || sha.isBlank()) throw new IllegalStateException("Missing parent SHA.");
+        }
         return new Commit(commit.getSHA1(), author, commit.getCommitDate().getTime(), parentShas, files);
     }
 
