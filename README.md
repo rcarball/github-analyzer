@@ -156,6 +156,11 @@ The runner prints totals and failures instead of listing every successful test.
 The [test review](docs/ONBOARDING.md#test-suite-review) records which redundant
 checks were consolidated and why the remaining regression tests are retained.
 
+To compare large Java source processing with a previous revision, run
+`./scripts/benchmark-java-files.sh 4ded5fd` (macOS/Linux, a JDK with thread-allocation
+counters). This optional offline probe measures loading and calculation separately;
+it is not part of CI. See the [measurement method and results](docs/ONBOARDING.md#large-java-source-measurements).
+
 ### Continuous integration
 [GitHub Actions](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
 runs on every push and pull request targeting `master`. It verifies formatting,
