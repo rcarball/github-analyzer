@@ -79,7 +79,22 @@ public final class ContributionMetrics {
 
     public static float expectedShare(RepoStats repo) {
         int size = effectiveTeamSize(repo);
-        return size > 0 ? 1f / size : Float.NaN;
+        return expectedShare(size);
+    }
+
+    private static float expectedShare(int size) { return size > 0 ? 1f / size : Float.NaN; }
+
+    /** Common values for one repository export; never cached across repositories or exports. */
+    static TeamSummary summarize(RepoStats repo) {
+        List<UserStats> active = activeContributors(repo);
+        int size = repo != null && repo.getTeamSize() != null ? repo.getTeamSize() : active.size();
+        return new TeamSummary(active.size(), sumChurn(active), size, expectedShare(size));
+    }
+
+    record TeamSummary(int contributors, int churn, int effectiveSize, float expectedShare) {
+        float share(UserStats user) {
+            return isExcluded(user) ? Float.NaN : observedShare(user, churn);
+        }
     }
 
     /** A user counts as a real contributor when they have any Java churn or any Java commit. */
@@ -98,7 +113,11 @@ public final class ContributionMetrics {
 
     /** Total Java churn produced by the active contributors (excluding teachers and other excluded accounts). */
     public static int teamChurn(RepoStats repo) {
-        return activeContributors(repo).stream().mapToInt(UserStats::getChurn).sum();
+        return sumChurn(activeContributors(repo));
+    }
+
+    private static int sumChurn(List<UserStats> contributors) {
+        return contributors.stream().mapToInt(UserStats::getChurn).sum();
     }
 
     /**
@@ -110,7 +129,10 @@ public final class ContributionMetrics {
      */
     public static float teamShare(RepoStats repo, UserStats u) {
         if (isExcluded(u)) return Float.NaN;
-        int denom = teamChurn(repo);
-        return (denom <= 0) ? 0f : (float) u.getChurn() / denom;
+        return observedShare(u, teamChurn(repo));
+    }
+
+    private static float observedShare(UserStats user, int teamChurn) {
+        return teamChurn <= 0 ? 0f : (float) user.getChurn() / teamChurn;
     }
 }

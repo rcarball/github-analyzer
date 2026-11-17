@@ -288,6 +288,11 @@ an undefined expected share or an excluded person's observed share is `-`.
 `PERSON_ID` is stable across display-name changes. Consumers assuming an exact
 column count must be updated.
 
+During export, active-contributor count, team churn, effective team size and
+expected share are calculated once per repository and reused for its rows.
+The export uses the same contribution rules as the interface and recalculates
+these values on each export, including after role or team-size changes.
+
 CSV exports are written to a unique temporary file in the destination folder.
 The previous CSV is replaced atomically only after writing and closing the entire
 new export. If creation, generation or replacement fails, the previous file is

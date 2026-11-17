@@ -196,12 +196,18 @@ public class DataManager {
             for (RepoStats repo : (data == null ? java.util.Collections.<RepoStats>emptyList() : data)) {
                 if (repo == null || repo.getUserStats() == null) continue;
 
+                ContributionMetrics.TeamSummary team = ContributionMetrics.summarize(repo);
+                String declaredSize = repo.getTeamSize() == null ? "" : repo.getTeamSize().toString();
+                String contributors = Integer.toString(team.contributors());
+                String authorCount = Integer.toString(repo.getAuthorCount());
+                String effectiveSize = Integer.toString(team.effectiveSize());
+                String expectedShare = NumberFormats.csvShare(team.expectedShare());
                 for (UserStats u : repo.getUserStats()) {
                     if (u == null) continue;
 
                     int churn = u.getChurn();
                     // Share of the team churn (excluding teacher); same denominator as the GUI.
-                    float share = ContributionMetrics.teamShare(repo, u);
+                    float share = team.share(u);
                     String shareStr = NumberFormats.csvShare(share); // numeric 0..1 fraction, decimal comma
 
                     writeCsvRow(out,
@@ -217,11 +223,11 @@ public class DataManager {
                             Integer.toString(u.getCommits()),
                             fmtDateOrDash(sdf, u.getLastCommit()),
                             fmtDateOrDash(sdf, u.getFirstCommit()),
-                            repo.getTeamSize() == null ? "" : repo.getTeamSize().toString(),
-                            Integer.toString(ContributionMetrics.activeContributors(repo).size()),
-                            Integer.toString(repo.getAuthorCount()),
-                            Integer.toString(ContributionMetrics.effectiveTeamSize(repo)),
-                            NumberFormats.csvShare(ContributionMetrics.expectedShare(repo)),
+                            declaredSize,
+                            contributors,
+                            authorCount,
+                            effectiveSize,
+                            expectedShare,
                             csvTextCell(u.getPersonId()),
                             csvTextCell(u.getParticipationRole() == null ? (ContributionMetrics.isTeacher(u) ? "TEACHER" : "MEMBER") : u.getParticipationRole().name()));
                 }

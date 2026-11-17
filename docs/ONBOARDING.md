@@ -196,6 +196,10 @@ interactive windows and the Windows runner were not exercised locally.
   with six decimals, not percentage strings. `NumberFormats` owns CSV fraction and
   UI percentage presentation; all UI percentages use `25,00 %`, independent of the
   default locale. Do not feed display rounding back into metric calculations.
+  `ContributionMetrics.summarize` prepares the common team values once per
+  repository export. Per-row shares reuse that denominator and the shared role
+  and ratio rules; do not call repository-wide metrics for each CSV row or cache
+  the summary across exports. Contributor-list reads must stay linear in team size.
   Write and close a unique `.csv-export-*.tmp` sibling before atomic replacement;
   do not fall back to truncation or a non-atomic move. On failure, clean up the
   temporary when possible and throw `CsvExportException` with the destination,
