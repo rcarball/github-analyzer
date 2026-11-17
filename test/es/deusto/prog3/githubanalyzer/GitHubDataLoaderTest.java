@@ -91,6 +91,7 @@ public class GitHubDataLoaderTest {
             @Override public String getSHA1() { return sha; }
             @Override public List<GHCommit> getParents() { return List.of(); }
             @Override public Date getCommitDate() { return new Date(1000); }
+            @Override public ShortInfo getCommitShortInfo() { return null; }
             @Override public PagedIterable<GHCommit.File> listFiles() {
                 return new PagedIterable<>() {
                     @Override public org.kohsuke.github.PagedIterator<GHCommit.File> _iterator(int pageSize) {
@@ -294,6 +295,7 @@ public class GitHubDataLoaderTest {
         GHCommit commit = new GHCommit() {
             @Override public List<GHCommit> getParents() { return List.of(); }
             @Override public Date getCommitDate() { return new Date(1000); }
+            @Override public ShortInfo getCommitShortInfo() { return null; }
             @Override public String getSHA1() { return "test-sha"; }
             @Override public PagedIterable<GHCommit.File> listFiles() throws IOException {
                 throw new IOException("Simulated commit file API failure");
@@ -308,6 +310,7 @@ public class GitHubDataLoaderTest {
             @Override public String getSHA1() { return "empty-files"; }
             @Override public List<GHCommit> getParents() { return List.of(); }
             @Override public Date getCommitDate() { return new Date(1000); }
+            @Override public ShortInfo getCommitShortInfo() { return null; }
             @Override public PagedIterable<GHCommit.File> listFiles() {
                 return new PagedIterable<>() {
                     @Override public org.kohsuke.github.PagedIterator<GHCommit.File> _iterator(int pageSize) {

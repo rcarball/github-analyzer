@@ -25,6 +25,19 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 
 public class ConfiguratorTest {
+    @Test void failedReloadDoesNotPublishPartialConfiguration(@TempDir Path dir) throws Exception {
+        Configurator config = new Configurator(dir, () -> null);
+        config.save("previous-user", "previous-token", "", "");
+        String repositories = config.getRepositoriesFile(), stats = config.getStatsFile();
+        Properties invalid = new Properties();
+        invalid.setProperty("github.user", "must-not-appear"); invalid.setProperty("stats.file", "\0");
+        Configurator.storeProperties(invalid, dir.resolve("resources/config.properties"));
+        config.reload();
+        assertEquals("previous-user", config.getGithubUser()); assertEquals("previous-token", config.getGithubToken());
+        assertEquals(repositories, config.getRepositoriesFile()); assertEquals(stats, config.getStatsFile());
+        config.save("recovered-user", "test-token", "", "");
+        assertEquals(repositories, new Configurator(dir, () -> null).getRepositoriesFile());
+    }
 
     @Test
     public void configurationTemplateLoadsWithExactValuesAndPaths(@TempDir Path dir) throws Exception {

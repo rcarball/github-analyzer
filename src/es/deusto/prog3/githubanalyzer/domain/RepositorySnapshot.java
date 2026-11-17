@@ -54,8 +54,12 @@ public record RepositorySnapshot(int version, String url, String name, long capt
     }
 
     public record Commit(String sha, AuthorIdentity author, long timestamp, List<String> parents,
-                         List<ChangedFile> files) implements Serializable {
+                         List<ChangedFile> files, Long authorTimestamp) implements Serializable {
         private static final long serialVersionUID = 1L;
+        /** Old downloads lack an author date; retain their recorded commit date as fallback. */
+        public Commit(String sha, AuthorIdentity author, long timestamp, List<String> parents, List<ChangedFile> files) {
+            this(sha, author, timestamp, parents, files, null);
+        }
         public Commit {
             if (sha == null || sha.isBlank()) throw new IllegalArgumentException("Missing commit SHA.");
             Objects.requireNonNull(author);
@@ -63,6 +67,7 @@ public record RepositorySnapshot(int version, String url, String name, long capt
             files = List.copyOf(files);
         }
         public boolean isMerge() { return parents.size() > 1; }
+        public long activityTimestamp() { return authorTimestamp == null || authorTimestamp == -1 ? timestamp : authorTimestamp; }
     }
 
     /** Current default-branch Java text is retained for LOC and marker calculations. */

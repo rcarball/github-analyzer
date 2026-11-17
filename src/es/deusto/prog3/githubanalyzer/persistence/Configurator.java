@@ -58,7 +58,7 @@ public class Configurator {
 			"# URL[;GROUP][;TEAM_SIZE]. Positive team size is optional.\n" +
 			"# Example: https://github.com/OWNER/REPO;GROUP-01;4\n";
 
-	private Properties properties;
+	private Properties properties = new Properties();
 
 	private String githubUser = null;
 	private String githubToken = null;
@@ -82,6 +82,8 @@ public class Configurator {
     Configurator(Path baseDir, java.util.function.Supplier<String> environmentToken) {
         this.environmentToken = environmentToken;
 		this.baseDir = baseDir;
+        try { SettingsTransaction.recover(baseDir); }
+        catch (IOException ex) { throw new IllegalStateException("Could not recover the interrupted configuration save.", ex); }
 		ensureResources();
 		load();
 	}
@@ -89,21 +91,26 @@ public class Configurator {
 	/** Reads config.properties into memory. Package-visible via {@link #reload()}. */
 	private void load() {
 		try {
-			properties = new Properties();
-			try (FileReader reader = new FileReader(resolvePath(PROPERTIES_FILE), StandardCharsets.UTF_8)) {
-				properties.load(reader);
-			}
-			githubUser = properties.getProperty("github.user");
-			githubToken = properties.getProperty("github.token");
-			statsFile = resolvePath(properties.getProperty("stats.file", STATS_FILE));
-			repositoriesFile = resolvePath(properties.getProperty("repositories.file", REPOSITORIES_FILE));
-			statsCSV = resolvePath(properties.getProperty("stats.csv", STATS_CSV));
-			teacherUser = properties.getProperty("teacher.user");
-			teacherEmail = properties.getProperty("teacher.email");
+            Properties loaded = new Properties();
+            try (FileReader reader = new FileReader(resolvePath(PROPERTIES_FILE), StandardCharsets.UTF_8)) {
+                loaded.load(reader);
+            }
+            applyProperties(loaded);
 		} catch (Exception ex) {
 			System.err.format("* Error reading properties file: %s%n", ex.getMessage());
 		}
 	}
+
+    private void applyProperties(Properties loaded) {
+        // Resolve all paths before publishing any part of a reload.
+        String nextStats = resolvePath(loaded.getProperty("stats.file", STATS_FILE));
+        String nextRepos = resolvePath(loaded.getProperty("repositories.file", REPOSITORIES_FILE));
+        String nextCsv = resolvePath(loaded.getProperty("stats.csv", STATS_CSV));
+        properties = loaded;
+        githubUser = loaded.getProperty("github.user"); githubToken = loaded.getProperty("github.token");
+        teacherUser = loaded.getProperty("teacher.user"); teacherEmail = loaded.getProperty("teacher.email");
+        statsFile = nextStats; repositoriesFile = nextRepos; statsCSV = nextCsv;
+    }
 
 	/** Re-reads config.properties from disk (used by the Refresh button and the config dialog). */
 	public synchronized void reload() {
@@ -201,23 +208,24 @@ public class Configurator {
         }
     }
 
-    /** Save the dialog as one operation, restoring the list if configuration saving fails.
-     * Each replacement is atomic; a process crash between the two replacements is
-     * not a filesystem transaction.
-     */
+    /** Save both dialog files with an undo journal recovered after an interrupted process. */
     public synchronized void saveSettings(String user, String token, String tUser, String tEmail, String repositories) {
         if (repositories == null) {
             save(user, token, tUser, tEmail);
             return;
         }
-        String previous = readRepositoriesText();
-        saveRepositories(repositories);
+        Properties previous = properties;
         try {
-            save(user, token, tUser, tEmail);
-        } catch (RuntimeException ex) {
-            try { saveRepositories(previous); }
-            catch (RuntimeException rollback) { ex.addSuppressed(rollback); }
-            throw ex;
+            SettingsTransaction.execute(baseDir, Paths.get(getRepositoriesFile()), () -> {
+                saveRepositories(repositories);
+                save(user, token, tUser, tEmail);
+            });
+        } catch (IOException | RuntimeException ex) {
+            applyProperties(previous);
+            String message = Files.exists(SettingsTransaction.journal(baseDir))
+                    ? "Save incomplete. Recovery data has been kept; restart the application to retry recovery."
+                    : "Could not save configuration and repository list. Previous settings have been kept.";
+            throw new IllegalStateException(message, ex);
         }
     }
 

@@ -118,7 +118,11 @@ public class MainWindowRefreshTest {
         stale.setAnalysisComplete(true); stale.setGroup("G01"); stale.setTeamSize(4);
         assertEquals(stale, MainWindow.withConfiguredRepositories(List.of(stale), List.of(config)).get(0));
         var changedSize = new es.deusto.prog3.githubanalyzer.domain.RepositoryConfig(config.url(), "G01", 5);
-        assertFalse(MainWindow.withConfiguredRepositories(List.of(stale), List.of(changedSize)).get(0).isAnalysisComplete());
+        RepoStats updated = MainWindow.withConfiguredRepositories(List.of(stale), List.of(changedSize)).get(0);
+        assertTrue(updated.isAnalysisComplete());
+        assertEquals(99, updated.getCodeLines());
+        assertEquals(5, updated.getTeamSize());
+        assertEquals(4, stale.getTeamSize(), "Updating metadata must not mutate a prior view");
     }
     @Test public void treeSuffixDisplaysPendingCommitCountAndUnknownChecks() {
         assertEquals(" (12)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(12, true, null)));
@@ -126,6 +130,22 @@ public class MainWindowRefreshTest {
         assertEquals(" (0; changes pending)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
         assertEquals(" (?)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(-1, false, "Offline")));
         assertEquals("", MainWindow.pendingSuffix(null));
+    }
+
+    @Test public void externalGroupAndSizeUpdatesKeepMetricsAndRemoveUnconfiguredRepositories() {
+        String url = "https://github.com/course/project";
+        RepoStats previous = new RepoStats(); previous.setUrl(url); previous.setGroup("old"); previous.setTeamSize(2);
+        previous.setAnalysisComplete(true); previous.setCommits(12); previous.setLinesChanged(150); previous.setDataCapturedAt(1234);
+        previous.addUserStats(new es.deusto.prog3.githubanalyzer.domain.UserStats("member", "m@example.org", 2, 1, 100, 0, 100, 100, 200));
+        RepoStats removed = new RepoStats(); removed.setUrl(url + "-removed"); removed.setAnalysisComplete(true);
+        var settings = new es.deusto.prog3.githubanalyzer.domain.RepositoryConfig(url, "new-group", 4);
+        List<RepoStats> displayed = MainWindow.withConfiguredRepositories(List.of(previous, removed), List.of(settings));
+        assertEquals(1, displayed.size()); RepoStats current = displayed.get(0);
+        assertTrue(current.isAnalysisComplete()); assertEquals("new-group", current.getGroup()); assertEquals(4, current.getTeamSize());
+        assertEquals(12, current.getCommits()); assertEquals(150, current.getLinesChanged()); assertEquals(1234, current.getDataCapturedAt());
+        assertEquals(.25f, es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics.expectedShare(current));
+        assertEquals(1f, es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics.teamShare(current, current.getUserStats().get(0)));
+        assertEquals("old", previous.getGroup()); assertEquals(2, previous.getTeamSize());
     }
 
     @Test public void updatedTreeLabelsGrowAndScrollWithoutLosingSelectionOrExpansion() throws Exception {

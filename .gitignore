@@ -11,6 +11,9 @@ build/
 /github-analyzer-*.jar
 /release/
 /.DS_Store
+.config-*.tmp
+.settings-*.tmp
+.restore-*.tmp
 
 # Local per-repository authorship rules
 /resources/authorship/

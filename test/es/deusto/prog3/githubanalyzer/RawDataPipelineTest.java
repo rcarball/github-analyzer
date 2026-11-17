@@ -28,6 +28,7 @@ class RawDataPipelineTest {
         final Map<String, List<String>> parents = new LinkedHashMap<>();
         final Map<String, String> heads = new LinkedHashMap<>();
         final Map<String, Integer> fileReads = new HashMap<>();
+        final Map<String, Long> authorDates = new HashMap<>();
         final List<String> commitReads = new ArrayList<>();
         final List<String> historyHeads = new ArrayList<>();
         int sourceReads, comparisons, queries;
@@ -49,7 +50,11 @@ class RawDataPipelineTest {
                 @Override public GHUser getAuthor() { return null; }
                 @Override public ShortInfo getCommitShortInfo() {
                     return new ShortInfo() { @Override public GitUser getAuthor() {
-                        return new GitUser() { @Override public String getName() { return author.name(); } @Override public String getEmail() { return author.email(); } };
+                        return new GitUser() {
+                            @Override public String getName() { return author.name(); }
+                            @Override public String getEmail() { return author.email(); }
+                            @Override public Date getDate() { return authorDates.containsKey(sha) ? new Date(authorDates.get(sha)) : null; }
+                        };
                     }};
                 }
                 @Override public PagedIterable<GHCommit.File> listFiles() throws IOException {
@@ -143,6 +148,51 @@ class RawDataPipelineTest {
         var raw = GitHubDataLoader.getInstance().downloadCommit(commit, A);
         assertEquals(List.of("first", "second"), raw.parents());
         assertTrue(raw.isMerge());
+    }
+
+    @Test void downloadRetainsBothAuthorAndCommitterDatesFromRealMetadata() throws Exception {
+        GHCommit commit = GitHub.getMappingObjectReader().forType(GHCommit.class).readValue(
+                "{\"sha\":\"rebased\",\"parents\":[],\"files\":[],\"commit\":{"
+                + "\"author\":{\"name\":\"Name\",\"date\":\"2024-01-01T00:00:00Z\"},"
+                + "\"committer\":{\"date\":\"2026-01-01T00:00:00Z\"}}}");
+        var raw = GitHubDataLoader.getInstance().downloadCommit(commit, A);
+        assertEquals(java.time.Instant.parse("2024-01-01T00:00:00Z").toEpochMilli(), raw.activityTimestamp());
+        assertEquals(java.time.Instant.parse("2026-01-01T00:00:00Z").toEpochMilli(), raw.timestamp());
+        assertEquals(Long.valueOf(raw.activityTimestamp()), raw.authorTimestamp());
+    }
+
+    private static void makeLegacyDates(RawDataStore store) {
+        var source = store.load(URL);
+        store.save(new RepositorySnapshot(source.version(), source.url(), source.name(), source.capturedAt(), source.createdAt(),
+                source.lastPushTime(), source.publicRepository(), source.defaultBranch(), source.branchHeads(),
+                source.commits().stream().map(c -> new RepositorySnapshot.Commit(c.sha(), c.author(), c.timestamp(), c.parents(), c.files())).toList(), source.sourceFiles()));
+    }
+
+    @Test void explicitRefreshCompletesLegacyAuthorDatesOnceWithoutReadingFiles(@TempDir Path dir) {
+        Repository remote = initial(); remote.authorDates.put("a", 500L);
+        RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+        loader.refreshRepository(URL); makeLegacyDates(store); remote.commitReads.clear(); remote.fileReads.clear();
+        int sourceReads = remote.sourceReads;
+        RepoStats updated = loader.refreshRepository(URL);
+        assertEquals(500, updated.getUserStats().get(0).getFirstCommit());
+        assertEquals(List.of("a"), remote.commitReads); assertTrue(remote.fileReads.isEmpty());
+        assertEquals(sourceReads, remote.sourceReads);
+        assertEquals(Long.valueOf(500), store.load(URL).commits().get(0).authorTimestamp());
+        loader.refreshRepository(URL);
+        assertEquals(List.of("a"), remote.commitReads, "The completed date must not be requested twice");
+    }
+
+    @Test void failedDateUpgradeKeepsTheEntireLegacyDownload(@TempDir Path dir) throws Exception {
+        Repository remote = new Repository() {
+            @Override public GHCommit getCommit(String sha) { throw new IllegalStateException("Simulated metadata failure"); }
+        };
+        remote.add("a", A, 10); remote.heads.put("main", "a");
+        RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+        loader.refreshRepository(URL); makeLegacyDates(store);
+        byte[] previous = Files.readAllBytes(store.pathFor(URL));
+        assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL));
+        assertArrayEquals(previous, Files.readAllBytes(store.pathFor(URL)));
+        assertNull(store.load(URL).commits().get(0).authorTimestamp());
     }
 
     @Test void initialHistoryConsumesAllPagesBeforeReusingAncestors(@TempDir Path dir) {

@@ -83,6 +83,11 @@ final class ConfigurationForm extends JPanel {
     }
 
     void save() {
+        prepareSave().run();
+    }
+
+    /** Capture Swing values on the EDT; the returned operation can run off the EDT. */
+    Runnable prepareSave() {
         if (repositoriesAvailable) {
             try {
                 es.deusto.prog3.githubanalyzer.domain.RepositoryConfig.parseLines(reposArea.getText().lines().toList());
@@ -90,9 +95,16 @@ final class ConfigurationForm extends JPanel {
                 throw new IllegalStateException(ex.getMessage(), ex);
             }
         }
-        config.saveSettings(userField.getText().trim(), new String(tokenField.getPassword()).trim(),
-                teacherUserField.getText().trim(), teacherEmailField.getText().trim(),
-                repositoriesAvailable ? reposArea.getText() : null);
+        String user = userField.getText().trim(), token = new String(tokenField.getPassword()).trim();
+        String teacher = teacherUserField.getText().trim(), email = teacherEmailField.getText().trim();
+        String repositories = repositoriesAvailable ? reposArea.getText() : null;
+        return () -> config.saveSettings(user, token, teacher, email, repositories);
+    }
+
+    void setSaving(boolean saving) {
+        for (JTextField field : new JTextField[] {userField, tokenField, teacherUserField, teacherEmailField})
+            field.setEnabled(!saving);
+        reposArea.setEnabled(!saving && repositoriesAvailable);
     }
 
     private static String nzs(String s) {
