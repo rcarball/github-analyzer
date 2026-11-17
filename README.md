@@ -77,9 +77,9 @@ Eclipse and the application while compiling for Java 17.
 ### Option B — Runnable JAR (any OS)
 ```bash
 ./scripts/build-jar.sh          # Windows: scripts\build-jar.bat
-java -jar dist/github-analyzer-1.3.1.jar
+java -jar dist/github-analyzer-1.4.0.jar
 ```
-This builds a **self-contained** versioned JAR under `dist/` (currently `dist/github-analyzer-1.3.1.jar`): the application, the icons
+This builds a **self-contained** versioned JAR under `dist/` (currently `dist/github-analyzer-1.4.0.jar`): the application, the icons
 **and all third-party libraries are bundled inside** — no `lib/` folder is needed
 to run it. On first run, the app creates a `resources/` folder next to the JAR
 (`dist/resources/` when running the local build).
@@ -124,7 +124,13 @@ java  -cp "build/eclipse:lib/*" es.deusto.prog3.githubanalyzer.Main
 `stats.csv` uses UTF-8 (with BOM) and `;` as its separator so it opens cleanly in
 common spreadsheet applications. Text fields are quoted, including values with
 semicolons, quotes or line breaks. Values that could be interpreted as spreadsheet
-formulas are exported as literal text.
+formulas are exported as literal text. Decimal values use `.` independently of the
+system locale. When importing in Excel with Spanish regional settings, choose `;`
+as the delimiter and `.` as the decimal separator (or an English numeric locale).
+
+Repository URLs are deduplicated independently of HTTP/HTTPS and letter case.
+The first configured spelling is kept so existing downloads and author assignments
+remain accessible. Dot-only path segments are rejected.
 
 ### Run the tests
 ```bash
@@ -329,6 +335,12 @@ from observed contributors are flagged. People without commits cannot be inferre
 ## 🔐 GitHub token
 
 For private repositories and to reduce throttling, use a token with **read** access to the repos.
+You can supply it through the `GITHUB_TOKEN` environment variable instead of
+`github.token`. A non-blank environment value takes precedence and is never copied
+to the configuration dialog or saved to disk. The GitHub user field remains required.
+On POSIX systems the configuration file is restricted to its owner (`0600`).
+Configuration and repository-list writes replace completed temporary files; a failed
+combined save attempts to restore the previous repository list.
 
 ---
 
@@ -456,6 +468,12 @@ Final badge (contiguous ranges, no gaps):
 - **BALANCED** if `okMin <= share <= okMax`
 - **HIGH** if `share > okMax`
 
+
+Commits reaching GitHub's [3,000-file API limit](https://docs.github.com/en/rest/commits/commits#get-a-commit)
+are rejected conservatively because completeness cannot be established, including
+commits with exactly 3,000 files. The previous complete download is retained.
+
+Badge boundaries use exact ratios; rounding the displayed percentage does not change the badge.
 
 ### Badge table
 

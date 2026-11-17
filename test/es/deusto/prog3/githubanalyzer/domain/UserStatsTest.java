@@ -69,4 +69,16 @@ public class UserStatsTest {
         assertEquals(120, u1.getChurn(), "Churn is added + deleted");
         assertEquals(80, u1.getNetLines(), "Net lines is added - deleted");
     }
+
+    @Test void identityEqualityDoesNotDependOnTurkishLocale() {
+        java.util.Locale previous = java.util.Locale.getDefault();
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr-TR"));
+            UserStats upper = new UserStats("IDENTITY", "IDENTITY@example.org", 0, 0, 0, 0, 0, -1, -1);
+            UserStats lower = new UserStats("identity", "identity@example.org", 0, 0, 0, 0, 0, -1, -1);
+            assertEquals(upper, lower);
+            assertEquals(upper.hashCode(), lower.hashCode());
+        } finally { java.util.Locale.setDefault(previous); }
+    }
+
 }

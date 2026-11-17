@@ -39,7 +39,8 @@ final class ConfigurationForm extends JPanel {
         repositoriesAvailable = available;
 
         userField = new JTextField(nzs(config.getGithubUser()), 28);
-        tokenField = new JPasswordField(nzs(config.getGithubToken()), 28);
+        tokenField = new JPasswordField(nzs(config.getStoredGithubToken()), 28);
+        tokenField.setToolTipText("Optional when GITHUB_TOKEN is set in the environment; the environment value takes precedence and is never saved here.");
         char echo = tokenField.getEchoChar();
         JCheckBox showToken = new JCheckBox("show");
         showToken.addActionListener(event -> tokenField.setEchoChar(showToken.isSelected() ? (char) 0 : echo));
@@ -89,9 +90,9 @@ final class ConfigurationForm extends JPanel {
                 throw new IllegalStateException(ex.getMessage(), ex);
             }
         }
-        config.save(userField.getText().trim(), new String(tokenField.getPassword()).trim(),
-                teacherUserField.getText().trim(), teacherEmailField.getText().trim());
-        if (repositoriesAvailable) config.saveRepositories(reposArea.getText());
+        config.saveSettings(userField.getText().trim(), new String(tokenField.getPassword()).trim(),
+                teacherUserField.getText().trim(), teacherEmailField.getText().trim(),
+                repositoriesAvailable ? reposArea.getText() : null);
     }
 
     private static String nzs(String s) {

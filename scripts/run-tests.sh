@@ -2,6 +2,14 @@
 # Compile and run the unit tests from the command line (macOS / Linux).
 # Eclipse users can just use "Run as > JUnit Test"; this is the CLI equivalent.
 set -e
+if [ -z "${JAVA_HOME:-}" ] && [ "$(uname -s)" = Darwin ] && [ -x /usr/libexec/java_home ]; then
+    JAVA_HOME=$(/usr/libexec/java_home 2>/dev/null) || true
+    export JAVA_HOME
+fi
+if [ -n "${JAVA_HOME:-}" ]; then
+    PATH="$JAVA_HOME/bin:$PATH"
+    export PATH
+fi
 cd "$(dirname "$0")/.."
 
 OUT=build/test-classes

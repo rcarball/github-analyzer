@@ -20,16 +20,20 @@ public record RepositoryConfig(String url, String group, Integer teamSize) {
             if (line == null || line.isBlank() || line.stripLeading().startsWith("#")) continue;
             try {
                 RepositoryConfig next = parse(line);
-                RepositoryConfig previous = result.get(next.url());
+                // GitHub repository identities ignore scheme and case. Preserve
+                // the first configured spelling so existing raw data and author
+                // assignments (keyed by URL) remain readable after upgrading.
+                String key = URI.create(next.url()).getPath().toLowerCase(java.util.Locale.ROOT);
+                RepositoryConfig previous = result.get(key);
                 if (previous != null) {
                     if (!previous.group().isEmpty() && !next.group().isEmpty() && !previous.group().equals(next.group())
                             || previous.teamSize() != null && next.teamSize() != null && !previous.teamSize().equals(next.teamSize())) {
                         throw new IllegalArgumentException("Conflicting settings for duplicate repository.");
                     }
-                    next = new RepositoryConfig(next.url(), previous.group().isEmpty() ? next.group() : previous.group(),
+                    next = new RepositoryConfig(previous.url(), previous.group().isEmpty() ? next.group() : previous.group(),
                             previous.teamSize() == null ? next.teamSize() : previous.teamSize());
                 }
-                result.put(next.url(), next);
+                result.put(key, next);
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("Repositories line " + (i + 1) + ": " + ex.getMessage(), ex);
             }
@@ -52,7 +56,13 @@ public record RepositoryConfig(String url, String group, Integer teamSize) {
                 || uri.getPath() == null || !uri.getPath().matches("/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?")) {
             throw new IllegalArgumentException("Expected a GitHub repository URL (https://github.com/OWNER/REPO).");
         }
-        url = url.replaceAll("/+$", "").replaceAll("\\.git$", "");
+        String path = uri.getPath().replaceAll("/+$", "").toLowerCase(java.util.Locale.ROOT).replaceAll("\\.git$", "");
+        String[] segments = path.substring(1).split("/", -1);
+        for (String segment : segments) {
+            if (segment.isEmpty() || segment.equals(".") || segment.equals(".."))
+                throw new IllegalArgumentException("Invalid GitHub repository path.");
+        }
+        url = url.replaceAll("/+$", "").replaceAll("(?i)\\.git$", "");
         String group = "";
         Integer size = null;
         if (fields.length == 3) {

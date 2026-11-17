@@ -213,13 +213,16 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
 		return Objects.equals(url, other.url);
 	}
 
+    /** Presentation order by group, name and URL. This order is inconsistent
+     * with URL-only equality when repository metadata differs; use URL keys for
+     * identity and deduplication, and lists for presentation sorting.
+     */
 	@Override
 	public int compareTo(RepoStats o) {
 		if (o == null) return 1;
 		String thisGroup = this.group == null ? "" : this.group;
 		String oGroup    = o.group    == null ? "" : o.group;
 		int cmp = thisGroup.compareTo(oGroup);
-		cmp = thisGroup.compareTo(oGroup);
 		if (cmp != 0) return cmp;
 		String thisName = this.name == null ? "" : this.name;
 		String oName    = o.name    == null ? "" : o.name;

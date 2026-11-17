@@ -37,6 +37,9 @@ final class AuthorshipForm extends JPanel {
     private final Integer declaredTeamSize;
     private final RepositorySnapshot source;
     private RepoStats preview = new RepoStats();
+    private javax.swing.SwingWorker<List<UserStats>, Void> previewWorker;
+    private int previewGeneration;
+    final JLabel previewStatus = new JLabel("Local preview · Apply recalculates without connecting to GitHub.");
     final javax.swing.JButton unifyButton = new javax.swing.JButton("Unify selected identities");
     final javax.swing.JButton separateButton = new javax.swing.JButton("Separate selected identities");
     final javax.swing.JButton restoreButton = new javax.swing.JButton("Restore original identities");
@@ -60,7 +63,7 @@ final class AuthorshipForm extends JPanel {
         this(StatisticsCalculator.authors(source), config, teamSize, source);
     }
 
-    private AuthorshipForm(List<AuthorSummary> authors, AuthorshipConfig config, Integer teamSize, RepositorySnapshot source) {
+    AuthorshipForm(List<AuthorSummary> authors, AuthorshipConfig config, Integer teamSize, RepositorySnapshot source) {
         super(new BorderLayout(8, 8));
         this.source = source;
         this.authors = List.copyOf(authors);
@@ -111,7 +114,7 @@ final class AuthorshipForm extends JPanel {
                 if (col == 2) return person.loginFor(groupIdentities(id));
                 if (col == 3) return person.role();
                 UserStats stats = preview.getUserStats().stream().filter(user -> id.equals(user.getPersonId())).findFirst().orElse(null);
-                if (col == 4) return stats == null ? 0 : stats.getCommits();
+                if (col == 4) return stats == null ? null : stats.getCommits();
                 return stats == null ? Float.NaN : ContributionMetrics.teamShare(preview, stats);
             }
             @Override public void setValueAt(Object value, int row, int col) {
@@ -147,6 +150,7 @@ final class AuthorshipForm extends JPanel {
                     targets.addItem(activePeople.contains(id) ? option : new PersonChoice(id, option.label() + " (not observed)"));
                 }
                 targets.addItem(new PersonChoice(null, "New person…"));
+                PlainTextRenderers.install(targets);
                 return new DefaultCellEditor(targets);
             }
         };
@@ -162,11 +166,14 @@ final class AuthorshipForm extends JPanel {
                 int modelColumn = convertColumnIndexToModel(col);
                 if (modelColumn > 2) return super.getCellEditor(row, col);
                 JComboBox<String> options = new JComboBox<>(metadataOptions(activePeople.get(convertRowIndexToModel(row)), modelColumn).toArray(String[]::new));
+                PlainTextRenderers.install(options);
                 options.setEditable(modelColumn == 0);
                 options.setToolTipText(modelColumn == 0 ? "Choose a grouped name or type a custom visible name." : "Choose a non-empty value from this person's grouped identities.");
                 return new DefaultCellEditor(options);
             }
         };
+        PlainTextRenderers.install(identities);
+        PlainTextRenderers.install(people);
         people.setToolTipText("Edit Visible name, Email or GitHub account to choose which grouped values represent the person.");
         int[] personWidths = {190, 230, 140, 170, 95, 110};
         for (int col = 0; col < personWidths.length; col++) people.getColumnModel().getColumn(col).setPreferredWidth(personWidths[col]);
@@ -196,11 +203,11 @@ final class AuthorshipForm extends JPanel {
             }
             updateActions();
         });
-        unifyButton.addActionListener(event -> unifySelected());
-        separateButton.addActionListener(event -> separateSelected());
-        restoreButton.addActionListener(event -> restoreOriginal());
+        unifyButton.addActionListener(event -> runAction(this::unifySelected));
+        separateButton.addActionListener(event -> runAction(this::separateSelected));
+        restoreButton.addActionListener(event -> runAction(this::restoreOriginal));
         restoreButton.setToolTipText("Separate original identities and restore their initial participation. Applied only after saving.");
-        renameButton.addActionListener(event -> {
+        renameButton.addActionListener(event -> runAction(() -> {
             int row = people.getSelectedRow();
             if (row < 0) return;
             String id = activePeople.get(row);
@@ -208,8 +215,8 @@ final class AuthorshipForm extends JPanel {
             Person person = draft.people().get(id);
             String value = javax.swing.JOptionPane.showInputDialog(this, "Person name:", person.name());
             if (value != null && !value.isBlank()) { draft.putPerson(new Person(id, value, person.role(), person.email(), person.login())); updateView(); }
-        });
-        roleButton.addActionListener(event -> {
+        }));
+        roleButton.addActionListener(event -> runAction(() -> {
             int row = people.getSelectedRow();
             if (row < 0) return;
             String id = activePeople.get(row);
@@ -221,7 +228,7 @@ final class AuthorshipForm extends JPanel {
             for (Role role : Role.values()) if (roleLabel(role).equals(value)) {
                 draft.putPerson(new Person(id, person.name(), role, person.email(), person.login())); updateView();
             }
-        });
+        }));
         people.setDefaultRenderer(Float.class, (table, value, selected, focus, row, col) ->
                 new javax.swing.table.DefaultTableCellRenderer().getTableCellRendererComponent(table,
                         value == null || Float.isNaN((Float) value) ? "—" : String.format(java.util.Locale.ROOT, "%.2f%%", (Float) value * 100),
@@ -237,7 +244,7 @@ final class AuthorshipForm extends JPanel {
         tables.add(peoplePanel);
         add(summary, BorderLayout.NORTH);
         add(tables, BorderLayout.CENTER);
-        add(new JLabel("Local preview · Apply recalculates from the original download without connecting to GitHub."), BorderLayout.SOUTH);
+        add(previewStatus, BorderLayout.SOUTH);
         setPreferredSize(new Dimension(1000, 600));
         updateView();
     }
@@ -348,7 +355,7 @@ final class AuthorshipForm extends JPanel {
         activePeople = new ArrayList<>(active);
         preview = new RepoStats();
         preview.setTeamSize(declaredTeamSize);
-        if (source != null) preview.setUserStats(StatisticsCalculator.personStats(source.activeCommits(), draft, ContributionMetrics::defaultRole));
+        if (source != null) updatePreview();
         int contributors = contributorCount();
         int size = declaredTeamSize == null ? contributors : declaredTeamSize;
         summary.setText(String.format("<html>Author identities: <b>%d</b> · People: <b>%d</b> · Contributors: <b>%d</b><br>"
@@ -360,6 +367,50 @@ final class AuthorshipForm extends JPanel {
         peopleModel.fireTableDataChanged();
         updateActions();
     }
+    private void runAction(Runnable action) {
+        try { action.run(); }
+        catch (RuntimeException ex) {
+            javax.swing.JOptionPane.showMessageDialog(this, ex.getMessage(), "Could not edit authorship", javax.swing.JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void updatePreview() {
+        int generation = ++previewGeneration;
+        if (previewWorker != null) previewWorker.cancel(true);
+        AuthorshipConfig rules = draft.copy();
+        previewStatus.setText("Calculating local preview…");
+        previewWorker = new javax.swing.SwingWorker<>() {
+            @Override protected List<UserStats> doInBackground() {
+                return StatisticsCalculator.personStats(source.activeCommits(), rules, ContributionMetrics::defaultRole);
+            }
+            @Override protected void done() {
+                if (generation != previewGeneration || isCancelled()) return;
+                try {
+                    preview.setUserStats(get());
+                    previewStatus.setText("Local preview · Apply recalculates without connecting to GitHub.");
+                    // Refresh only calculated cells: keep the selection and any
+                    // name/contact editor open while the background work finishes.
+                    for (int row = 0; row < peopleModel.getRowCount(); row++) {
+                        peopleModel.fireTableCellUpdated(row, 4);
+                        peopleModel.fireTableCellUpdated(row, 5);
+                    }
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    previewStatus.setText("Local preview interrupted. Apply can recalculate again.");
+                } catch (java.util.concurrent.ExecutionException | RuntimeException ex) {
+                    previewStatus.setText("Local preview unavailable. Apply can recalculate again.");
+                }
+            }
+        };
+        previewWorker.execute();
+    }
+
+    @Override public void removeNotify() {
+        ++previewGeneration;
+        if (previewWorker != null) previewWorker.cancel(true);
+        super.removeNotify();
+    }
+
     private static boolean commitEditor(JTable table) {
         return table == null || !table.isEditing() || table.getCellEditor().stopCellEditing();
     }

@@ -52,4 +52,13 @@ class RepositoryConfigTest {
         assertTrue(error.getMessage().contains("line 1"));
         assertThrows(IllegalArgumentException.class, () -> parse(";G01;4;extra"));
     }
+
+    @Test void repositoryIdentityDeduplicatesSchemeCaseAndGitSuffixWithoutOrphaningExistingData() {
+        assertEquals(List.of(new RepositoryConfig("HTTP://GITHUB.COM/COURSE/Project", "G", 4)), RepositoryConfig.parseLines(List.of(
+                "HTTP://GITHUB.COM/COURSE/Project.GIT/;G", URL + ";;4")));
+        for (String path : List.of("./project", "../project", "course/.", "course/..", "course/.git"))
+            assertThrows(IllegalArgumentException.class, () -> RepositoryConfig.parseLines(List.of("https://github.com/" + path)));
+        assertThrows(IllegalArgumentException.class, () -> RepositoryConfig.parseLines(List.of(URL + ";G", "http://github.com/COURSE/PROJECT;H")));
+    }
+
 }

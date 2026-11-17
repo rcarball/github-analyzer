@@ -26,11 +26,11 @@ public class Main {
 	
     public static void main(String[] args) {
         List<RepoStats> statsMap = new java.util.ArrayList<>();
-        GitHubDataLoader loader = GitHubDataLoader.getInstance();
         try {
+            GitHubDataLoader loader = GitHubDataLoader.getInstance();
             loader.reloadRepositories();
             statsMap = loader.loadLocalData();
-        } catch (IllegalStateException ex) {
+        } catch (RuntimeException ex) {
             System.err.println("* Analysis pending: " + ex.getMessage());
         }
 

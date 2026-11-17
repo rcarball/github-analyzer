@@ -32,7 +32,7 @@ public final class ContributionMetrics {
 
     private ContributionMetrics() { }
 
-    /** True if the user matches the configured teacher account (by username, full email, or email local-part). */
+    /** True if the user matches the configured teacher account (by username or full email). */
     public static boolean isTeacher(UserStats u) {
         return isTeacher(u, Configurator.getInstance());
     }
@@ -53,11 +53,6 @@ public final class ContributionMetrics {
             String te = tEmail.trim().toLowerCase(java.util.Locale.ROOT);
             if (!email.isBlank() && email.equals(te)) return true;
 
-            int at1 = email.indexOf('@');
-            int at2 = te.indexOf('@');
-            String lp1 = at1 > 0 ? email.substring(0, at1) : email;
-            String lp2 = at2 > 0 ? te.substring(0, at2) : te;
-            if (!lp1.isBlank() && lp1.equals(lp2)) return true;
         }
         return false;
     }

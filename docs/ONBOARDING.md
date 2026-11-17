@@ -49,7 +49,7 @@ And list the repositories to analyze in `resources/repositories.txt`
 - **Runnable JAR (any OS):**
   ```bash
   ./scripts/build-jar.sh            # Windows: scripts\build-jar.bat
-  java -jar dist/github-analyzer-1.3.1.jar
+  java -jar dist/github-analyzer-1.4.0.jar
   ```
   The JAR already bundles all runtime library dependencies and the icons. On first run it creates `resources/`
   next to itself (`dist/resources` for a local build); keep that external folder
@@ -67,7 +67,7 @@ And list the repositories to analyze in `resources/repositories.txt`
 ```bash
 ./scripts/run-tests.sh             # Windows: scripts\run-tests.bat   (or "Run as > JUnit Test" in Eclipse)
 ```
-JUnit 6, run via `lib/junit-platform-console-standalone-*.jar`. Currently **89 tests**.
+JUnit 6, run via `lib/junit-platform-console-standalone-*.jar`. The runner reports the current test count after each execution.
 When you touch domain/loader/metrics logic, add or update tests; the CLI runner is
 headless and fast.
 
@@ -156,7 +156,7 @@ and rejects stale artifacts from the other layout.
   /`…domain`, extend the filter pattern.
 - **External-reference markers** (`IAG`, `FUENTE-EXTERNA`) match as **whole words**
   (`\b…\b`) — see `GitHubDataLoader.countExternalMarkers`.
-- **Dates.** Repository overview timestamps use `yyyy-MMM-dd - hh:mm`; contributor
+- **Dates.** Repository overview timestamps use `yyyy-MMM-dd - HH:mm`; contributor
   table dates use `yyyy-MM-dd`, both with `Locale.ROOT`. CSV dates use `yyyy/MM/dd`
   for spreadsheet compatibility.
 - **Resources** (icons) load from the **classpath** first (`/images/…`), filesystem
@@ -190,3 +190,52 @@ The current version improves correctness, robustness, portability and usability:
 - The configuration form and refresh lifecycle have headless tests; verify visual
   changes by running the app.
 - `github-api` calls count against GitHub rate limits; large repo sets can be throttled.
+
+
+## 8. Audit follow-up (2026-11-17)
+
+The Antigravity and Claude audits were checked against the source. Version 1.4.0
+prepares these changes; setting the version does not publish a release.
+
+- Teacher defaults require a complete email address or the configured account;
+  matching only the email local part no longer excludes students.
+- Contribution badges compare exact ratios, including both balanced boundaries,
+  without display rounding or overflowing products.
+- A completely failed refresh preserves both derived files. An explicitly empty
+  repository list can still clear both outputs.
+- Git metadata is displayed as plain text in contributor and authorship tables,
+  including combo-box choices. Tree icons are cached, root tooltips reset, removed
+  selections cannot reload the old repository, and overview times use 24 hours.
+- Configuration and repository writes use completed temporary files. POSIX config
+  permissions are owner-only, including existing installations. `GITHUB_TOKEN`
+  takes precedence at runtime and never enters the saved configuration or editor.
+  Combined dialog saves restore the repository list on a reported config failure;
+  a process crash between two file replacements is still not a two-file transaction.
+- Repository deduplication ignores URL scheme and case while retaining the first
+  spelling, preserving the URL-based keys of existing downloads and author rules.
+  `.` and `..` path segments are invalid.
+- Active history is resolved once per statistics calculation. Authorship previews
+  calculate in a cancellable background worker and discard obsolete results;
+  action errors appear in a dialog. Closing configuration disposes the window.
+- GitHub's documented [commit file limit](https://docs.github.com/en/rest/commits/commits#get-a-commit)
+  is handled conservatively: a response of 3,000 or more files rejects that download
+  instead of silently recording potentially incomplete work.
+- Username/email equality uses `Locale.ROOT`. macOS shell scripts discover a JDK
+  when `JAVA_HOME` is unset and respect an explicitly selected JDK.
+
+Reviewed suggestions that do not justify changing behavior automatically:
+
+| Observation | Decision |
+| --- | --- |
+| CSV decimals in Spanish Excel | Keep the stable `.` numeric format; document explicit import settings. No interactive Excel validation was performed. |
+| Commit versus author date | Keep committer dates for compatibility with saved snapshots; the UI's activity dates describe history commits, not proof of when a person authored code. Switching semantics requires a raw-data migration and an explicit product decision. |
+| Discovery cancellation | Already calls `SwingWorker.cancel(true)` and ignores late results; existing tests cover an uninterruptible source. Local discovery may take time to return from filesystem I/O; cancellation does not permit a late save. |
+| Manually edited group/team size | Explicit reload/refresh and reopening authorship reread settings; there is no live file watcher. |
+| Full initial history per branch | Keep the complete branch queries to ensure coverage. Commits and expensive file expansions are already deduplicated by SHA; repeated branches can still cost API pages on the first download. |
+| Vendored libraries, SBOM/CVE scanning, CI action SHA pinning | Keep the current offline Eclipse workflow and dependencies. Supply-chain automation is a separate follow-up; these changes do not claim a CVE audit. |
+| Legacy `DataManager` methods | Retain the legacy loading API and its deserialization regression tests. Removing it does not fix a current user-facing defect. |
+| `RepoStats` ordering versus equality | Retain group/name presentation sorting and URL identity; document that natural order differs from equality for changed metadata. Do not use this mutable presentation model as a sorted identity set. |
+| Serialization/compiler warnings | No serialized field layout changes or cosmetic suppressions were introduced; keep compatibility with existing local data. |
+
+Validation covers offline regression tests, release-layout checks and packaging.
+The live GitHub API and interactive GUI were not exercised.
