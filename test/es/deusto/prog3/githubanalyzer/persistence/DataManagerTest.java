@@ -30,6 +30,8 @@ import org.junit.jupiter.api.parallel.Resources;
 
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
+import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role;
+import es.deusto.prog3.githubanalyzer.format.NumberFormats;
 
 /**
  * Tests for the hardened cache deserialization: a valid cache round-trips, while
@@ -80,6 +82,83 @@ public class DataManagerTest {
         } finally {
             Locale.setDefault(original); Locale.setDefault(Locale.Category.FORMAT, format); Locale.setDefault(Locale.Category.DISPLAY, display);
         }
+    }
+
+    @Test void csvTeamAggregationReadsParticipantsLinearly(@TempDir Path dir) throws Exception {
+        for (int size : new int[] {16, 128}) {
+            List<UserStats> users = new ArrayList<>();
+            for (int i = 0; i < size; i++) users.add(csvMember("member-" + i, i + 1, 1, Role.MEMBER));
+            var visits = new java.util.concurrent.atomic.AtomicInteger();
+            RepoStats repo = new RepoStats();
+            repo.setUserStats(new java.util.AbstractList<>() {
+                @Override public UserStats get(int index) { visits.incrementAndGet(); return users.get(index); }
+                @Override public int size() { return users.size(); }
+            });
+            Path csv = dir.resolve("stats.csv");
+            DataManager.getInstance().storeCSV(List.of(repo), csv);
+            assertTrue(visits.get() <= 3 * size, "Participant reads must stay linear: " + visits.get() + " for " + size + " people");
+            List<String> lines = Files.readAllLines(csv); assertEquals(size + 1, lines.size());
+            int totalChurn = size * (size + 1) / 2;
+            for (int row = 1; row <= size; row++) {
+                String[] cells = lines.get(row).split(";", -1); assertEquals(19, cells.length);
+                assertEquals(NumberFormats.csvShare((float) row / totalChurn), cells[7]);
+                assertEquals(Integer.toString(size), cells[13]); assertEquals(Integer.toString(size), cells[15]);
+                assertEquals(NumberFormats.csvShare(1f / size), cells[16]);
+            }
+        }
+    }
+
+    @Test void csvTeamSummariesMatchGuiRulesAndAreFreshForEachRepositoryAndExport(@TempDir Path dir) throws Exception {
+        UserStats first = csvMember("first", 60, 2, Role.MEMBER), second = csvMember("second", 40, 2, Role.MEMBER);
+        UserStats commitOnly = csvMember("commit-only", 0, 1, Role.MEMBER), inactive = csvMember("inactive", 0, 0, Role.MEMBER);
+        UserStats teacher = csvMember("teacher", 500, 2, Role.TEACHER), excluded = csvMember("excluded", 1000, 3, Role.EXCLUDED);
+        RepoStats inferred = new RepoStats(); inferred.setUrl("https://github.com/course/inferred");
+        inferred.setUserStats(java.util.Arrays.asList(first, second, commitOnly, inactive, teacher, excluded, null));
+        inferred.setAuthorCount(7);
+        RepoStats declared = inferred.withSettings(new es.deusto.prog3.githubanalyzer.domain.RepositoryConfig(inferred.getUrl(), "declared", 2));
+        declared.setUrl("https://github.com/course/declared");
+        RepoStats onlyExcluded = new RepoStats(); onlyExcluded.setUserStats(List.of(teacher, excluded));
+        RepoStats zeroChurn = new RepoStats(); zeroChurn.setUserStats(List.of(commitOnly, inactive));
+        RepoStats noUsers = new RepoStats(); noUsers.setUserStats(null);
+        List<RepoStats> repositories = java.util.Arrays.asList(inferred, declared, onlyExcluded, zeroChurn, new RepoStats(), noUsers, null);
+        Path csv = dir.resolve("stats.csv");
+        DataManager.getInstance().storeCSV(repositories, csv);
+        assertCsvTeamValuesMatchSharedMetrics(csv, repositories);
+        String[] firstRow = Files.readAllLines(csv).get(1).split(";", -1);
+        assertEquals("0,600000", firstRow[7]); assertEquals("3", firstRow[13]);
+        assertEquals("3", firstRow[15]); assertEquals("0,333333", firstRow[16]);
+        // Re-export changed data, including a new denominator and a declared size.
+        first.setPerson("first", Role.EXCLUDED); inferred.setTeamSize(7);
+        DataManager.getInstance().storeCSV(repositories, csv);
+        assertCsvTeamValuesMatchSharedMetrics(csv, repositories);
+        List<String> changed = Files.readAllLines(csv);
+        assertEquals("-", changed.get(1).split(";", -1)[7]);
+        String[] secondRow = changed.get(2).split(";", -1);
+        assertEquals("1,000000", secondRow[7]); assertEquals("2", secondRow[13]);
+        assertEquals("7", secondRow[15]); assertEquals("0,142857", secondRow[16]);
+    }
+
+    private static UserStats csvMember(String name, int churn, int commits, Role role) {
+        UserStats user = new UserStats(name, name + "@example.org", commits, 1, churn, 0, churn, -1, -1);
+        user.setPerson(name, role); return user;
+    }
+
+    private static void assertCsvTeamValuesMatchSharedMetrics(Path csv, List<RepoStats> repositories) throws Exception {
+        List<String> rows = Files.readAllLines(csv); int row = 1;
+        for (RepoStats repo : repositories) {
+            if (repo == null || repo.getUserStats() == null) continue;
+            for (UserStats user : repo.getUserStats()) {
+                if (user == null) continue;
+                String[] cells = rows.get(row++).split(";", -1); assertEquals(19, cells.length);
+                assertEquals(NumberFormats.csvShare(ContributionMetrics.teamShare(repo, user)), cells[7]);
+                assertEquals(repo.getTeamSize() == null ? "" : repo.getTeamSize().toString(), cells[12]);
+                assertEquals(Integer.toString(ContributionMetrics.activeContributors(repo).size()), cells[13]);
+                assertEquals(Integer.toString(repo.getAuthorCount()), cells[14]);
+                assertEquals(Integer.toString(ContributionMetrics.effectiveTeamSize(repo)), cells[15]);
+                assertEquals(NumberFormats.csvShare(ContributionMetrics.expectedShare(repo)), cells[16]);
+            }
+        }
+        assertEquals(rows.size(), row, "Every non-null participant is still exported");
     }
 
     @Test void failedCsvGenerationKeepsPreviousBytesOrAbsenceAndRemovesTemporaryFiles(@TempDir Path dir) throws Exception {
