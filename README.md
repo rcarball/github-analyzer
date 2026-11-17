@@ -368,22 +368,36 @@ in Eclipse). Detailed progress callbacks remain available to callers.
 
 Select a repository and click **Manage authorship…** to work entirely locally:
 
-1. Select identities using Ctrl/Cmd or Shift and click **Unify selected identities**.
-   Their work is assigned to the first selected person's group.
-2. Select a person below to highlight all their identities. In the lower table,
-   **Visible name**, **Email** and **GitHub account** offer dropdowns of distinct
-   values from that person's grouped identities. Email and account choices exclude
-   empty values and are read-only when none exist. You can also type a custom visible
-   name or use **Rename person…**. Choices are saved per repository; the selected email
-   is used in derived statistics and CSV. **Separate selected identities** splits
-   aliases again; contact values fall back to an available value if the selected
-   identity leaves the group. **Change participation…** sets member/teacher/excluded roles.
-3. Review Java commits, observed shares and the expected team split in the local
-   preview. Teachers and excluded accounts stay visible but do not enter the team share.
-4. **Restore original identities** removes groupings and restores separate original
-   identities with their initial teacher/member roles. This is a draft until applied.
-5. **Apply and recalculate locally** saves assignments and regenerates statistics
-   and CSV without contacting GitHub. **Cancel** discards the draft.
+1. The sortable **People** table shows participation, identity counts, Java commits
+   and observed contribution bars. Search by name, email or GitHub account.
+2. Select one person to edit their visible name, representative email, GitHub account
+   and participation in the right-hand panel. Contact choices come from that person's
+   original identities; only the visible name accepts custom text. Empty contact
+   fields are disabled. Teachers and other excluded accounts remain visible but do
+   not enter the team share.
+3. Select multiple people with Ctrl/Cmd or Shift. In the right-hand panel, explicitly
+   choose the destination person and review participation, then click **Confirm
+   combination**. Mixed participation requires an explicit choice. A combination
+   moves entire groups, including saved aliases absent from the current analysis.
+   Existing groups can be combined again incrementally. Sorting and filtering do
+   not determine the destination. Drag and drop is not implemented yet.
+4. Select original identities in the right-hand table and use **Move to…** or
+   **Separate selected identities** to correct part of a group. Contact choices
+   fall back to available values when their original identity leaves the group.
+5. **Undo** and **Redo** restore complete operations, including groupings, names,
+   contact choices and participation. Use Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or
+   Ctrl/Cmd+Y). **Restore session start** recovers the configuration present when
+   the editor opened; this action can itself be undone.
+6. **Restore original identities…** removes all saved authorship rules for this
+   repository, including overrides and assignments for absent identities, then
+   rebuilds separate identities with default participation from the original
+   download, including commits outside the active branch. A confirmation explains
+   this scope. Restoration is undoable before applying and remains available after
+   saving and reopening the editor.
+7. **Apply and recalculate locally** reviews and saves the draft, then regenerates
+   statistics and CSV without contacting GitHub. **Cancel** discards the draft.
+   Undo/redo history belongs to the open editor and is not persisted after closing.
+   Original commits are never modified.
 
 A linked GitHub account takes precedence over a freely chosen Git name when
 initializing teacher roles. Explicit saved roles take precedence afterwards. New
