@@ -5,6 +5,8 @@
 /repositories.txt
 /stats.dat
 /stats.csv
+/.settings-pending.properties
+/.settings.lock
 
 # Keep the templates tracked
 !/config.properties.example

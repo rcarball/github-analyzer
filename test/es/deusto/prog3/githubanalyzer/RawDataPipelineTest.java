@@ -18,6 +18,7 @@ import es.deusto.prog3.githubanalyzer.persistence.RawDataStore;
 
 @ResourceLock(Resources.SYSTEM_OUT)
 @ResourceLock(Resources.SYSTEM_ERR)
+@ResourceLock(Resources.SYSTEM_PROPERTIES)
 class RawDataPipelineTest {
     private static final String URL = "https://github.com/course/project";
     private static final AuthorIdentity A = new AuthorIdentity("Name", "school@example.org", "login");
@@ -28,8 +29,11 @@ class RawDataPipelineTest {
         final Map<String, List<String>> parents = new LinkedHashMap<>();
         final Map<String, String> heads = new LinkedHashMap<>();
         final Map<String, Integer> fileReads = new HashMap<>();
+        final Map<String, Long> authorDates = new HashMap<>();
         final List<String> commitReads = new ArrayList<>();
+        final List<String> historyHeads = new ArrayList<>();
         int sourceReads, comparisons, queries;
+        int historyPageSize = Integer.MAX_VALUE;
         boolean paginated;
         @Override public void setCompareUsePaginatedCommits(boolean enabled) { paginated = enabled; }
         String failSha;
@@ -42,11 +46,16 @@ class RawDataPipelineTest {
             commits.put(sha, new GHCommit() {
                 @Override public String getSHA1() { return sha; }
                 @Override public Date getCommitDate() { return new Date(1000 + commits.size()); }
-                @Override public List<GHCommit> getParents() { return Arrays.stream(ancestors).<GHCommit>map(id -> new GHCommit() { @Override public String getSHA1() { return id; } }).toList(); }
+                @Override public List<String> getParentSHA1s() { return List.of(ancestors); }
+                @Override public List<GHCommit> getParents() { throw new AssertionError("Do not eagerly fetch parent metadata"); }
                 @Override public GHUser getAuthor() { return null; }
                 @Override public ShortInfo getCommitShortInfo() {
                     return new ShortInfo() { @Override public GitUser getAuthor() {
-                        return new GitUser() { @Override public String getName() { return author.name(); } @Override public String getEmail() { return author.email(); } };
+                        return new GitUser() {
+                            @Override public String getName() { return author.name(); }
+                            @Override public String getEmail() { return author.email(); }
+                            @Override public Date getDate() { return authorDates.containsKey(sha) ? new Date(authorDates.get(sha)) : null; }
+                        };
                     }};
                 }
                 @Override public PagedIterable<GHCommit.File> listFiles() throws IOException {
@@ -83,7 +92,7 @@ class RawDataPipelineTest {
             queries++;
             Map<String, List<GHCommit>> histories = new HashMap<>();
             heads.values().forEach(head -> histories.put(head, reachable(head).stream().map(commits::get).toList()));
-            return new org.kohsuke.github.OfflineCommitQuery(histories);
+            return new org.kohsuke.github.OfflineCommitQuery(histories, historyHeads::add, historyPageSize);
         }
         @Override public GHCompare getCompare(String base, String head) {
             assertTrue(paginated, "Explicitly enable paginated comparisons before counting commits");
@@ -113,40 +122,254 @@ class RawDataPipelineTest {
     private static Repository initial() {
         Repository remote = new Repository(); remote.add("a", A, 10); remote.heads.put("main", "a"); return remote;
     }
+
+    @Test void manyBranchAliasesReadOnlyOneCompleteHistory(@TempDir Path dir) {
+        Repository remote = initial();
+        remote.add("b", B, 20, "a"); remote.add("tip", A, 30, "b");
+        remote.heads.put("main", "tip");
+        for (int i = 0; i < 30; i++) remote.heads.put("alias-" + i, "tip");
+        remote.heads.put("old-release", "a");
+        RawDataStore store = new RawDataStore(dir);
+        RepoStats result = loader(remote, store, new AtomicInteger()).refreshRepository(URL);
+
+        assertEquals(List.of("tip"), remote.historyHeads, "One paginated history instead of one per branch");
+        assertEquals(1, remote.queries);
+        assertTrue(remote.commitReads.isEmpty(), "Known branch tips need no individual metadata request");
+        assertEquals(Map.of("a", 1, "b", 1, "tip", 1), remote.fileReads);
+        assertEquals(3, result.getCommits()); assertEquals(60, result.getLinesChanged());
+        assertEquals(remote.heads, store.load(URL).branchHeads());
+    }
+
+    @Test void realCommitMetadataProvidesMergeParentsWithoutFetchingParentObjects() throws Exception {
+        GHCommit commit = GitHub.getMappingObjectReader().forType(GHCommit.class).readValue(
+                "{\"sha\":\"merge\",\"parents\":[{\"sha\":\"first\"},{\"sha\":\"second\"}],"
+                + "\"files\":[],\"commit\":{\"committer\":{\"date\":\"2026-01-01T00:00:00Z\"}}}");
+        // No owning repository or HTTP connector: eagerly resolving parents
+        // would fail, while reading IDs from this actual library object works.
+        var raw = GitHubDataLoader.getInstance().downloadCommit(commit, A);
+        assertEquals(List.of("first", "second"), raw.parents());
+        assertTrue(raw.isMerge());
+    }
+
+    @Test void downloadRetainsBothAuthorAndCommitterDatesFromRealMetadata() throws Exception {
+        GHCommit commit = GitHub.getMappingObjectReader().forType(GHCommit.class).readValue(
+                "{\"sha\":\"rebased\",\"parents\":[],\"files\":[],\"commit\":{"
+                + "\"author\":{\"name\":\"Name\",\"date\":\"2024-01-01T00:00:00Z\"},"
+                + "\"committer\":{\"date\":\"2026-01-01T00:00:00Z\"}}}");
+        var raw = GitHubDataLoader.getInstance().downloadCommit(commit, A);
+        assertEquals(java.time.Instant.parse("2024-01-01T00:00:00Z").toEpochMilli(), raw.activityTimestamp());
+        assertEquals(java.time.Instant.parse("2026-01-01T00:00:00Z").toEpochMilli(), raw.timestamp());
+        assertEquals(Long.valueOf(raw.activityTimestamp()), raw.authorTimestamp());
+    }
+
+    private static void makeLegacyDates(RawDataStore store) {
+        var source = store.load(URL);
+        store.save(new RepositorySnapshot(source.version(), source.url(), source.name(), source.capturedAt(), source.createdAt(),
+                source.lastPushTime(), source.publicRepository(), source.defaultBranch(), source.branchHeads(),
+                source.commits().stream().map(c -> new RepositorySnapshot.Commit(c.sha(), c.author(), c.timestamp(), c.parents(), c.files())).toList(), source.sourceFiles()));
+    }
+
+    @Test void explicitRefreshCompletesLegacyAuthorDatesOnceWithoutReadingFiles(@TempDir Path dir) {
+        Repository remote = initial(); remote.authorDates.put("a", 500L);
+        RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+        loader.refreshRepository(URL); makeLegacyDates(store); remote.commitReads.clear(); remote.fileReads.clear();
+        int sourceReads = remote.sourceReads;
+        RepoStats updated = loader.refreshRepository(URL);
+        assertEquals(500, updated.getUserStats().get(0).getFirstCommit());
+        assertEquals(List.of("a"), remote.commitReads); assertTrue(remote.fileReads.isEmpty());
+        assertEquals(sourceReads, remote.sourceReads);
+        assertEquals(Long.valueOf(500), store.load(URL).commits().get(0).authorTimestamp());
+        loader.refreshRepository(URL);
+        assertEquals(List.of("a"), remote.commitReads, "The completed date must not be requested twice");
+    }
+
+    @Test void failedDateUpgradeKeepsTheEntireLegacyDownload(@TempDir Path dir) throws Exception {
+        Repository remote = new Repository() {
+            @Override public GHCommit getCommit(String sha) { throw new IllegalStateException("Simulated metadata failure"); }
+        };
+        remote.add("a", A, 10); remote.heads.put("main", "a");
+        RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+        loader.refreshRepository(URL); makeLegacyDates(store);
+        byte[] previous = Files.readAllBytes(store.pathFor(URL));
+        assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL));
+        assertArrayEquals(previous, Files.readAllBytes(store.pathFor(URL)));
+        assertNull(store.load(URL).commits().get(0).authorTimestamp());
+    }
+
+    @Test void initialHistoryConsumesAllPagesBeforeReusingAncestors(@TempDir Path dir) {
+        Repository remote = initial(); remote.historyPageSize = 2;
+        String parent = "a";
+        for (int i = 1; i <= 4; i++) {
+            String sha = "commit-" + i; remote.add(sha, A, 1, parent); parent = sha;
+        }
+        remote.heads.put("main", parent); remote.heads.put("old-feature", "a");
+        RawDataStore store = new RawDataStore(dir);
+        RepoStats result = loader(remote, store, new AtomicInteger()).refreshRepository(URL);
+
+        assertEquals(5, result.getCommits());
+        assertEquals(5, remote.fileReads.size());
+        assertTrue(remote.commitReads.isEmpty(), "Later pages must not be fetched individually through parent traversal");
+        assertEquals(List.of(parent), remote.historyHeads);
+        assertEquals(5, store.load(URL).activeCommits().size());
+    }
+
+    @Test void mergeOnlySideHistoryIsFollowedEvenWhenFirstParentIsAlreadyKnown(@TempDir Path dir) {
+        Repository remote = initial(); remote.add("main-tip", A, 20, "a");
+        remote.add("hidden-base", B, 30, "a"); remote.add("hidden-tip", B, 40, "hidden-base");
+        remote.add("merge", A, 999, "main-tip", "hidden-tip");
+        remote.heads.put("main", "main-tip"); remote.heads.put("merged-feature", "merge");
+        RawDataStore store = new RawDataStore(dir);
+        RepoStats result = loader(remote, store, new AtomicInteger()).refreshRepository(URL);
+
+        assertEquals(Set.of("merge", "hidden-tip", "hidden-base"), new HashSet<>(remote.commitReads));
+        assertEquals(3, remote.commitReads.size());
+        assertEquals(5, result.getCommits()); assertEquals(1, result.getMergeCommits());
+        assertEquals(100, result.getLinesChanged());
+        assertEquals(5, store.load(URL).activeCommits().size());
+        assertEquals(List.of("main-tip"), remote.historyHeads);
+    }
+
+    @Test void divergentAndMergedBranchesFetchOnlyCommitsOutsideDefaultHistory(@TempDir Path dir) {
+        Repository remote = initial();
+        remote.add("b", A, 20, "a"); remote.add("main-tip", A, 30, "b");
+        remote.add("shared-feature", B, 40, "b"); remote.add("feature-tip", B, 50, "shared-feature");
+        // The first parent is already known; the second must still be explored.
+        remote.add("merge", A, 999, "b", "shared-feature"); remote.add("orphan", B, 60);
+        remote.heads.put("main", "main-tip"); remote.heads.put("aaa-merge", "merge");
+        remote.heads.put("feature", "feature-tip"); remote.heads.put("shared-alias", "shared-feature");
+        remote.heads.put("unrelated", "orphan");
+        RawDataStore store = new RawDataStore(dir);
+        RepoStats result = loader(remote, store, new AtomicInteger()).refreshRepository(URL);
+
+        assertEquals(List.of("main-tip"), remote.historyHeads, "Start with the default branch, not alphabetical order");
+        assertEquals(Set.of("shared-feature", "feature-tip", "merge", "orphan"), new HashSet<>(remote.commitReads));
+        assertEquals(4, remote.commitReads.size(), "Shared parents must be fetched once across branches");
+        assertEquals(7, remote.fileReads.size());
+        assertTrue(remote.fileReads.values().stream().allMatch(count -> count == 1));
+        assertEquals(7, result.getCommits()); assertEquals(1, result.getMergeCommits());
+        assertEquals(210, result.getLinesChanged(), "Merge changes must not inflate Java churn");
+        assertEquals(7, store.load(URL).activeCommits().size());
+        assertEquals(remote.heads, store.load(URL).branchHeads());
+    }
+
+    @Test void unrelatedBranchesShareTheirOwnAncestorsWithoutListingMoreHistories(@TempDir Path dir) {
+        Repository remote = initial();
+        remote.add("other-root", B, 20); remote.add("left", B, 30, "other-root");
+        remote.add("right", A, 40, "other-root");
+        remote.heads.put("left", "left"); remote.heads.put("right", "right");
+        RawDataStore store = new RawDataStore(dir);
+        RepoStats result = loader(remote, store, new AtomicInteger()).refreshRepository(URL);
+
+        assertEquals(List.of("a"), remote.historyHeads);
+        assertEquals(Set.of("other-root", "left", "right"), new HashSet<>(remote.commitReads));
+        assertEquals(3, remote.commitReads.size());
+        assertEquals(4, result.getCommits()); assertEquals(100, result.getLinesChanged());
+        assertEquals(4, store.load(URL).activeCommits().size());
+    }
+
+    @Test void missingParentsInAnInitialHistoryAreResolvedBeforeSaving(@TempDir Path dir) {
+        Repository remote = new Repository() {
+            @Override public GHCommitQueryBuilder queryCommits() {
+                queries++;
+                return new OfflineCommitQuery(Map.of("tip", List.of(commits.get("tip"))), historyHeads::add);
+            }
+        };
+        remote.add("root", A, 10); remote.add("tip", B, 20, "root"); remote.heads.put("main", "tip");
+        RawDataStore store = new RawDataStore(dir);
+        RepoStats result = loader(remote, store, new AtomicInteger()).refreshRepository(URL);
+
+        assertEquals(List.of("root"), remote.commitReads);
+        assertEquals(Map.of("root", 1, "tip", 1), remote.fileReads);
+        assertEquals(2, result.getCommits()); assertEquals(30, result.getLinesChanged());
+        assertEquals(2, store.load(URL).activeCommits().size());
+    }
+
+    @Test void failureOnAnAdditionalBranchNeverSavesAPartialInitialDownload(@TempDir Path dir) {
+        Repository remote = initial(); remote.add("failed-feature", B, 20, "a");
+        remote.heads.put("feature", "failed-feature"); remote.failSha = "failed-feature";
+        RawDataStore store = new RawDataStore(dir);
+        GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+
+        ConsoleOutput console = captureConsole(() -> assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL)));
+        assertTrue(console.err().contains("Could not download commit failed-feature"));
+        assertEquals(List.of("a"), remote.historyHeads);
+        assertEquals(Map.of("a", 1, "failed-feature", 1), remote.fileReads);
+        assertFalse(Files.exists(store.pathFor(URL)));
+
+        remote.failSha = null;
+        assertEquals(2, loader.refreshRepository(URL).getCommits());
+        assertEquals(2, store.load(URL).activeCommits().size());
+    }
+
+    @Test void failedMultiBranchIncrementKeepsTheEntirePreviousCheckpoint(@TempDir Path dir) throws Exception {
+        Repository remote = initial(); RawDataStore store = new RawDataStore(dir);
+        GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+        loader.refreshRepository(URL); byte[] original = Files.readAllBytes(store.pathFor(URL));
+        remote.add("good", B, 20, "a"); remote.add("bad", A, 30, "a");
+        remote.heads.put("aa-good", "good"); remote.heads.put("zz-bad", "bad"); remote.failSha = "bad";
+
+        assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL));
+        assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
+        assertEquals(Map.of("main", "a"), store.load(URL).branchHeads());
+        assertEquals(1, remote.queries, "Incremental work must not list any branch history again");
+        assertEquals(1, remote.fileReads.get("a"));
+    }
+
+    @Test void cancellingAdditionalBranchTraversalStopsBeforeAnotherMetadataRequest(@TempDir Path dir) throws Exception {
+        Repository remote = initial(); remote.add("feature-tip", B, 20, "a"); remote.heads.put("feature", "feature-tip");
+        List<String> messages = new ArrayList<>();
+        try {
+            assertThrows(CancellationException.class, () -> GitHubDataLoader.getInstance().downloadSnapshot(URL, remote, message -> {
+                messages.add(message);
+                if (message.contains("Downloading new commit #1")) Thread.currentThread().interrupt();
+            }));
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertTrue(messages.stream().anyMatch(message -> message.contains("Downloading new commit #1")));
+            assertTrue(remote.commitReads.isEmpty());
+            assertEquals(Map.of("a", 1), remote.fileReads);
+            assertEquals(List.of("a"), remote.historyHeads);
+        } finally { Thread.interrupted(); }
+    }
     private record ConsoleOutput(String out, String err) { }
-    private static ConsoleOutput captureConsole(Runnable action) {
+    private static ConsoleOutput captureConsole(Runnable action) { return captureConsole(false, action); }
+    private static ConsoleOutput captureConsole(boolean debug, Runnable action) {
+        String oldDebug = System.getProperty("githubanalyzer.debug");
         ByteArrayOutputStream output = new ByteArrayOutputStream(), errors = new ByteArrayOutputStream();
         PrintStream oldOut = System.out, oldErr = System.err;
         try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
              PrintStream err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
+            System.setProperty("githubanalyzer.debug", Boolean.toString(debug));
             System.setOut(out); System.setErr(err);
             action.run();
-        } finally { System.setOut(oldOut); System.setErr(oldErr); }
+        } finally {
+            System.setOut(oldOut); System.setErr(oldErr);
+            if (oldDebug == null) System.clearProperty("githubanalyzer.debug");
+            else System.setProperty("githubanalyzer.debug", oldDebug);
+        }
         return new ConsoleOutput(output.toString(StandardCharsets.UTF_8), errors.toString(StandardCharsets.UTF_8));
     }
     @Test void consoleProgressDistinguishesFullIncrementalUnchangedAndLocalWork(@TempDir Path dir) throws Exception {
         Repository remote = initial(); RawDataStore store = new RawDataStore(dir); AtomicInteger clients = new AtomicInteger();
         GitHubDataLoader loader = loader(remote, store, clients);
         ConsoleOutput first = captureConsole(loader::loadData);
-        assertTrue(first.out().contains("starting a complete download"));
-        assertTrue(first.out().contains("Full history ready: 1 unique commits"));
-        assertTrue(first.out().contains("1 Java contents downloaded"));
-        assertTrue(first.out().contains("Repository tasks finished: 1/1"));
-        assertTrue(first.out().lines().filter(line -> line.contains("[download course/project]")).allMatch(line -> line.matches("\\[\\d{2}:\\d{2}:\\d{2}\\] \\[[^\\]]+\\] .*")));
-        assertTrue(first.out().contains("[download course/project]"));
-        assertTrue(first.out().indexOf("Saving complete original download") < first.out().indexOf("Original download saved"));
+        assertEquals(4, first.out().lines().count(), first.out());
+        assertTrue(first.out().contains("Starting GitHub synchronization"));
+        assertTrue(first.out().contains("[download course/project] Starting repository"));
+        assertTrue(first.out().contains("Repository complete (1/1)"));
+        assertTrue(first.out().contains("Synchronization finished"));
+        assertTrue(first.out().lines().allMatch(line -> line.matches("\\[\\d{2}:\\d{2}:\\d{2}\\] \\[[^\\]]+\\] .*")));
         assertTrue(first.err().isEmpty());
 
         remote.add("b", B, 20, "a"); remote.heads.put("main", "b");
         ConsoleOutput incremental = captureConsole(() -> loader.refreshRepository(URL));
-        assertTrue(incremental.out().contains("checkpoint a → remote b"));
-        assertTrue(incremental.out().contains("Incremental history ready: 1 new commits downloaded; 1 archived originals retained"));
-        assertTrue(incremental.out().contains("0 Java contents downloaded, 1 unchanged entries reused"));
+        assertEquals(2, incremental.out().lines().count(), incremental.out());
+        assertTrue(incremental.out().contains("Repository complete"));
         assertEquals(Map.of("a", 1, "b", 1), remote.fileReads); assertEquals(List.of("b"), remote.commitReads);
 
         byte[] original = Files.readAllBytes(store.pathFor(URL));
         ConsoleOutput unchanged = captureConsole(() -> loader.refreshRepository(URL));
-        assertTrue(unchanged.out().contains("unchanged; reusing original download without fetching commit files"));
+        assertEquals(2, unchanged.out().lines().count(), unchanged.out());
+        assertTrue(unchanged.out().contains("Repository complete"));
         assertFalse(unchanged.out().contains("Original download saved"));
         assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
         assertEquals(Map.of("a", 1, "b", 1), remote.fileReads);
@@ -158,18 +381,41 @@ class RawDataPipelineTest {
         assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
         assertFalse((first.out() + incremental.out() + local.out()).contains(A.email()));
     }
-    @Test void longInitialDownloadReportsBatchesWithoutDuplicateCommitReads(@TempDir Path dir) {
-        Repository remote = initial(); String parent = "a";
-        for (int i = 1; i <= 26; i++) { String sha = "commit-" + i; remote.add(sha, A, 1, parent); parent = sha; }
-        remote.heads.put("main", parent);
+    @Test void detailedDiagnosticsAreOptIn(@TempDir Path dir) {
+        Repository remote = initial();
         GitHubDataLoader loader = loader(remote, new RawDataStore(dir), new AtomicInteger());
-        ConsoleOutput console = captureConsole(loader::loadData);
-        assertTrue(console.out().contains("changed-file details: 1/27"));
-        assertTrue(console.out().contains("changed-file details: 25/27"));
-        assertTrue(console.out().contains("changed-file details: 27/27"));
-        assertEquals(3, console.out().lines().filter(line -> line.contains("Downloading changed-file details:")).count());
-        assertEquals(27, remote.fileReads.size()); assertTrue(remote.fileReads.values().stream().allMatch(count -> count == 1));
-        assertTrue(console.out().contains("Full history ready: 27 unique commits"));
+        ConsoleOutput console = captureConsole(true, () -> loader.refreshRepository(URL));
+        assertTrue(console.out().contains("Full history ready: 1 unique commits"));
+        assertTrue(console.out().contains("Original download saved"));
+        assertTrue(console.out().contains("Repository complete"));
+        assertTrue(console.err().isEmpty());
+    }
+    @Test void repositoryCompletionFollowsPersistenceAndSaveFailuresNameTheRepository(@TempDir Path dir) {
+        for (boolean failSave : new boolean[] {false, true}) {
+            Repository remote = initial(); RawDataStore store = new RawDataStore(dir.resolve(Boolean.toString(failSave)));
+            AtomicInteger writes = new AtomicInteger();
+            GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL), ignored -> new AuthorshipConfig(),
+                    () -> ignored -> remote, results -> {
+                        if (writes.incrementAndGet() == 1) {
+                            // The per-repository summary must wait for this write to succeed.
+                            System.out.println("TEST: saving repository results");
+                            if (failSave) throw new IllegalStateException("Simulated statistics save failure");
+                        }
+                    }, ignored -> { }, store::load, store::save);
+            ConsoleOutput console = captureConsole(loader::loadData);
+            if (failSave) {
+                assertFalse(console.out().contains("Repository complete"));
+                assertTrue(console.err().contains("[download course/project] Could not save repository results"));
+                assertTrue(console.err().contains("Simulated statistics save failure"));
+                assertEquals(0, loader.getLastConfirmedRepositoryCount());
+            } else {
+                assertTrue(console.out().indexOf("TEST: saving repository results") < console.out().indexOf("Repository complete"));
+                assertEquals(1, loader.getLastConfirmedRepositoryCount());
+                assertTrue(console.err().isEmpty());
+            }
+            assertEquals(2, writes.get());
+            assertNotNull(store.load(URL));
+        }
     }
     @Test void updateCheckReportsAnAccessSetupFailureWithoutTouchingOriginals(@TempDir Path dir) throws Exception {
         RawDataStore store = new RawDataStore(dir);
@@ -256,17 +502,16 @@ class RawDataPipelineTest {
             assertFalse(Files.exists(store.pathFor(URL)));
         }
     }
-    @Test void fullDownloadFailureBetweenProgressBatchesNamesTheFullCommitSha(@TempDir Path dir) {
+    @Test void fullDownloadFailureNamesTheFullCommitShaWithoutSavingPartialHistory(@TempDir Path dir) {
         String failedSha = "0123456789abcdef0123456789abcdef01234567";
-        Repository remote = initial(); String parent = "a";
-        for (int i = 1; i <= 26; i++) {
-            String sha = i == 25 ? failedSha : "commit-" + i;
-            remote.add(sha, A, 1, parent); parent = sha;
-        }
-        remote.heads.put("main", parent); remote.failSha = failedSha;
+        Repository remote = initial();
+        remote.add(failedSha, A, 1, "a");
+        remote.add("head", A, 1, failedSha);
+        remote.heads.put("main", "head"); remote.failSha = failedSha;
         RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
         ConsoleOutput console = captureConsole(() -> assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL)));
-        assertTrue(console.out().contains("changed-file details: 1/27 commits (commit-26)"));
+        assertEquals(1, console.out().lines().count());
+        assertFalse(console.out().contains("Repository complete"));
         assertTrue(console.err().contains("Could not download commit " + failedSha));
         assertTrue(console.err().contains("Simulated incomplete commit"));
         assertEquals(2, remote.fileReads.size()); assertTrue(remote.fileReads.containsKey(failedSha));
@@ -288,7 +533,7 @@ class RawDataPipelineTest {
             remote.add(failedSha, A, 1, "a"); remote.add("new-head", A, 1, failedSha); remote.heads.put("main", "new-head");
             if (!metadataFailure) remote.failSha = failedSha;
             ConsoleOutput console = captureConsole(() -> assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL)));
-            assertTrue(console.out().contains("Downloading new commit #1 (new-head)"));
+            assertFalse(console.out().contains("Repository complete"));
             assertTrue(console.err().contains("Could not download commit " + failedSha));
             assertTrue(console.err().contains(metadataFailure ? "Simulated commit metadata failure" : "Simulated incomplete commit"));
             assertEquals("a", store.load(URL).branchHeads().get("main"));
@@ -372,7 +617,8 @@ class RawDataPipelineTest {
         List<GitHubDataLoader.UpdateStatus> updates = new ArrayList<>();
         ConsoleOutput console = captureConsole(() -> loader.checkForUpdates((url, status) -> updates.add(status)));
         assertTrue(console.out().contains("[check course/project]"));
-        assertTrue(console.out().contains("500 comparison IDs read"));
+        assertEquals(4, console.out().lines().count(), console.out());
+        assertFalse(console.out().contains("comparison IDs read"));
         assertTrue(console.out().contains("501 commits not downloaded"));
         assertTrue(console.out().contains("1/1 successful, 0 failed"));
         assertEquals(501, updates.get(0).pendingCommits()); assertEquals(Map.of("a", 1), remote.fileReads);
@@ -385,7 +631,7 @@ class RawDataPipelineTest {
         ConsoleOutput console = captureConsole(() -> stats.addAll(loader.loadData()));
         assertTrue(console.err().contains("[download course/project] Download/analysis failed after"));
         assertTrue(console.err().contains("Simulated incomplete commit"));
-        assertTrue(console.out().contains("Repository tasks finished: 1/1"));
+        assertFalse(console.out().contains("Repository complete"));
         assertTrue(console.out().contains("0/1 repositories confirmed, 1 not confirmed"));
         assertFalse(console.out().contains("Original download saved"));
         assertEquals(0, loader.getLastConfirmedRepositoryCount()); assertEquals(1, stats.size());

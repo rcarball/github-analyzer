@@ -20,6 +20,23 @@ import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 
 /** Exercises the same editor and save operation used by the Config dialog. */
 public class ConfigurationFormTest {
+    @Test void backgroundSaveUsesCapturedValuesAndLocksEditors(@TempDir Path dir) throws Exception {
+        Configurator config = ConfigurationFixtures.create(dir);
+        java.util.concurrent.atomic.AtomicReference<Runnable> operation = new java.util.concurrent.atomic.AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            ConfigurationForm form = new ConfigurationForm(config);
+            form.userField.setText("captured-user"); form.reposArea.setText("https://github.com/course/captured;G;4\n");
+            operation.set(form.prepareSave());
+            form.userField.setText("later-edit"); form.reposArea.setText("https://github.com/course/later\n");
+            form.setSaving(true);
+            assertFalse(form.userField.isEnabled()); assertFalse(form.reposArea.isEnabled());
+            form.setSaving(false);
+            assertTrue(form.userField.isEnabled()); assertTrue(form.reposArea.isEnabled());
+        });
+        java.util.concurrent.CompletableFuture.runAsync(operation.get()).get(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals("captured-user", config.getGithubUser());
+        assertEquals("https://github.com/course/captured;G;4\n", config.readRepositoriesText());
+    }
     @Test
     public void missingListStillAllowsSavingOtherSettingsWithoutRecreatingIt(@TempDir Path dir) throws Exception {
         Configurator config = ConfigurationFixtures.create(dir);

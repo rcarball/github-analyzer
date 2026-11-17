@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public class RepoStats implements Serializable, Comparable<RepoStats> {
+public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -41,6 +41,18 @@ public class RepoStats implements Serializable, Comparable<RepoStats> {
     public void setTeamSize(Integer size) {
         if (size != null && size <= 0) throw new IllegalArgumentException("Team size must be positive.");
         teamSize = size;
+    }
+    /** A metadata projection; downloaded metrics and contributor records are reused, not mutated. */
+    public RepoStats withSettings(RepositoryConfig settings) {
+        if (!Objects.equals(url, settings.url())) throw new IllegalArgumentException("Settings belong to another repository.");
+        try {
+            RepoStats copy = (RepoStats) super.clone();
+            copy.setGroup(settings.group());
+            copy.setTeamSize(settings.teamSize());
+            return copy;
+        } catch (CloneNotSupportedException ex) {
+            throw new AssertionError(ex);
+        }
     }
     public int getAuthorCount() { return authorCount; }
     public void setAuthorCount(int count) { authorCount = count; }

@@ -369,8 +369,8 @@ public class MainWindow extends JFrame {
 		
 		lblCommits.setToolTipText("<html><b>Unique commits</b> across all branches (deduplicated by SHA).<br>This is a global activity indicator (not the same as “Java commits per person”).</html>");
 		lblCreationDate.setToolTipText("Repository creation date (from GitHub).");
-		lblFirstCommit.setToolTipText("Earliest commit date found in the analyzed history.");
-		lblLastCommit.setToolTipText("Latest commit date found in the analyzed history.");
+		lblFirstCommit.setToolTipText("Earliest committer date in the current branch histories; unknown dates are omitted.");
+		lblLastCommit.setToolTipText("Latest committer date in the current branch histories; unknown dates are omitted.");
 		lblCodeLines.setToolTipText("<html><b>Java LOC</b> = current number of lines in .java files on GitHub's default branch.<br>It measures code size, not effort.</html>");
 		lblLinesChanged.setToolTipText("<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
 		lblExternalRefs.setToolTipText("<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files on the default branch (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
@@ -606,14 +606,18 @@ public class MainWindow extends JFrame {
         List<RepoStats> result = new ArrayList<>();
         for (RepositoryConfig config : configs) {
             RepoStats repo = fresh.get(config.url());
-            if (repo == null || !java.util.Objects.equals(repo.getTeamSize(), config.teamSize())
-                    || !java.util.Objects.equals(repo.getGroup(), config.group())) {
+            if (repo == null) {
                 repo = new RepoStats();
                 repo.setUrl(config.url());
                 repo.setName(config.url().substring(config.url().lastIndexOf('/') + 1));
                 repo.setGroup(config.group());
                 repo.setTeamSize(config.teamSize());
+            } else if (!java.util.Objects.equals(repo.getTeamSize(), config.teamSize())
+                    || !java.util.Objects.equals(repo.getGroup(), config.group())) {
+                repo = repo.withSettings(config);
             }
+            // These local settings affect presentation and expected share, not
+            // downloaded work. Keep complete statistics when they change.
             result.add(repo);
         }
         return result;
@@ -767,8 +771,8 @@ public class MainWindow extends JFrame {
 	    	    "User share of repository Java churn.",
 	    	    "Distinct .java files modified by the user.",
 	    	    "Non-merge commits that touched at least one .java file.",
-	    	    "Date of the user's last considered non-merge commit.",
-	    	    "Date of the user's first considered non-merge commit."
+            "Last non-merge author date; older downloads without it use the committer date.",
+            "First non-merge author date; older downloads without it use the committer date."
 	    };
 	    
 	    TableCellRenderer headerRenderer = (table, value, isSelected, hasFocus, row, column) -> {
@@ -1108,6 +1112,8 @@ public class MainWindow extends JFrame {
         } finally {
             loading.cancel();
             if (!reprocessing) {
+                updateReposJTree(allRepos);
+                selectRepository(url);
                 btnRefresh.setEnabled(true);
                 btnConfig.setEnabled(true);
                 btnAuthorship.setEnabled(true);
@@ -1234,7 +1240,10 @@ public class MainWindow extends JFrame {
             @Override protected List<RepoStats> doInBackground() throws Exception {
                 RepoStats fresh = GitHubDataLoader.getInstance().recalculateRepository(url, rules);
                 store.save(url, rules);
-                List<RepoStats> results = new ArrayList<>(remaining);
+                List<RepoStats> results = withConfiguredRepositories(remaining,
+                        GitHubDataLoader.getInstance().getRepositoryConfigs()).stream()
+                        .filter(RepoStats::isAnalysisComplete).filter(repo -> !url.equals(repo.getUrl()))
+                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
                 results.add(fresh);
                 DataManager.getInstance().storeData(results);
                 DataManager.getInstance().storeCSV(results);
@@ -1277,19 +1286,53 @@ public class MainWindow extends JFrame {
 		dialog.getContentPane().add(buttons, BorderLayout.SOUTH);
 
 		cancel.addActionListener(event -> dialog.dispose());
-		save.addActionListener(event -> {
-			try {
-				form.save();
-				if (form.repositoriesAvailable) GitHubDataLoader.getInstance().reloadRepositories();
-			} catch (IllegalStateException ex) {
-				JOptionPane.showMessageDialog(dialog,
-						ex.getMessage() + "\n\nNot all settings were saved. Check the files and try again.",
-						"Configuration", JOptionPane.ERROR_MESSAGE);
-				return;
-			}
-            dialog.dispose();
-            recalculateLocalData();
-		});
+        save.addActionListener(event -> {
+            final Runnable operation;
+            try { operation = form.prepareSave(); }
+            catch (IllegalStateException ex) {
+                JOptionPane.showMessageDialog(dialog, ex.getMessage(), "Configuration", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            String selection = selectedRepo;
+            ++checkGeneration;
+            if (updateWorker != null) updateWorker.cancel(true);
+            form.setSaving(true);
+            dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+            setStatusText("Saving settings and recalculating locally…");
+            new RefreshWorker(btnRefresh, btnConfig, btnAuthorship, save, cancel) {
+                private boolean settingsSaved;
+                @Override protected List<RepoStats> doInBackground() {
+                    operation.run();
+                    settingsSaved = true;
+                    return form.repositoriesAvailable ? GitHubDataLoader.getInstance().loadLocalData() : null;
+                }
+                @Override protected void refreshFinished() {
+                    try {
+                        List<RepoStats> updated = get();
+                        if (updated != null) {
+                            updateReposJTree(updated);
+                            if (selection != null) selectRepository(selection);
+                        }
+                        dialog.dispose();
+                        setStatusText("Settings saved. Local statistics updated where available.");
+                        checkForUpdates();
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        showError(ex);
+                    } catch (ExecutionException | RuntimeException ex) {
+                        showError(ex);
+                    } finally {
+                        form.setSaving(false);
+                        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+                    }
+                }
+                private void showError(Exception ex) {
+                    String message = settingsSaved ? "Settings were saved, but local recalculation failed.\n" : "";
+                    JOptionPane.showMessageDialog(dialog, message + errorMessage(ex), "Configuration", JOptionPane.ERROR_MESSAGE);
+                    setStatusText("Could not finish updating configuration.");
+                }
+            }.execute();
+        });
 
 		dialog.pack();
 		dialog.setLocationRelativeTo(this);

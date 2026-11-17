@@ -137,6 +137,10 @@ remain accessible. Dot-only path segments are rejected.
 ./scripts/run-tests.sh          # Windows: scripts\run-tests.bat  (or "Run as > JUnit Test" in Eclipse)
 ```
 
+The runner prints totals and failures instead of listing every successful test.
+The [test review](docs/ONBOARDING.md#test-suite-review) records which redundant
+checks were consolidated and why the remaining regression tests are retained.
+
 ### Continuous integration
 [GitHub Actions](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
 runs on every push and pull request targeting `master`. It verifies formatting,
@@ -281,23 +285,39 @@ these are shown as `(0; changes pending)` so they are not mistaken for an up-to-
 The repository panel provides horizontal scrolling when needed to read long names
 and update suffixes in full, including while background checks update the labels.
 
-**Refresh from GitHub** downloads missing commits in the background. After the first
+**Refresh from GitHub** downloads missing commits in the background. The first
+download lists the default branch's complete history once, then follows the other
+branch heads only through commits not already downloaded. Shared ancestors and
+branch aliases do not cause another complete history listing. After that first
 complete download it follows each branch head and fetches only unknown SHAs and their
 missing parents, including side histories introduced by merges. Existing commit
 records remain unchanged. Default-branch files are pinned to the checked head SHA;
 unchanged blob contents are reused. A failed download never advances its checkpoint
 or overwrites the previous complete original data.
 
-The console (Eclipse Console, or the terminal used to launch the app) shows timestamped
-progress tagged by operation and `owner/repository`, including while repositories run
-in parallel. It distinguishes metadata-only update checks, complete downloads,
-incremental downloads and local recalculation. Messages show branch checkpoints,
-commit-ID counts, batches of downloaded commit details, source files downloaded or
-reused, saving of originals, repository completion counts, failures and elapsed time.
-Large histories report progress in batches rather than printing every commit. Logs
-go to the console; no additional log files or configuration settings are required.
-Cancelled update checks are reported as cancellations rather than remote failures.
-Commit download errors include the full affected SHA, even between progress batches.
+An explicit refresh also completes author dates missing from older downloads once,
+without enumerating their changed files or reading source contents again. Local
+recalculation remains offline. Group and team-size edits update the local display
+and expected shares without discarding completed work metrics. Closing the authorship
+editor also synchronizes its repository metadata, including after cancellation.
+Configuration saves run in the background with editing and closing disabled until
+the operation completes.
+
+The console (Eclipse Console, or the terminal used to launch the app) shows
+one start and one completion message per downloaded repository, tagged with
+`owner/repository` and a timestamp. Completion includes elapsed time, commits and
+people; batch downloads also show the completed-repository count. The final
+summary distinguishes confirmed repositories from failures. Update checks and
+local recalculations use repository summaries too; the internal recalculation
+following a download does not announce each repository again.
+
+Failures retain the repository, cause and full affected commit SHA. Cancelled
+update checks are reported as cancellations. A failed statistics save propagates
+to the caller, so it cannot produce a successful repository-completion message.
+For branch checkpoints, commit batches and file reuse diagnostics, enable
+`-Dgithubanalyzer.debug=true` before `-jar` when launching Java (or as a VM argument
+in Eclipse). Detailed progress callbacks remain available to callers.
+
 
 Select a repository and click **Manage authorship…** to work entirely locally:
 
@@ -364,7 +384,9 @@ You can supply it through the `GITHUB_TOKEN` environment variable instead of
 to the configuration dialog or saved to disk. The GitHub user field remains required.
 On POSIX systems the configuration file is restricted to its owner (`0600`).
 Configuration and repository-list writes replace completed temporary files; a failed
-combined save attempts to restore the previous repository list.
+combined save keeps a private undo journal until both files are saved. If the
+application is interrupted during that save, the previous pair is restored at
+startup. The journal is removed on successful completion.
 
 ---
 
@@ -388,7 +410,7 @@ combined save attempts to restore the previous repository list.
   Repository creation date from GitHub.
 
 - **⏱️ First commit / Last commit**  
-  Earliest/latest commit dates found in analyzed history.  
+  Earliest/latest committer dates in the analyzed history; unknown dates are ignored.
   📌 Useful to estimate real working period and detect end-of-period spikes.
 
 - **📄 Java Lines-Of-Code (LOC) (snapshot)**  
@@ -434,7 +456,11 @@ combined save attempts to restore the previous repository list.
   Number of distinct `.java` files modified by the user.
 
 - **📅 First / Last commit (user)**  
-  First/last date of non-merge commit considered for that user.
+  First/last author date of non-merge commits considered for that user. Rebase and
+  cherry-pick committer dates do not move this activity window. Older downloads
+  without an author date use their recorded committer date until the next explicit
+  GitHub refresh fills the missing dates. If GitHub supplies no author date, the
+  committer date remains the fallback.
 
 ---
 

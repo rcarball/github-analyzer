@@ -80,6 +80,40 @@ python3 scripts/check-release-layout.py  # Python 3, Bash and sha256sum required
 CI runs this check before the Java tests; it also verifies failure propagation
 and rejects stale artifacts from the other layout.
 
+### Test suite review
+
+Reviewed all 18 JUnit test classes against their production call sites and
+regression scenarios, plus the four release-layout checks. The baseline on
+`master` had 204 Java tests. This change removes or consolidates four methods
+and adds three behavior tests, leaving 203. Test count alone is not a reason to
+remove a distinct failure case.
+
+| Area | Decision and reason |
+| --- | --- |
+| `RawDataPipelineTest`, `GitHubDataLoaderTest` | Remove the 27-commit console-batch test: that verbose output is no longer the normal contract. Keep unique expansion, shared ancestors, every merge parent, unrelated roots, pagination, incremental checkpoints, cancellation and preserved originals in dedicated tests. Retain the legacy entry-point tests because those methods still exist. |
+| Download failure fixture | Reduce 27 commits to three: a successful head followed by a failing ancestor still proves full-SHA diagnostics and rejection of partial history, without irrelevant traversal and deliberate API throttling. |
+| `RepoStatsTest`, `UserStatsTest`, `SimpleGitUserTest` | Remove the test's hand-written stream aggregation: it tested its own sums, while actual aggregation is exercised by `StatisticsCalculatorTest`. Keep append/deduplication, null handling, normalization, locale independence and derived metrics. Legacy identity classes remain supported. |
+| `MainWindowInterpretationTest` | Fold the separate one-eighth case into the existing exact-boundary test, retaining both inputs. Keep the other thresholds, absent-activity guards, team sizes, rounding and overflow cases: they protect different decisions. |
+| `DataManagerTest`, `RawDataStoreTest` | Move the snapshot-version getter/setter check into an actual serialization round trip. Remove the unused `shouldStoreRefresh` helper and its test; real failed/empty refresh tests still verify that valid caches and CSVs are preserved. Retain deserialization allowlists, malformed types, format versions, historical records, recovery and atomic writes. |
+| `StatisticsCalculatorTest`, `ContributionMetricsTest` | Keep calculation and role/share tests: low-level formulas, projection of saved originals and displayed classification protect separate layers. Full email matching prevents unrelated people from being excluded as teachers. |
+| `AuthorshipFormTest`, `AuthorshipDiscoveryPanelTest`, `AuthorshipStoreTest` | Keep editor/reordering/merge interactions, background work, late-result cancellation, assignments and persistence. Similar-looking cases exercise different UI paths or timing boundaries. |
+| `RepositoryConfigTest`, `ConfiguratorTest`, `ConfigurationFormTest`, `SettingsTransactionTest`, `MainWindowRefreshTest` | Keep parsing, metadata, unreadable configuration, atomic multi-file rollback, crash recovery and UI lifecycle tests. A passing parser does not prove that an editor saves the captured values or restores controls after failure. |
+| Release-layout checks | Retain both supported layouts and both negative cases (failed tests and stale/missing artifacts). |
+
+New tests cover optional detailed diagnostics, completion only after a successful
+statistics write (including a reported write failure), and an actual failed atomic
+cache save preserving the previous bytes. Existing console tests now assert
+bounded repository summaries while retaining API-read and file-preservation
+checks. Both command-line runners print a JUnit summary rather than a success tree.
+
+Local verification: baseline 204/204 passed in 9.581 s; revised suite 203/203
+passed in 7.674 s (JUnit execution time, one run each, not a benchmark). Two
+additional temporary fault-injection checks confirmed that retained tests fail
+when the exact one-eighth boundary becomes inclusive of the lower band, or when
+teacher email matching uses only the local part. No injected code was retained.
+The four release-layout checks and runnable JAR build also passed. Live GitHub,
+interactive windows and the Windows runner were not exercised locally.
+
 ## 5. Architecture (packages under `src/es/deusto/prog3/githubanalyzer/`)
 - `Main` — entry point (load raw data → recalculate locally → open GUI → check update counts in background).
 - `GitHubDataLoader` — incremental download and metadata-only update checks via `github-api`.
@@ -209,8 +243,8 @@ prepares these changes; setting the version does not publish a release.
 - Configuration and repository writes use completed temporary files. POSIX config
   permissions are owner-only, including existing installations. `GITHUB_TOKEN`
   takes precedence at runtime and never enters the saved configuration or editor.
-  Combined dialog saves restore the repository list on a reported config failure;
-  a process crash between two file replacements is still not a two-file transaction.
+  Combined saves now use a private undo journal and an interprocess lock; interrupted
+  saves restore the previous config/list pair on startup before loading settings.
 - Repository deduplication ignores URL scheme and case while retaining the first
   spelling, preserving the URL-based keys of existing downloads and author rules.
   `.` and `..` path segments are invalid.
@@ -228,10 +262,10 @@ Reviewed suggestions that do not justify changing behavior automatically:
 | Observation | Decision |
 | --- | --- |
 | CSV decimals in Spanish Excel | Keep the stable `.` numeric format; document explicit import settings. No interactive Excel validation was performed. |
-| Commit versus author date | Keep committer dates for compatibility with saved snapshots; the UI's activity dates describe history commits, not proof of when a person authored code. Switching semantics requires a raw-data migration and an explicit product decision. |
+| Commit versus author date | Both dates are retained. Repository history uses committer dates; individual non-merge activity uses author dates. Legacy records remain readable with committer-date fallback; explicit refresh completes their active author dates once, retaining original file data. Unknown dates are omitted from extrema. |
 | Discovery cancellation | Already calls `SwingWorker.cancel(true)` and ignores late results; existing tests cover an uninterruptible source. Local discovery may take time to return from filesystem I/O; cancellation does not permit a late save. |
-| Manually edited group/team size | Explicit reload/refresh and reopening authorship reread settings; there is no live file watcher. |
-| Full initial history per branch | Keep the complete branch queries to ensure coverage. Commits and expensive file expansions are already deduplicated by SHA; repeated branches can still cost API pages on the first download. |
+| Manually edited group/team size | Closing the authorship editor synchronizes the reloaded metadata, including on cancellation. Metadata projections preserve complete metrics and do not mutate the previous view. Applying authorship also updates metadata for the other exported results. |
+| Full initial history per branch | Optimized: list the default branch once, then follow unknown parent IDs from other heads until reaching stored commits. Explore every merge parent and unrelated roots; do not stop a chronological history list at its first known SHA. Read parent IDs after commit file metadata has been populated, without eagerly resolving parent objects. |
 | Vendored libraries, SBOM/CVE scanning, CI action SHA pinning | Dependency inventory, SBOM and OSV scanning are now implemented (see below). Migration to a build manager and SHA pinning of the pre-existing CI/release actions remain separate follow-ups. |
 | Legacy `DataManager` methods | Retain the legacy loading API and its deserialization regression tests. Removing it does not fix a current user-facing defect. |
 | `RepoStats` ordering versus equality | Retain group/name presentation sorting and URL identity; document that natural order differs from equality for changed metadata. Do not use this mutable presentation model as a sorted identity set. |
@@ -239,6 +273,23 @@ Reviewed suggestions that do not justify changing behavior automatically:
 
 Validation covers offline regression tests, release-layout checks and packaging.
 The live GitHub API and interactive GUI were not exercised.
+
+
+The contributor activity window uses `Commit.activityTimestamp()`: captured author
+metadata, or the retained committer date when unavailable. `Commit.timestamp()`
+keeps its original committer semantics. The added nullable author-date field keeps
+old five-field serialized records readable; `null` means an old record awaiting
+metadata completion and `-1` means GitHub supplied no author date. No network call
+is made during offline projection or deserialization.
+
+The configuration editor captures and validates Swing values on the event thread,
+then saves and recalculates in a background worker. An interrupted combined save
+leaves `resources/.settings-pending.properties`, an owner-only undo journal that
+can contain old credentials. Never commit it. Recovery restores both original
+files before loading settings, supports custom repository-list paths and retains
+the journal for retry if restoration fails. File replacement is atomic where the
+filesystem supports it; recovery covers process interruption, not simultaneous
+manual edits or a hardware guarantee against power loss.
 
 ## 9. Dependency inventory and audit
 

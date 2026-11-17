@@ -10,6 +10,29 @@ class StatisticsCalculatorTest {
     private static final String URL = "https://github.com/course/project";
     private static final AuthorIdentity A = new AuthorIdentity("Name", "school@example.org", "first");
     private static final AuthorIdentity B = new AuthorIdentity("Alias", "home@example.org", "second");
+    @Test void authorActivitySurvivesRebaseDatesWhileRepositoryTracksCommitterDates() {
+        var first = new RepositorySnapshot.Commit("a", A, 5000, List.of(), List.of(), 1000L);
+        var next = new RepositorySnapshot.Commit("b", A, 4000, List.of("a"), List.of(), 2000L);
+        var merge = new RepositorySnapshot.Commit("merge", A, 6000, List.of("a", "b"), List.of(), 9000L);
+        var source = new RepositorySnapshot(1, URL, "project", 7000, 1, 6000, true, "main", Map.of("main", "merge"),
+                List.of(first, next, merge), List.of());
+        RepoStats stats = StatisticsCalculator.calculate(source, new RepositoryConfig(URL, "G", 3), new AuthorshipConfig(), id -> Role.MEMBER);
+        assertEquals(4000, stats.getFirstCommit()); assertEquals(6000, stats.getLastCommit());
+        assertEquals(1000, stats.getUserStats().get(0).getFirstCommit());
+        assertEquals(2000, stats.getUserStats().get(0).getLastCommit(), "A merge author date is excluded from individual activity");
+    }
+
+    @Test void legacyAndUnknownDatesHaveConsistentFallbacks() {
+        var legacy = new RepositorySnapshot.Commit("a", A, 1234, List.of(), List.of());
+        var unknown = new RepositorySnapshot.Commit("b", A, -1, List.of("a"), List.of());
+        var source = new RepositorySnapshot(1, URL, "project", 5000, 1, 3000, true, "main", Map.of("main", "b"),
+                List.of(unknown, legacy), List.of());
+        RepoStats stats = StatisticsCalculator.calculate(source, new RepositoryConfig(URL, "", null), new AuthorshipConfig(), id -> Role.MEMBER);
+        assertEquals(1234, stats.getFirstCommit()); assertEquals(1234, stats.getLastCommit());
+        assertEquals(1234, stats.getUserStats().get(0).getFirstCommit()); assertEquals(1234, stats.getUserStats().get(0).getLastCommit());
+        assertEquals(-1, StatisticsCalculator.userStats(List.of(unknown), "name", "mail").getFirstCommit());
+        assertEquals(-1, StatisticsCalculator.userStats(List.of(unknown), "name", "mail").getLastCommit());
+    }
     static RepositorySnapshot source() {
         var a = new RepositorySnapshot.Commit("a", A, 1000, List.of(), List.of(new RepositorySnapshot.ChangedFile("src/Test.java", "", 10, 2)));
         var b = new RepositorySnapshot.Commit("b", B, 2000, List.of("a"), List.of(new RepositorySnapshot.ChangedFile("src/Test.java", "", 20, 3)));

@@ -32,8 +32,8 @@ public final class StatisticsCalculator {
         List<Commit> active = source.activeCommits();
         repo.setCommits(active.size());
         repo.setMergeCommits((int) active.stream().filter(Commit::isMerge).count());
-        repo.setFirstCommit(active.stream().mapToLong(Commit::timestamp).min().orElse(-1));
-        repo.setLastCommit(active.stream().mapToLong(Commit::timestamp).max().orElse(-1));
+        repo.setFirstCommit(active.stream().mapToLong(Commit::timestamp).filter(time -> time != -1).min().orElse(-1));
+        repo.setLastCommit(active.stream().mapToLong(Commit::timestamp).filter(time -> time != -1).max().orElse(-1));
         repo.setAuthorCount((int) active.stream().map(c -> c.author().key()).distinct().count());
         repo.setUserStats(personStats(active, rules, defaults));
         repo.setLinesAdded(repo.getUserStats().stream().mapToInt(UserStats::getAdded).sum());
@@ -92,7 +92,8 @@ public final class StatisticsCalculator {
         for (Commit commit : commits) {
             checkInterrupted();
             if (commit.isMerge()) continue;
-            if (commit.timestamp() != -1) { first = Math.min(first, commit.timestamp()); last = Math.max(last, commit.timestamp()); }
+            long activity = commit.activityTimestamp();
+            if (activity != -1) { first = Math.min(first, activity); last = Math.max(last, activity); }
             boolean java = false;
             for (var file : commit.files()) if (file.isJava()) {
                 java = true; added += file.added(); deleted += file.deleted(); paths.add(file.path());

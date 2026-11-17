@@ -32,6 +32,12 @@ public class Main {
             statsMap = loader.loadLocalData();
         } catch (RuntimeException ex) {
             System.err.println("* Analysis pending: " + ex.getMessage());
+        } catch (ExceptionInInitializerError ex) {
+            String reason = ex.getCause() == null ? ex.toString() : ex.getCause().getMessage();
+            SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(null,
+                    "Could not load local settings. Check file access and restart.\n" + reason,
+                    "GitHub Analyzer", javax.swing.JOptionPane.ERROR_MESSAGE));
+            return;
         }
 
     	final List<RepoStats> list = statsMap;

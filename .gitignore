@@ -12,6 +12,9 @@ build/
 /release/
 /.DS_Store
 __pycache__/
+.config-*.tmp
+.settings-*.tmp
+.restore-*.tmp
 
 # Local per-repository authorship rules
 /resources/authorship/
