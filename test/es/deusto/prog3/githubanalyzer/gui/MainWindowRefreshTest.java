@@ -26,15 +26,19 @@ import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 public class MainWindowRefreshTest {
     @Test
     public void configurationStaysLockedUntilSuccessfulRefreshCompletes() throws Exception {
-        checkRefreshControls(false);
+        checkRefreshControls(0);
     }
 
     @Test
     public void failedRefreshAlsoUnlocksConfiguration() throws Exception {
-        checkRefreshControls(true);
+        checkRefreshControls(1);
     }
 
-    private static void checkRefreshControls(boolean fail) throws Exception {
+    @Test public void csvFailureShowsCalculatedDataAndAnExportErrorBeforeUnlockingControls() throws Exception {
+        checkRefreshControls(2);
+    }
+
+    private static void checkRefreshControls(int failureMode) throws Exception {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch finished = new CountDownLatch(1);
@@ -44,6 +48,7 @@ public class MainWindowRefreshTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicReference<List<RepoStats>> result = new AtomicReference<>();
         AtomicBoolean lockedDuringCompletion = new AtomicBoolean();
+        AtomicReference<String> exportMessage = new AtomicReference<>(), exportTitle = new AtomicReference<>();
         List<RepoStats> expected = List.of(new RepoStats());
 
         SwingUtilities.invokeAndWait(() -> {
@@ -55,7 +60,9 @@ public class MainWindowRefreshTest {
                 protected List<RepoStats> doInBackground() throws Exception {
                     started.countDown();
                     if (!release.await(5, TimeUnit.SECONDS)) throw new IOException("Test refresh timed out");
-                    if (fail) throw new IOException("Simulated refresh failure");
+                    if (failureMode == 1) throw new IOException("Simulated refresh failure");
+                    if (failureMode == 2) throw new es.deusto.prog3.githubanalyzer.persistence.CsvExportException(
+                            "reports/stats.csv", expected, new IOException("Simulated permission failure"));
                     return expected;
                 }
 
@@ -67,6 +74,11 @@ public class MainWindowRefreshTest {
                         result.set(get());
                     } catch (ExecutionException ex) {
                         failure.set(ex.getCause());
+                        CsvExportFeedback.handle(ex, result::set, (title, message) -> {
+                            if (!SwingUtilities.isEventDispatchThread() || refresh.get().isEnabled())
+                                throw new IllegalStateException("Export feedback must run on the locked event thread");
+                            exportTitle.set(title); exportMessage.set(message);
+                        });
                     } catch (InterruptedException ex) {
                         Thread.currentThread().interrupt();
                         failure.set(ex);
@@ -98,9 +110,19 @@ public class MainWindowRefreshTest {
             assertTrue(authorship.get().isEnabled());
         });
         assertTrue(lockedDuringCompletion.get(), "Controls must stay locked throughout completion handling on the EDT");
-        if (fail) {
+        if (failureMode == 2) {
+            assertInstanceOf(es.deusto.prog3.githubanalyzer.persistence.CsvExportException.class, failure.get());
+            assertEquals(expected, result.get());
+            assertEquals("CSV export failed", exportTitle.get());
+            assertTrue(exportMessage.get().contains("Calculated statistics remain available"));
+            assertTrue(exportMessage.get().contains("reports/stats.csv"));
+            assertTrue(exportMessage.get().contains("Simulated permission failure"));
+            assertTrue(exportMessage.get().contains("previous CSV was not replaced"));
+            assertFalse(exportMessage.get().contains("Repositories remain pending"));
+        } else if (failureMode == 1) {
             assertInstanceOf(IOException.class, failure.get());
             assertNull(result.get());
+            assertNull(exportTitle.get(), "Network failures must keep their normal error path");
         } else {
             assertNull(failure.get());
             assertEquals(expected, result.get());

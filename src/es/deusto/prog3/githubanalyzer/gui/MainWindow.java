@@ -541,7 +541,7 @@ public class MainWindow extends JFrame {
 						showRefreshFailedDialog();
 					} catch (ExecutionException ex) {
 						Throwable cause = ex.getCause();
-                        showRefreshFailedDialog(cause == null ? ex.getMessage() : cause.getMessage());
+                        if (!reportCsvExportFailure(ex)) showRefreshFailedDialog(cause == null ? ex.getMessage() : cause.getMessage());
 					} finally {
 						setCursor(Cursor.getDefaultCursor());
                         setStatusText(" ");
@@ -1196,7 +1196,7 @@ public class MainWindow extends JFrame {
             @Override protected void refreshFinished() {
                 try { updateReposJTree(get()); selectedRepo = null; loadRepoStats(null); setStatusText("Local statistics updated. Download missing data with Refresh from GitHub."); }
                 catch (InterruptedException ex) { Thread.currentThread().interrupt(); showRefreshFailedDialog(errorMessage(ex)); }
-                catch (ExecutionException | RuntimeException ex) { showRefreshFailedDialog(errorMessage(ex)); }
+                catch (ExecutionException | RuntimeException ex) { if (!reportCsvExportFailure(ex)) showRefreshFailedDialog(errorMessage(ex)); }
                 checkForUpdates();
             }
         }.execute();
@@ -1257,8 +1257,10 @@ public class MainWindow extends JFrame {
                     setStatusText("Authorship applied locally. Original commits unchanged.");
                 } catch (Exception ex) {
                     if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
-                    setStatusText("Could not apply authorship. Previous results retained.");
-                    showRefreshFailedDialog("Local recalculation failed.\n" + errorMessage(ex));
+                    if (!reportCsvExportFailure(ex)) {
+                        setStatusText("Could not apply authorship. Previous results retained.");
+                        showRefreshFailedDialog("Local recalculation failed.\n" + errorMessage(ex));
+                    }
                 }
             }
         }.execute();
@@ -1328,6 +1330,11 @@ public class MainWindow extends JFrame {
                     }
                 }
                 private void showError(Exception ex) {
+                    if (reportCsvExportFailure(ex, dialog)) {
+                        dialog.dispose();
+                        checkForUpdates();
+                        return;
+                    }
                     String message = settingsSaved ? "Settings were saved, but local recalculation failed.\n" : "";
                     JOptionPane.showMessageDialog(dialog, message + errorMessage(ex), "Configuration", JOptionPane.ERROR_MESSAGE);
                     setStatusText("Could not finish updating configuration.");
@@ -1339,6 +1346,22 @@ public class MainWindow extends JFrame {
 		dialog.setLocationRelativeTo(this);
 		dialog.setVisible(true);
 	}
+
+    public boolean reportCsvExportFailure(Throwable error) { return reportCsvExportFailure(error, this); }
+
+    private boolean reportCsvExportFailure(Throwable error, Component owner) {
+        return CsvExportFeedback.handle(error, results -> {
+            String selection = selectedRepo;
+            updateReposJTree(results);
+            jTreeRepos.clearSelection();
+            selectedRepo = null;
+            loadRepoStats(null);
+            if (selection != null) selectRepository(selection);
+        }, (title, message) -> {
+            setStatusText("Statistics ready; CSV export failed.");
+            JOptionPane.showMessageDialog(owner, message, title, JOptionPane.ERROR_MESSAGE);
+        });
+    }
 
 	private void showRefreshFailedDialog() {
 		JOptionPane.showMessageDialog(

@@ -151,21 +151,38 @@ public class DataManager {
     public synchronized void storeCSV(List<RepoStats> data) {
         final String csvPath = Configurator.getInstance().getStatsCSV();
         if (csvPath == null || csvPath.isBlank()) {
-            System.err.format("* No CSV file configured; CSV not written.%n%n");
-            return;
+            throw new CsvExportException(csvPath, data, new IllegalStateException("No CSV destination configured."));
         }
-
         try {
             storeCSV(data, Paths.get(csvPath));
             System.out.format("- CSV stored in '%s'%n%n", csvPath);
-        } catch (Exception ex) {
-            System.err.format("* Error saving CSV file '%s': %s%n%n", csvPath, ex.getMessage());
+        } catch (CsvExportException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new CsvExportException(csvPath, data, ex);
         }
     }
 
-    /** Package-visible for testing CSV output at a controlled destination. */
-    synchronized void storeCSV(List<RepoStats> data, Path csvPath) throws java.io.IOException {
-        try (BufferedWriter out = Files.newBufferedWriter(csvPath, java.nio.charset.StandardCharsets.UTF_8)) {
+    /** Replace the destination only after the complete CSV has been written and closed. */
+    synchronized void storeCSV(List<RepoStats> data, Path csvPath) {
+        Path temporary = null;
+        try {
+            Path target = csvPath.toAbsolutePath();
+            temporary = Files.createTempFile(target.getParent(), ".csv-export-", ".tmp");
+            writeCSV(data, temporary);
+            // If atomic replacement is unavailable, fail without risking the previous export.
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception ex) {
+            if (temporary != null) {
+                try { Files.deleteIfExists(temporary); }
+                catch (java.io.IOException cleanup) { ex.addSuppressed(cleanup); }
+            }
+            throw new CsvExportException(csvPath == null ? null : csvPath.toString(), data, ex);
+        }
+    }
+
+    private static void writeCSV(List<RepoStats> data, Path temporary) throws java.io.IOException {
+        try (BufferedWriter out = Files.newBufferedWriter(temporary, java.nio.charset.StandardCharsets.UTF_8)) {
 
             SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd", java.util.Locale.ROOT);
 

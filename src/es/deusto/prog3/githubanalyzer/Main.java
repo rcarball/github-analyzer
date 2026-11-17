@@ -21,15 +21,20 @@ import javax.swing.SwingUtilities;
 
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.gui.MainWindow;
+import es.deusto.prog3.githubanalyzer.persistence.CsvExportException;
 
 public class Main {
 	
     public static void main(String[] args) {
         List<RepoStats> statsMap = new java.util.ArrayList<>();
+        CsvExportException csvFailure = null;
         try {
             GitHubDataLoader loader = GitHubDataLoader.getInstance();
             loader.reloadRepositories();
             statsMap = loader.loadLocalData();
+        } catch (CsvExportException ex) {
+            statsMap = ex.results();
+            csvFailure = ex;
         } catch (RuntimeException ex) {
             System.err.println("* Analysis pending: " + ex.getMessage());
         } catch (ExceptionInInitializerError ex) {
@@ -42,6 +47,10 @@ public class Main {
 
     	final List<RepoStats> list = statsMap;
 
-    	SwingUtilities.invokeLater(() -> new MainWindow(list));
+        final CsvExportException exportFailure = csvFailure;
+        SwingUtilities.invokeLater(() -> {
+            MainWindow window = new MainWindow(list);
+            if (exportFailure != null) window.reportCsvExportFailure(exportFailure);
+        });
    }
 }

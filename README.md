@@ -288,6 +288,18 @@ an undefined expected share or an excluded person's observed share is `-`.
 `PERSON_ID` is stable across display-name changes. Consumers assuming an exact
 column count must be updated.
 
+CSV exports are written to a unique temporary file in the destination folder.
+The previous CSV is replaced atomically only after writing and closing the entire
+new export. If creation, generation or replacement fails, the previous file is
+kept (or no destination is created), and the temporary is removed when possible.
+Filesystems without atomic replacement report an export failure rather than
+attempting an unprotected overwrite.
+
+An export error is shown in the interface with its destination and cause, including
+at startup, after refresh, and after configuration or authorship changes.
+Calculated statistics remain visible; the error does not mark a successful
+analysis as pending. If Excel has locked the CSV, close it and retry the operation.
+
 ### 3) Manage authorship
 
 The app opens with locally regenerated statistics and checks repository updates in

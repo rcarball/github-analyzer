@@ -738,6 +738,28 @@ class RawDataPipelineTest {
         assertEquals(501, updates.get(0).pendingCommits()); assertEquals(Map.of("a", 1), remote.fileReads);
         assertTrue(remote.commitReads.isEmpty());
     }
+    @Test void csvFailurePropagatesWithFreshResultsWithoutLosingOriginalsOrRepeatingDownloads(@TempDir Path dir) throws Exception {
+        Repository remote = initial(); RawDataStore store = new RawDataStore(dir);
+        AtomicInteger clients = new AtomicInteger(); List<List<RepoStats>> writes = new ArrayList<>();
+        GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL), url -> new AuthorshipConfig(),
+                () -> { clients.incrementAndGet(); return url -> remote; }, writes::add,
+                results -> { throw new es.deusto.prog3.githubanalyzer.persistence.CsvExportException(
+                        dir.resolve("stats.csv").toString(), results, new IOException("Simulated export failure")); },
+                store::load, store::save, store::loadForUpdate);
+        List<es.deusto.prog3.githubanalyzer.persistence.CsvExportException> failures = new ArrayList<>();
+        ConsoleOutput console = captureConsole(() -> failures.add(assertThrows(
+                es.deusto.prog3.githubanalyzer.persistence.CsvExportException.class, loader::loadData)));
+        assertFalse(console.out().contains("Synchronization finished"), "Do not announce full success when export failed");
+        assertEquals(1, loader.getLastConfirmedRepositoryCount());
+        assertEquals(10, failures.get(0).results().get(0).getLinesChanged());
+        assertEquals(writes.get(1), failures.get(0).results());
+        byte[] original = Files.readAllBytes(store.pathFor(URL));
+        var localFailure = assertThrows(es.deusto.prog3.githubanalyzer.persistence.CsvExportException.class, loader::loadLocalData);
+        assertEquals(10, localFailure.results().get(0).getLinesChanged());
+        assertEquals(1, clients.get()); assertEquals(Map.of("a", 1), remote.fileReads);
+        assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
+    }
+
     @Test void failedBackgroundUpdateRetainsUsableLocalProjection(@TempDir Path dir) {
         Repository remote = initial(); RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
         loader.loadData(); remote.add("bad", B, 20, "a"); remote.heads.put("main", "bad"); remote.failSha = "bad";
