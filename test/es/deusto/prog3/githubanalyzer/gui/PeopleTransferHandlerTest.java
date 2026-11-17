@@ -176,7 +176,9 @@ class PeopleTransferHandlerTest {
             AuthorshipConfig before = form.snapshot();
             select(form, a);
             assertTrue(handler(form).prepareDrop(handler(form).createTransferable(form.people), row(form, b)));
-            assertNull(form.mergeRole.getSelectedItem()); assertFalse(form.unifyButton.isEnabled());
+            assertNull(form.mergeRole.getSelectedItem()); assertTrue(form.unifyButton.isEnabled());
+            assertEquals("Combine selected…", form.unifyButton.getText());
+            form.unifyButton.doClick();
             assertRules(before, form.snapshot());
             form.mergeRole.setSelectedItem(Role.MEMBER);
             form.unifyButton.doClick();

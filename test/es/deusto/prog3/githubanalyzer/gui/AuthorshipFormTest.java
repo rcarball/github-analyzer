@@ -76,7 +76,8 @@ class AuthorshipFormTest {
                     java.util.stream.IntStream.range(0, 5).mapToObj(form.people::getColumnName).toList());
             select(form, first, second);
             assertNull(form.mergeTarget.getSelectedItem());
-            assertFalse(form.unifyButton.isEnabled());
+            assertTrue(form.unifyButton.isEnabled());
+            assertEquals("Combine selected…", form.unifyButton.getText());
             destination(form, first); assertTrue(form.unifyButton.isEnabled());
             form.unifyButton.doClick();
             assertEquals(2, form.identities.getRowCount());
@@ -152,7 +153,9 @@ class AuthorshipFormTest {
             AuthorshipConfig initial = form.snapshot();
             select(form, initial.personFor(a).id(), initial.personFor(b).id());
             destination(form, initial.personFor(a).id());
-            assertNull(form.mergeRole.getSelectedItem()); assertFalse(form.unifyButton.isEnabled());
+            assertNull(form.mergeRole.getSelectedItem()); assertTrue(form.unifyButton.isEnabled());
+            assertEquals("Combine selected…", form.unifyButton.getText());
+            form.unifyButton.doClick(); assertRules(initial, form.snapshot());
             form.mergeRole.setSelectedItem(Role.EXCLUDED); assertTrue(form.unifyButton.isEnabled());
             form.unifyButton.doClick();
             assertEquals(Role.EXCLUDED, form.snapshot().personFor(b).role());
@@ -378,6 +381,62 @@ class AuthorshipFormTest {
             form.undo(); assertEquals("Alias", form.snapshot().personFor(a).name());
             form.redo(); assertEquals("Custom visible name", form.snapshot().personFor(a).name());
             assertFalse(form.nameField.isEditable());
+        });
+    }
+
+    private static void pressTableKey(AuthorshipForm form, int key, int modifiers) {
+        javax.swing.KeyStroke stroke = javax.swing.KeyStroke.getKeyStroke(key, modifiers);
+        Object actionKey = form.people.getInputMap(javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(stroke);
+        assertNotNull(actionKey, "Missing table binding for " + stroke);
+        javax.swing.Action action = form.people.getActionMap().get(actionKey);
+        assertNotNull(action, "Missing action for " + stroke);
+        action.actionPerformed(new java.awt.event.ActionEvent(form.people, java.awt.event.ActionEvent.ACTION_PERFORMED, actionKey.toString()));
+    }
+
+    @Test void shiftArrowSelectionActivatesCombinationAndStillRequiresDestinationConfirmation() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorshipForm form = new AuthorshipForm(authors, new AuthorshipConfig(), null);
+            AuthorshipConfig before = form.snapshot();
+            form.people.changeSelection(0, 0, false, false);
+            assertFalse(form.unifyButton.isEnabled());
+            pressTableKey(form, java.awt.event.KeyEvent.VK_DOWN, java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+            assertEquals(2, form.people.getSelectedRowCount());
+            assertTrue(form.unifyButton.isEnabled());
+            assertEquals("Combine selected…", form.unifyButton.getText());
+            form.unifyButton.doClick();
+            assertRules(before, form.snapshot()); assertFalse(form.undoButton.isEnabled());
+            pressTableKey(form, java.awt.event.KeyEvent.VK_DOWN, java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+            assertEquals(3, form.people.getSelectedRowCount()); assertTrue(form.unifyButton.isEnabled());
+            pressTableKey(form, java.awt.event.KeyEvent.VK_UP, java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+            assertEquals(2, form.people.getSelectedRowCount());
+            destination(form, before.personFor(b).id());
+            assertEquals("Confirm combination", form.unifyButton.getText());
+            form.unifyButton.doClick();
+            assertEquals(before.personFor(b).id(), form.snapshot().personFor(a).id());
+            assertEquals(2, form.people.getRowCount());
+            form.undo(); assertRules(before, form.snapshot());
+        });
+    }
+
+    @Test void ctrlOrCmdToggleSelectionActivatesCombinationAndDeselectingDisablesIt() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorshipForm form = new AuthorshipForm(authors, new AuthorshipConfig(), null);
+            AuthorshipConfig before = form.snapshot();
+            // JTable receives the same toggle flag for Ctrl-click or Cmd-click on each platform.
+            form.people.changeSelection(0, 0, false, false);
+            form.people.changeSelection(2, 0, true, false);
+            assertEquals(2, form.people.getSelectedRowCount());
+            assertTrue(form.unifyButton.isEnabled());
+            assertEquals("Combine selected…", form.unifyButton.getText());
+            form.unifyButton.doClick(); assertRules(before, form.snapshot());
+            form.people.changeSelection(2, 0, true, false);
+            assertEquals(1, form.people.getSelectedRowCount()); assertFalse(form.unifyButton.isEnabled());
+            form.people.changeSelection(1, 0, true, false);
+            assertEquals(2, form.people.getSelectedRowCount()); assertTrue(form.unifyButton.isEnabled());
+            destination(form, before.personFor(a).id());
+            form.unifyButton.doClick();
+            assertEquals(before.personFor(a).id(), form.snapshot().personFor(b).id());
+            form.undo(); assertRules(before, form.snapshot());
         });
     }
 

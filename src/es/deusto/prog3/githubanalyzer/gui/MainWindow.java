@@ -125,9 +125,6 @@ public class MainWindow extends JFrame {
 	// Rebuilt whenever a repository is loaded. Keyed by identity (per-repo instances).
 	private final java.util.Map<UserStats, Interpretation> interpretationCache = new java.util.IdentityHashMap<>();
 
-	private static final double THRESHOLD_VERY_LOW     = 0.50; // < 50 % del share esperado
-	private static final double THRESHOLD_BELOW        = 0.80; // < 80 % del share esperado
-	private static final double THRESHOLD_HIGH         = 1.20; // > 120 % del share esperado
 	private static final double AI_PASTE_MULTIPLIER    = 2.50; // churn/commit vs. media del equipo
 
 	enum ContributionBadge {
@@ -1120,10 +1117,6 @@ public class MainWindow extends JFrame {
         if (indices.length > 0) model.nodesChanged(root, indices);
     }
 
-    static String pendingSuffix(GitHubDataLoader.UpdateStatus update) {
-        return RepositoryTreeRenderer.pendingSuffix(update);
-    }
-
     private void checkForUpdates() { checkForUpdates(null); }
 
     private void checkForUpdates(List<String> scope) {
@@ -1175,21 +1168,6 @@ public class MainWindow extends JFrame {
                 return;
             }
         }
-    }
-
-    private void recalculateLocalData() {
-        checkGeneration++;
-        if (updateWorker != null) updateWorker.cancel(true);
-        setStatusText("Recalculating downloaded data locally…");
-        new RefreshWorker(btnRefresh, btnConfig, btnAuthorship) {
-            @Override protected List<RepoStats> doInBackground() { return GitHubDataLoader.getInstance().loadLocalData(); }
-            @Override protected void refreshFinished() {
-                try { updateReposJTree(get()); selectedRepo = null; loadRepoStats(null); setStatusText("Local statistics updated. Download missing data with Refresh from GitHub."); }
-                catch (InterruptedException ex) { Thread.currentThread().interrupt(); showRefreshFailedDialog(errorMessage(ex)); }
-                catch (ExecutionException | RuntimeException ex) { if (!reportCsvExportFailure(ex)) showRefreshFailedDialog(errorMessage(ex)); }
-                checkForUpdates();
-            }
-        }.execute();
     }
 
     private static String errorMessage(Exception ex) {

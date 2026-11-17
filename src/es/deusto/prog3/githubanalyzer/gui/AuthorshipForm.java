@@ -90,7 +90,8 @@ final class AuthorshipForm extends JPanel {
     final JComboBox<Role> participation = new JComboBox<>(Role.values());
     final JComboBox<PersonChoice> mergeTarget = new JComboBox<>();
     final JComboBox<Role> mergeRole = new JComboBox<>(Role.values());
-    final JButton unifyButton = new JButton("Confirm combination");
+    final JButton unifyButton = new JButton("Combine selected…");
+    private final JLabel mergeInstructions = new JLabel();
     final JButton cancelCombineButton = new JButton("Cancel combination");
     final JButton separateButton = new JButton("Separate selected identities");
     final JButton moveButton = new JButton("Move to…");
@@ -323,7 +324,7 @@ final class AuthorshipForm extends JPanel {
         JPanel mergeFields = new JPanel(new GridBagLayout());
         GridBagConstraints mergeHint = constraints(0, 0);
         mergeHint.gridwidth = 2;
-        mergeFields.add(new JLabel("Review the resulting person before combining."), mergeHint);
+        mergeFields.add(mergeInstructions, mergeHint);
         addField(mergeFields, 1, "Destination:", mergeTarget);
         addField(mergeFields, 2, "Participation:", mergeRole);
         GridBagConstraints mergeCounts = constraints(0, 3);
@@ -366,7 +367,7 @@ final class AuthorshipForm extends JPanel {
                     "Restore original identities", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.OK_OPTION)
                 runAction(this::restoreOriginal);
         });
-        unifyButton.addActionListener(event -> runAction(this::unifySelected));
+        unifyButton.addActionListener(event -> runAction(this::requestCombination));
         cancelCombineButton.addActionListener(event -> runAction(() -> {
             List<String> sources = dragSources;
             refresh(sources);
@@ -636,7 +637,17 @@ final class AuthorshipForm extends JPanel {
         redoButton.setToolTipText(draft.canRedo() ? "Redo: " + draft.redoLabel() : "Nothing to redo");
         discardButton.setEnabled(draft.isDirty() || pendingName);
         historyStatus.setText(draft.isDirty() || pendingName ? "Pending local changes" : "No pending changes");
-        unifyButton.setEnabled(selectedPeople().size() > 1 && mergeTarget.getSelectedItem() != null && mergeRole.getSelectedItem() != null);
+        boolean multiple = selectedPeople().size() > 1;
+        boolean destinationChosen = mergeTarget.getSelectedItem() != null;
+        boolean roleChosen = mergeRole.getSelectedItem() != null;
+        boolean ready = multiple && destinationChosen && roleChosen;
+        unifyButton.setEnabled(multiple);
+        unifyButton.setText(ready ? "Confirm combination" : "Combine selected…");
+        String instructions = !destinationChosen ? "Choose the destination person before confirming."
+                : !roleChosen ? "Choose participation for the combined person."
+                : "Review the resulting person before combining.";
+        mergeInstructions.setText(instructions);
+        unifyButton.setToolTipText(multiple ? instructions : "Select at least two people to combine them.");
         moveButton.setEnabled(identities.getSelectedRowCount() > 0);
         boolean grouped = detailPersonId != null && viewAssignments.values().stream().filter(detailPersonId::equals).count() > 1;
         separateButton.setEnabled(grouped && identities.getSelectedRowCount() > 0);
@@ -648,6 +659,18 @@ final class AuthorshipForm extends JPanel {
         String context = person.emailFor(group);
         if (context.isEmpty()) context = person.loginFor(group);
         return new PersonChoice(id, person.name() + (context.isEmpty() ? "" : " — " + context));
+    }
+
+    private void requestCombination() {
+        if (selectedPeople().size() < 2) return;
+        JComboBox<?> required = mergeTarget.getSelectedItem() == null ? mergeTarget
+                : mergeRole.getSelectedItem() == null ? mergeRole : null;
+        if (required != null) {
+            required.requestFocusInWindow();
+            if (required.isShowing()) required.showPopup();
+            return;
+        }
+        unifySelected();
     }
 
     void unifySelected() {

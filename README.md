@@ -396,7 +396,9 @@ Select a repository and click **Manage authorship…** to work entirely locally:
    **Done** finishes the edit. Empty contact
    fields are disabled. Teachers and other excluded accounts remain visible but do
    not enter the team share.
-3. Select multiple people with Ctrl/Cmd or Shift. In the right-hand panel, explicitly
+3. Select multiple people with Ctrl/Cmd-click, Shift-click or Shift+Up/Down.
+   **Combine selected…** becomes available as soon as two people are selected;
+   clicking it opens the destination chooser in the right-hand panel. Explicitly
    choose the destination person and review participation, then click **Confirm
    combination**. Mixed participation requires an explicit choice. A combination
    moves entire groups, including saved aliases absent from the current analysis.

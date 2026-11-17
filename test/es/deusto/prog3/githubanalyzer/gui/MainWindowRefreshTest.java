@@ -147,11 +147,11 @@ public class MainWindowRefreshTest {
         assertEquals(4, stale.getTeamSize(), "Updating metadata must not mutate a prior view");
     }
     @Test public void treeSuffixDisplaysPendingCommitCountAndUnknownChecks() {
-        assertEquals(" (12)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(12, true, null)));
-        assertEquals("", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, false, null)));
-        assertEquals(" (changes pending)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
-        assertEquals(" (?)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(-1, false, "Offline")));
-        assertEquals("", MainWindow.pendingSuffix(null));
+        assertEquals(" (12)", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(12, true, null)));
+        assertEquals("", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, false, null)));
+        assertEquals(" (changes pending)", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
+        assertEquals(" (?)", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(-1, false, "Offline")));
+        assertEquals("", RepositoryTreeRenderer.pendingSuffix(null));
     }
 
     @Test public void externalGroupAndSizeUpdatesKeepMetricsAndRemoveUnconfiguredRepositories() {
@@ -195,7 +195,7 @@ public class MainWindowRefreshTest {
             int initialWidth = tree.getPathBounds(path).width;
             assertFalse(scroll.getHorizontalScrollBar().isVisible());
 
-            suffix.set(MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
+            suffix.set(RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
             MainWindow.refreshRepositoryTreeLabels(tree);
             layoutTreeScrollPane(scroll);
             assertTrue(tree.getPathBounds(path).width > initialWidth, "Recompute node bounds when the update suffix appears");
