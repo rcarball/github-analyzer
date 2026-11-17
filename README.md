@@ -258,6 +258,17 @@ records remain unchanged. Default-branch files are pinned to the checked head SH
 unchanged blob contents are reused. A failed download never advances its checkpoint
 or overwrites the previous complete original data.
 
+The console (Eclipse Console, or the terminal used to launch the app) shows timestamped
+progress tagged by operation and `owner/repository`, including while repositories run
+in parallel. It distinguishes metadata-only update checks, complete downloads,
+incremental downloads and local recalculation. Messages show branch checkpoints,
+commit-ID counts, batches of downloaded commit details, source files downloaded or
+reused, saving of originals, repository completion counts, failures and elapsed time.
+Large histories report progress in batches rather than printing every commit. Logs
+go to the console; no additional log files or configuration settings are required.
+Cancelled update checks are reported as cancellations rather than remote failures.
+Commit download errors include the full affected SHA, even between progress batches.
+
 Select a repository and click **Manage authorship…** to work entirely locally:
 
 1. Select identities using Ctrl/Cmd or Shift and click **Unify selected identities**.

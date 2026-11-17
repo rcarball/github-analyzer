@@ -1107,7 +1107,7 @@ public class MainWindow extends JFrame {
     static JScrollPane repositoryTreeScrollPane(JTree tree) {
         JScrollPane scroll = new JScrollPane(tree, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        scroll.setPreferredSize(new Dimension(300, scroll.getPreferredSize().height));
+        scroll.setPreferredSize(new Dimension(200, scroll.getPreferredSize().height));
         return scroll;
     }
 
