@@ -35,28 +35,20 @@ public class Configurator {
 
 	private static Configurator instance = new Configurator();
 
-	private static final String PROPERTIES_FILE   = "resources/config.properties";
+	private static final String PROPERTIES_FILE = "resources/config.properties";
 	private static final String REPOSITORIES_FILE = "resources/repositories.txt";
-	private static final String STATS_FILE        = "resources/stats.dat";
-	private static final String STATS_CSV         = "resources/stats.csv";
+	private static final String STATS_FILE = "resources/stats.dat";
+	private static final String STATS_CSV = "resources/stats.csv";
 
 	// Written on first run when the files don't exist yet.
-	private static final String DEFAULT_CONFIG =
-			"# GitHub Analyzer configuration.\n" +
-			"# IMPORTANT: never commit this file with a real token.\n" +
-			"github.user=\n" +
-			"github.token=\n" +
-			"repositories.file=" + REPOSITORIES_FILE + "\n" +
-			"stats.file=" + STATS_FILE + "\n" +
-			"stats.csv=" + STATS_CSV + "\n" +
-            "authorship.directory=resources/authorship\n" +
-            "raw.directory=resources/raw-data\n" +
-			"teacher.user=\n" +
-			"teacher.email=\n";
+	private static final String DEFAULT_CONFIG = "# GitHub Analyzer configuration.\n"
+			+ "# IMPORTANT: never commit this file with a real token.\n" + "github.user=\n" + "github.token=\n"
+			+ "repositories.file=" + REPOSITORIES_FILE + "\n" + "stats.file=" + STATS_FILE + "\n" + "stats.csv="
+			+ STATS_CSV + "\n" + "authorship.directory=resources/authorship\n" + "raw.directory=resources/raw-data\n"
+			+ "teacher.user=\n" + "teacher.email=\n";
 
-	private static final String DEFAULT_REPOS =
-			"# URL[;GROUP][;TEAM_SIZE]. Positive team size is optional.\n" +
-			"# Example: https://github.com/OWNER/REPO;GROUP-01;4\n";
+	private static final String DEFAULT_REPOS = "# URL[;GROUP][;TEAM_SIZE]. Positive team size is optional.\n"
+			+ "# Example: https://github.com/OWNER/REPO;GROUP-01;4\n";
 
 	private Properties properties = new Properties();
 
@@ -68,56 +60,73 @@ public class Configurator {
 	private String teacherUser = "";
 	private String teacherEmail = "";
 	private final Path baseDir;
-    private final java.util.function.Supplier<String> environmentToken;
+	private final java.util.function.Supplier<String> environmentToken;
 
 	private Configurator() {
 		this(BASE_DIR);
 	}
 
-	/** Independent configuration rooted in a controlled directory (used by tests). */
-    Configurator(Path baseDir) {
-        this(baseDir, () -> System.getenv("GITHUB_TOKEN"));
-    }
+	/**
+	 * Independent configuration rooted in a controlled directory (used by tests).
+	 */
+	Configurator(Path baseDir) {
+		this(baseDir, () -> System.getenv("GITHUB_TOKEN"));
+	}
 
-    Configurator(Path baseDir, java.util.function.Supplier<String> environmentToken) {
-        this.environmentToken = environmentToken;
+	Configurator(Path baseDir, java.util.function.Supplier<String> environmentToken) {
+		this.environmentToken = environmentToken;
 		this.baseDir = baseDir;
-        try { SettingsTransaction.recover(baseDir); }
-        catch (IOException ex) { throw new IllegalStateException("Could not recover the interrupted configuration save.", ex); }
+		try {
+			SettingsTransaction.recover(baseDir);
+		} catch (IOException ex) {
+			throw new IllegalStateException("Could not recover the interrupted configuration save.", ex);
+		}
 		ensureResources();
 		load();
 	}
 
-	/** Reads config.properties into memory. Package-visible via {@link #reload()}. */
+	/**
+	 * Reads config.properties into memory. Package-visible via {@link #reload()}.
+	 */
 	private void load() {
 		try {
-            Properties loaded = new Properties();
-            try (FileReader reader = new FileReader(resolvePath(PROPERTIES_FILE), StandardCharsets.UTF_8)) {
-                loaded.load(reader);
-            }
-            applyProperties(loaded);
+			Properties loaded = new Properties();
+			try (FileReader reader = new FileReader(resolvePath(PROPERTIES_FILE), StandardCharsets.UTF_8)) {
+				loaded.load(reader);
+			}
+			applyProperties(loaded);
 		} catch (Exception ex) {
 			System.err.format("* Error reading properties file: %s%n", ex.getMessage());
 		}
 	}
 
-    private void applyProperties(Properties loaded) {
-        // Resolve all paths before publishing any part of a reload.
-        String nextStats = resolvePath(loaded.getProperty("stats.file", STATS_FILE));
-        String nextRepos = resolvePath(loaded.getProperty("repositories.file", REPOSITORIES_FILE));
-        String nextCsv = resolvePath(loaded.getProperty("stats.csv", STATS_CSV));
-        properties = loaded;
-        githubUser = loaded.getProperty("github.user"); githubToken = loaded.getProperty("github.token");
-        teacherUser = loaded.getProperty("teacher.user"); teacherEmail = loaded.getProperty("teacher.email");
-        statsFile = nextStats; repositoriesFile = nextRepos; statsCSV = nextCsv;
-    }
+	private void applyProperties(Properties loaded) {
+		// Resolve all paths before publishing any part of a reload.
+		String nextStats = resolvePath(loaded.getProperty("stats.file", STATS_FILE));
+		String nextRepos = resolvePath(loaded.getProperty("repositories.file", REPOSITORIES_FILE));
+		String nextCsv = resolvePath(loaded.getProperty("stats.csv", STATS_CSV));
+		properties = loaded;
+		githubUser = loaded.getProperty("github.user");
+		githubToken = loaded.getProperty("github.token");
+		teacherUser = loaded.getProperty("teacher.user");
+		teacherEmail = loaded.getProperty("teacher.email");
+		statsFile = nextStats;
+		repositoriesFile = nextRepos;
+		statsCSV = nextCsv;
+	}
 
-	/** Re-reads config.properties from disk (used by the Refresh button and the config dialog). */
+	/**
+	 * Re-reads config.properties from disk (used by the Refresh button and the
+	 * config dialog).
+	 */
 	public synchronized void reload() {
 		load();
 	}
 
-	/** Creates the resources folder and default config/repositories files if they are missing. */
+	/**
+	 * Creates the resources folder and default config/repositories files if they
+	 * are missing.
+	 */
 	private void ensureResources() {
 		try {
 			Files.createDirectories(baseDir.resolve("resources"));
@@ -127,9 +136,10 @@ public class Configurator {
 				writeAtomically(cfg, writer -> writer.write(DEFAULT_CONFIG), true);
 				System.out.format("- Created default config at '%s'%n", cfg);
 			}
-            if (Files.isRegularFile(cfg) && Files.getFileStore(cfg).supportsFileAttributeView("posix")) {
-                Files.setPosixFilePermissions(cfg, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
-            }
+			if (Files.isRegularFile(cfg) && Files.getFileStore(cfg).supportsFileAttributeView("posix")) {
+				Files.setPosixFilePermissions(cfg,
+						java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+			}
 			Path repos = Paths.get(resolvePath(REPOSITORIES_FILE));
 			// A missing list in an existing installation is an error, not a new
 			// empty configuration that may replace the user's cached statistics.
@@ -143,27 +153,27 @@ public class Configurator {
 	}
 
 	/** Persists the given config values to config.properties and updates memory. */
-	public synchronized void save(String user, String token,
-	                              String tUser, String tEmail) {
+	public synchronized void save(String user, String token, String tUser, String tEmail) {
 		// The dialog does not edit resource paths, so preserve the values originally
 		// read from disk instead of silently resetting custom locations to defaults.
 		String repositoriesPath = pathToPersist(properties, "repositories.file", REPOSITORIES_FILE);
 		String statsPath = pathToPersist(properties, "stats.file", STATS_FILE);
 		String csvPath = pathToPersist(properties, "stats.csv", STATS_CSV);
 
-        Properties saved = new Properties();
-        saved.setProperty("github.user", nz(user));
-        saved.setProperty("github.token", nz(token));
-        saved.setProperty("repositories.file", repositoriesPath);
-        saved.setProperty("stats.file", statsPath);
-        saved.setProperty("stats.csv", csvPath);
-        saved.setProperty("authorship.directory", pathToPersist(properties, "authorship.directory", "resources/authorship"));
-        saved.setProperty("raw.directory", pathToPersist(properties, "raw.directory", "resources/raw-data"));
-        saved.setProperty("teacher.user", nz(tUser));
-        saved.setProperty("teacher.email", nz(tEmail));
-        try {
-            storeProperties(saved, Paths.get(resolvePath(PROPERTIES_FILE)));
-            properties = saved;
+		Properties saved = new Properties();
+		saved.setProperty("github.user", nz(user));
+		saved.setProperty("github.token", nz(token));
+		saved.setProperty("repositories.file", repositoriesPath);
+		saved.setProperty("stats.file", statsPath);
+		saved.setProperty("stats.csv", csvPath);
+		saved.setProperty("authorship.directory",
+				pathToPersist(properties, "authorship.directory", "resources/authorship"));
+		saved.setProperty("raw.directory", pathToPersist(properties, "raw.directory", "resources/raw-data"));
+		saved.setProperty("teacher.user", nz(tUser));
+		saved.setProperty("teacher.email", nz(tEmail));
+		try {
+			storeProperties(saved, Paths.get(resolvePath(PROPERTIES_FILE)));
+			properties = saved;
 			this.githubUser = user;
 			this.githubToken = token;
 			this.teacherUser = tUser;
@@ -173,63 +183,76 @@ public class Configurator {
 		}
 	}
 
-    /** Use the Properties encoder to preserve backslashes, whitespace and control characters. */
-    static void storeProperties(Properties values, Path destination) throws IOException {
-        writeAtomically(destination, writer -> values.store(writer,
-                "GitHub Analyzer configuration.\nIMPORTANT: never commit this file with a real token."), true);
-    }
+	/**
+	 * Use the Properties encoder to preserve backslashes, whitespace and control
+	 * characters.
+	 */
+	static void storeProperties(Properties values, Path destination) throws IOException {
+		writeAtomically(destination, writer -> values.store(writer,
+				"GitHub Analyzer configuration.\nIMPORTANT: never commit this file with a real token."), true);
+	}
 
-    @FunctionalInterface
-    private interface WriteOperation { void write(BufferedWriter writer) throws IOException; }
+	@FunctionalInterface
+	private interface WriteOperation {
+		void write(BufferedWriter writer) throws IOException;
+	}
 
-    private static void writeAtomically(Path destination, WriteOperation operation, boolean privateFile) throws IOException {
-        Path parent = destination.toAbsolutePath().getParent();
-        boolean posix = Files.getFileStore(parent).supportsFileAttributeView("posix");
-        Path temporary = posix && privateFile
-                ? Files.createTempFile(parent, ".config-", ".tmp",
-                        java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
-                                java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")))
-                : Files.createTempFile(parent, ".settings-", ".tmp");
-        try {
-            try (BufferedWriter writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
-                operation.write(writer);
-            }
-            // Do not replace directories, even on systems that allow renaming over
-            // an empty directory. Such paths are configuration errors.
-            if (Files.isDirectory(destination)) throw new IOException("Destination is a directory: " + destination);
-            try {
-                Files.move(temporary, destination, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
-                Files.move(temporary, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
-    }
+	private static void writeAtomically(Path destination, WriteOperation operation, boolean privateFile)
+			throws IOException {
+		Path parent = destination.toAbsolutePath().getParent();
+		boolean posix = Files.getFileStore(parent).supportsFileAttributeView("posix");
+		Path temporary = posix && privateFile
+				? Files.createTempFile(parent, ".config-", ".tmp",
+						java.nio.file.attribute.PosixFilePermissions
+								.asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")))
+				: Files.createTempFile(parent, ".settings-", ".tmp");
+		try {
+			try (BufferedWriter writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
+				operation.write(writer);
+			}
+			// Do not replace directories, even on systems that allow renaming over
+			// an empty directory. Such paths are configuration errors.
+			if (Files.isDirectory(destination))
+				throw new IOException("Destination is a directory: " + destination);
+			try {
+				Files.move(temporary, destination, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			} catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+				Files.move(temporary, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			}
+		} finally {
+			Files.deleteIfExists(temporary);
+		}
+	}
 
-    /** Save both dialog files with an undo journal recovered after an interrupted process. */
-    public synchronized void saveSettings(String user, String token, String tUser, String tEmail, String repositories) {
-        if (repositories == null) {
-            save(user, token, tUser, tEmail);
-            return;
-        }
-        Properties previous = properties;
-        try {
-            SettingsTransaction.execute(baseDir, Paths.get(getRepositoriesFile()), () -> {
-                saveRepositories(repositories);
-                save(user, token, tUser, tEmail);
-            });
-        } catch (IOException | RuntimeException ex) {
-            applyProperties(previous);
-            String message = Files.exists(SettingsTransaction.journal(baseDir))
-                    ? "Save incomplete. Recovery data has been kept; restart the application to retry recovery."
-                    : "Could not save configuration and repository list. Previous settings have been kept.";
-            throw new IllegalStateException(message, ex);
-        }
-    }
+	/**
+	 * Save both dialog files with an undo journal recovered after an interrupted
+	 * process.
+	 */
+	public synchronized void saveSettings(String user, String token, String tUser, String tEmail, String repositories) {
+		if (repositories == null) {
+			save(user, token, tUser, tEmail);
+			return;
+		}
+		Properties previous = properties;
+		try {
+			SettingsTransaction.execute(baseDir, Paths.get(getRepositoriesFile()), () -> {
+				saveRepositories(repositories);
+				save(user, token, tUser, tEmail);
+			});
+		} catch (IOException | RuntimeException ex) {
+			applyProperties(previous);
+			String message = Files.exists(SettingsTransaction.journal(baseDir))
+					? "Save incomplete. Recovery data has been kept; restart the application to retry recovery."
+					: "Could not save configuration and repository list. Previous settings have been kept.";
+			throw new IllegalStateException(message, ex);
+		}
+	}
 
-	/** Returns the raw contents of repositories.txt (for editing in the config dialog). */
+	/**
+	 * Returns the raw contents of repositories.txt (for editing in the config
+	 * dialog).
+	 */
 	public String readRepositoriesText() {
 		try {
 			return Files.readString(Paths.get(getRepositoriesFile()), StandardCharsets.UTF_8);
@@ -252,18 +275,23 @@ public class Configurator {
 	}
 
 	/**
-	 * Returns the original, un-resolved value for a resource path so saving the
-	 * GUI form preserves user choices such as a relative or absolute location.
+	 * Returns the original, un-resolved value for a resource path so saving the GUI
+	 * form preserves user choices such as a relative or absolute location.
 	 * Package-visible to keep this preservation rule directly unit-testable.
 	 */
 	static String pathToPersist(Properties source, String key, String defaultPath) {
-		if (source == null) return defaultPath;
+		if (source == null)
+			return defaultPath;
 		return source.getProperty(key, defaultPath);
 	}
 
-	/** Resolves a (possibly relative) path against the base directory; absolute paths are kept as-is. */
+	/**
+	 * Resolves a (possibly relative) path against the base directory; absolute
+	 * paths are kept as-is.
+	 */
 	private String resolvePath(String path) {
-		if (path == null || path.isEmpty()) return path;
+		if (path == null || path.isEmpty())
+			return path;
 		Path p = Paths.get(path);
 		return p.isAbsolute() ? path : baseDir.resolve(p).toString();
 	}
@@ -285,23 +313,22 @@ public class Configurator {
 		return Paths.get("").toAbsolutePath();
 	}
 
-    public Path getRawDataDirectory() {
-        String path = properties.getProperty("raw.directory", "resources/raw-data");
-        if (path.isBlank()) throw new IllegalStateException("raw.directory must not be empty.");
-        return Paths.get(resolvePath(path));
-    }
+	public Path getRawDataDirectory() {
+		String path = properties.getProperty("raw.directory", "resources/raw-data");
+		if (path.isBlank())
+			throw new IllegalStateException("raw.directory must not be empty.");
+		return Paths.get(resolvePath(path));
+	}
 
 	public Path getAuthorshipDirectory() {
-        String path = properties.getProperty("authorship.directory", "resources/authorship");
-        if (path.isBlank()) throw new IllegalStateException("authorship.directory must not be empty.");
-        return Paths.get(resolvePath(path));
-    }
+		String path = properties.getProperty("authorship.directory", "resources/authorship");
+		if (path.isBlank())
+			throw new IllegalStateException("authorship.directory must not be empty.");
+		return Paths.get(resolvePath(path));
+	}
 
-    public boolean isConfigured() {
-		return githubUser != null &&
-               getGithubToken() != null &&
-               !githubUser.isBlank() &&
-               !getGithubToken().isBlank();
+	public boolean isConfigured() {
+		return githubUser != null && getGithubToken() != null && !githubUser.isBlank() && !getGithubToken().isBlank();
 	}
 
 	public static Configurator getInstance() {
@@ -312,16 +339,15 @@ public class Configurator {
 		return githubUser;
 	}
 
-    /** Environment credentials take precedence and are never written to disk. */
-    public String getGithubToken() {
-        String token = environmentToken.get();
-        return token == null || token.isBlank() ? githubToken : token.trim();
-    }
+	/** Environment credentials take precedence and are never written to disk. */
+	public String getGithubToken() {
+		String token = environmentToken.get();
+		return token == null || token.isBlank() ? githubToken : token.trim();
+	}
 
-    public String getStoredGithubToken() {
-        return githubToken;
-    }
-
+	public String getStoredGithubToken() {
+		return githubToken;
+	}
 
 	public String getStatsFile() {
 		return statsFile;
@@ -332,7 +358,7 @@ public class Configurator {
 	}
 
 	public String getStatsCSV() {
-        return statsCSV;
+		return statsCSV;
 	}
 
 	public String getTeacherUser() {
