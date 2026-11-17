@@ -48,7 +48,7 @@ def sha256(path):
 
 def inventory(root=ROOT):
     """Verify the exact files, metadata, embedded inventory and Eclipse classpath."""
-    lock = json.loads((root / "dependencies.lock.json").read_text(encoding="utf-8"))
+    lock = json.loads((root / "lib/dependencies.lock.json").read_text(encoding="utf-8"))
     if lock.get("formatVersion") != 1 or not lock.get("artifacts"):
         raise AuditError("Unsupported or empty dependency inventory")
     files, refs = set(), set()
@@ -287,7 +287,7 @@ def main(argv=None):
         if args.command == "verify-upstream":
             verify_upstream(lock)
         elif args.command in ("generate", "verify"):
-            output = args.output or ROOT / "sbom.cdx.json"
+            output = args.output or ROOT / "lib/sbom.cdx.json"
             expected = json_text(bom)
             if args.command == "verify" or args.check:
                 if not output.is_file() or output.read_text(encoding="utf-8") != expected:

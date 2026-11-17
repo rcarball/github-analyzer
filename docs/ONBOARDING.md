@@ -84,8 +84,10 @@ and rejects stale artifacts from the other layout.
 
 Run `./scripts/benchmark-java-files.sh 4ded5fd` to compile both that revision and
 the working source in temporary directories using the same bundled libraries.
-The probe is offline, uses real library content objects and production download/
-calculation paths, and lives outside the normal test suite and runnable JAR.
+The probe source is `test/benchmarks/JavaSourceBenchmark.java`. It is offline and
+uses real library content objects and production download/calculation paths.
+The test runner compiles it with the other test sources, but JUnit does not run
+it as a test. Measurements are manual, and the probe is excluded from the runnable JAR.
 It requires a JDK exposing `com.sun.management.ThreadMXBean` allocation counters.
 
 Local measurement: macOS ARM64, OpenJDK 25.0.5, Java 17 compilation target,
@@ -360,8 +362,8 @@ manual edits or a hardware guarantee against power loss.
 
 ## 9. Dependency inventory and audit
 
-`dependencies.lock.json` is the reviewed inventory for the actual JARs shipped in
-`lib/`; `sbom.cdx.json` is its reproducible CycloneDX projection. Keep both in sync
+`lib/dependencies.lock.json` is the reviewed inventory for the actual JARs shipped in
+`lib/`; `lib/sbom.cdx.json` is its reproducible CycloneDX projection. Keep both in sync
 with library, Eclipse classpath and application version changes. No Maven or
 Gradle installation is required; Eclipse and the existing offline build remain
 available as before.

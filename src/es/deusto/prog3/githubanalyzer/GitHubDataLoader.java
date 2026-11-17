@@ -33,8 +33,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -95,10 +95,10 @@ public class GitHubDataLoader {
 	private static final int MAX_CONCURRENT_LIST_FILES = 2;
 	private static final Semaphore LIST_FILES_SEMAPHORE = new Semaphore(MAX_CONCURRENT_LIST_FILES);
 
-	// A best-effort pause between expensive API calls. Together with the semaphore
-	// it reduces bursts without serializing the complete repository analysis.
+	// Shared across downloads and metadata upgrades, including concurrent loaders.
 	private static final long MIN_DELAY_BETWEEN_HEAVY_CALLS_MS = 120;
-	private static final AtomicLong LAST_HEAVY_CALL_TS = new AtomicLong(0);
+	private static final HeavyCallThrottle HEAVY_CALL_THROTTLE =
+			new HeavyCallThrottle(MIN_DELAY_BETWEEN_HEAVY_CALLS_MS);
 	private static final DateTimeFormatter LOG_TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 	private static final int COMMIT_PROGRESS_INTERVAL = 25;
 
@@ -267,6 +267,7 @@ public class GitHubDataLoader {
 	}
 
 	private List<RepoStats> synchronizeRepositories(List<String> targets, boolean selective) {
+		checkInterrupted();
 		lastConfirmedRepositoryCount = 0;
 		lastRequestedRepositoryUrls = List.copyOf(targets);
 		lastFailedRepositoryUrls = java.util.Set.copyOf(targets);
@@ -277,6 +278,9 @@ public class GitHubDataLoader {
 		java.util.Set<String> successfulUrls = java.util.concurrent.ConcurrentHashMap.newKeySet();
 		AtomicInteger confirmedRepositories = new AtomicInteger();
 		AtomicInteger completedRepositories = new AtomicInteger();
+		AtomicBoolean cancelled = new AtomicBoolean();
+		List<Future<?>> futures = new ArrayList<>();
+		boolean completedNormally = false;
 		ExecutorService executorService = null;
 		long started = System.nanoTime();
 
@@ -289,18 +293,21 @@ public class GitHubDataLoader {
 			traceDetail("sync", "Preparing GitHub access…");
 			RepositoryReader reader = targets.isEmpty() ? null : apiSource.get();
 
-			List<Future<?>> futures = new ArrayList<>();
-
 			for (String repoUrl : targets) {
+				checkInterrupted();
 				futures.add(executorService.submit(() -> {
 					long repoStarted = System.nanoTime();
 					RepoStats confirmed = null;
 					boolean successful = false;
 					try {
+						checkInterrupted();
 						confirmed = analyzeRepo(repoUrl, reader);
 						if (confirmed == null)
 							return;
 						synchronized (resultLock) {
+							checkInterrupted();
+							if (cancelled.get())
+								throw new CancellationException("Operation cancelled.");
 							List<RepoStats> updated = replaceResult(progressiveResults, confirmed);
 							resultWriter.accept(new ArrayList<>(updated));
 							progressiveResults.clear();
@@ -309,6 +316,8 @@ public class GitHubDataLoader {
 						successfulUrls.add(repoUrl);
 						confirmedRepositories.incrementAndGet();
 						successful = true;
+					} catch (CancellationException ex) {
+						throw ex;
 					} catch (Exception ex) {
 						traceFailure("download " + repositoryName(repoUrl), "Could not save repository results", ex);
 					} finally {
@@ -327,20 +336,38 @@ public class GitHubDataLoader {
 			for (Future<?> f : futures) {
 				try {
 					f.get();
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					throw new CancellationException("Synchronization cancelled.");
+				} catch (CancellationException ex) {
+					throw ex;
 				} catch (Exception e) {
 					traceFailure("sync", "Repository task failed", e);
 				}
 			}
 
 			lastConfirmedRepositoryCount = confirmedRepositories.get();
+			checkInterrupted();
+			completedNormally = true;
 
+		} catch (CancellationException ex) {
+			throw ex;
 		} catch (Exception ex) {
+			checkInterrupted();
 			traceFailure("sync", "GitHub synchronization failed", ex);
 		} finally {
-			if (executorService != null)
+			if (!completedNormally) {
+				synchronized (resultLock) {
+					cancelled.set(true);
+				}
+				futures.forEach(future -> future.cancel(true));
+				if (executorService != null)
+					executorService.shutdownNow();
+			} else if (executorService != null)
 				executorService.shutdown();
 		}
 
+		checkInterrupted();
 		Map<String, RepoStats> confirmedResults = new HashMap<>();
 		synchronized (resultLock) {
 			progressiveResults.forEach(stats -> confirmedResults.put(stats.getUrl(), stats));
@@ -374,8 +401,10 @@ public class GitHubDataLoader {
 			traceDetail(scope, "Fetching repository metadata from GitHub…");
 			RepositorySnapshot raw = downloadSnapshot(repoUrl, reader.get(repoUrl),
 					message -> traceDetail(scope, message), previous);
+			checkInterrupted();
 			raw.activeCommits();
 			if (raw != previous) {
+				checkInterrupted();
 				traceDetail(scope,
 						"Saving complete original download (" + raw.commits().size() + " archived commits)…");
 				snapshotWriter.accept(raw);
@@ -386,7 +415,10 @@ public class GitHubDataLoader {
 			traceDetail(scope, "Ready in " + elapsed(started) + ": " + result.getCommits() + " active commits, "
 					+ result.getUserStats().size() + " people, " + result.getCodeLines() + " Java source lines.");
 			return result;
+		} catch (CancellationException ex) {
+			throw ex;
 		} catch (Exception ex) {
+			checkInterrupted();
 			traceFailure(scope, "Download/analysis failed after " + elapsed(started), ex);
 			return null;
 		}
@@ -515,7 +547,7 @@ public class GitHubDataLoader {
 		return discoverAuthors(url);
 	}
 
-	RepositorySnapshot downloadSnapshot(String url, GHRepository repository, Consumer<String> progress)
+	public RepositorySnapshot downloadSnapshot(String url, GHRepository repository, Consumer<String> progress)
 			throws Exception {
 		return downloadSnapshot(url, repository, progress, null);
 	}
@@ -1029,17 +1061,7 @@ public class GitHubDataLoader {
 	}
 
 	private void throttleHeavyCalls() {
-		long now = System.currentTimeMillis();
-		long last = LAST_HEAVY_CALL_TS.getAndSet(now);
-		long delta = now - last;
-		if (last != 0 && delta < MIN_DELAY_BETWEEN_HEAVY_CALLS_MS) {
-			try {
-				Thread.sleep(MIN_DELAY_BETWEEN_HEAVY_CALLS_MS - delta);
-			} catch (InterruptedException ex) {
-				Thread.currentThread().interrupt();
-				throw new CancellationException("Analysis cancelled.");
-			}
-		}
+		HEAVY_CALL_THROTTLE.await();
 	}
 
 	private String safeSha(GHCommit c) {

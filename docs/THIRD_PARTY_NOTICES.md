@@ -48,7 +48,7 @@ The runner retains its third-party license texts in `META-INF/LICENSE-*`.
 The review on **2026-11-17** compared all seven vendored JARs byte for byte with
 their canonical Maven Central artifacts. All matched. Their SHA-256 hashes,
 selected versions, usage scopes, required runtime links and embedded-component
-evidence are recorded in `dependencies.lock.json`. The inventory covers **27
+evidence are recorded in `lib/dependencies.lock.json`. The inventory covers **27
 Maven components: seven JARs and twenty embedded components**.
 
 - The six ordinary JARs provide Maven coordinates in `META-INF/maven/`.
@@ -68,7 +68,7 @@ Maven components: seven JARs and twenty embedded components**.
   optional JWT support, provided annotations and upstream test dependencies that
   are not shipped are not added to the inventory.
 
-The generated `sbom.cdx.json` uses the
+The generated `lib/sbom.cdx.json` uses the
 [CycloneDX 1.6 format](https://cyclonedx.org/docs/1.6/json/). It describes physical
 Maven library contents in the source distribution and selected runtime dependency
 links, not a complete upstream dependency graph or a file-level inventory of the
@@ -93,7 +93,7 @@ To update a dependency:
 
 1. Download the official artifact, review its license, runtime requirements and
    any shaded components, then replace the JAR and its Eclipse classpath entry.
-2. Update `dependencies.lock.json` with the reviewed coordinates, SHA-256, scope,
+2. Update `lib/dependencies.lock.json` with the reviewed coordinates, SHA-256, scope,
    dependency links and embedded evidence. The tool never blesses changed bytes
    by silently updating this lock file.
 3. Run `python3 scripts/dependencies.py verify-upstream` to compare the selected
