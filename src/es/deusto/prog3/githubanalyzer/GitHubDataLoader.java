@@ -402,7 +402,7 @@ public class GitHubDataLoader {
         progress.accept("Remote metadata: " + heads.size() + " branches; default=" + defaultBranch + "; visibility=" + (publicRepository ? "public" : "private") + ".");
         if (!hasMetadataChanges(previous, heads, defaultBranch, publicRepository)) {
             progress.accept("Remote heads, default branch and visibility unchanged; reusing original download without fetching commit files.");
-            return previous;
+            return completeAuthorDates(repository, previous, progress);
         }
         for (var branch : heads.entrySet()) {
             String old = previous == null ? null : previous.branchHeads().get(branch.getKey());
@@ -489,9 +489,46 @@ public class GitHubDataLoader {
         if (previous == null) progress.accept("Full history ready: " + commits.size() + " unique commits downloaded with their changed files.");
         else progress.accept("Incremental history ready: " + downloaded + " new commits downloaded; " + previous.commits().size() + " archived originals retained.");
         checkInterrupted();
-        return new RepositorySnapshot(RepositorySnapshot.CURRENT_VERSION, url, url.substring(url.lastIndexOf('/') + 1),
+        RepositorySnapshot downloadedSnapshot = new RepositorySnapshot(RepositorySnapshot.CURRENT_VERSION, url, url.substring(url.lastIndexOf('/') + 1),
                 System.currentTimeMillis(), repository.getCreatedAt().getTime(), pushed == null ? -1 : pushed.getTime(),
                 publicRepository, defaultBranch == null ? "" : defaultBranch, heads, commits, files);
+        return completeAuthorDates(repository, downloadedSnapshot, progress);
+    }
+
+    /** Upgrade active legacy commits on explicit refresh only; preserve all downloaded file data. */
+    private RepositorySnapshot completeAuthorDates(GHRepository repository, RepositorySnapshot snapshot,
+                                                    Consumer<String> progress) throws Exception {
+        if (snapshot.commits().stream().noneMatch(commit -> commit.authorTimestamp() == null)) return snapshot;
+        List<Commit> missing = snapshot.activeCommits().stream().filter(commit -> commit.authorTimestamp() == null).toList();
+        if (missing.isEmpty()) return snapshot;
+        Map<String, Commit> replacements = new HashMap<>();
+        for (Commit original : missing) {
+            checkInterrupted();
+            progress.accept("Completing author dates: " + (replacements.size() + 1) + "/" + missing.size() + " (" + shortSha(original.sha()) + "); saved file details reused.");
+            throttleHeavyCalls(); checkInterrupted();
+            try {
+                GHCommit remote = repository.getCommit(original.sha());
+                if (!original.sha().equals(remote.getSHA1())) throw new IllegalStateException("Unexpected commit SHA.");
+                replacements.put(original.sha(), new Commit(original.sha(), original.author(), original.timestamp(),
+                        original.parents(), original.files(), authorDate(remote)));
+            } catch (CancellationException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                checkInterrupted();
+                throw new IllegalStateException("Could not complete author date for commit " + original.sha(), ex);
+            }
+        }
+        checkInterrupted();
+        return new RepositorySnapshot(snapshot.version(), snapshot.url(), snapshot.name(), System.currentTimeMillis(),
+                snapshot.createdAt(), snapshot.lastPushTime(), snapshot.publicRepository(), snapshot.defaultBranch(),
+                snapshot.branchHeads(), snapshot.commits().stream().map(commit -> replacements.getOrDefault(commit.sha(), commit)).toList(), snapshot.sourceFiles());
+    }
+
+    private static long authorDate(GHCommit commit) throws IOException {
+        GHCommit.ShortInfo info = commit.getCommitShortInfo();
+        GitUser gitAuthor = info == null ? null : info.getAuthor();
+        Date authoredAt = gitAuthor == null ? null : gitAuthor.getDate();
+        return authoredAt == null ? -1 : authoredAt.getTime();
     }
 
     private void downloadFiles(List<GHContent> contents, String prefix, List<SourceFile> result, Map<String, SourceFile> oldFiles, Consumer<String> progress) throws Exception {
@@ -524,7 +561,9 @@ public class GitHubDataLoader {
         for (String sha : parentShas) {
             if (sha == null || sha.isBlank()) throw new IllegalStateException("Missing parent SHA.");
         }
-        return new Commit(commit.getSHA1(), author, commit.getCommitDate().getTime(), parentShas, files);
+        Date committedAt = commit.getCommitDate();
+        return new Commit(commit.getSHA1(), author, committedAt == null ? -1 : committedAt.getTime(), parentShas, files,
+                authorDate(commit));
     }
 
     static int countExternalMarkers(String line) { return StatisticsCalculator.countExternalMarkers(line); }

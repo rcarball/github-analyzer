@@ -267,6 +267,14 @@ records remain unchanged. Default-branch files are pinned to the checked head SH
 unchanged blob contents are reused. A failed download never advances its checkpoint
 or overwrites the previous complete original data.
 
+An explicit refresh also completes author dates missing from older downloads once,
+without enumerating their changed files or reading source contents again. Local
+recalculation remains offline. Group and team-size edits update the local display
+and expected shares without discarding completed work metrics. Closing the authorship
+editor also synchronizes its repository metadata, including after cancellation.
+Configuration saves run in the background with editing and closing disabled until
+the operation completes.
+
 The console (Eclipse Console, or the terminal used to launch the app) shows timestamped
 progress tagged by operation and `owner/repository`, including while repositories run
 in parallel. It distinguishes metadata-only update checks, complete downloads,
@@ -343,7 +351,9 @@ You can supply it through the `GITHUB_TOKEN` environment variable instead of
 to the configuration dialog or saved to disk. The GitHub user field remains required.
 On POSIX systems the configuration file is restricted to its owner (`0600`).
 Configuration and repository-list writes replace completed temporary files; a failed
-combined save attempts to restore the previous repository list.
+combined save keeps a private undo journal until both files are saved. If the
+application is interrupted during that save, the previous pair is restored at
+startup. The journal is removed on successful completion.
 
 ---
 
@@ -367,7 +377,7 @@ combined save attempts to restore the previous repository list.
   Repository creation date from GitHub.
 
 - **⏱️ First commit / Last commit**  
-  Earliest/latest commit dates found in analyzed history.  
+  Earliest/latest committer dates in the analyzed history; unknown dates are ignored.
   📌 Useful to estimate real working period and detect end-of-period spikes.
 
 - **📄 Java Lines-Of-Code (LOC) (snapshot)**  
@@ -413,7 +423,11 @@ combined save attempts to restore the previous repository list.
   Number of distinct `.java` files modified by the user.
 
 - **📅 First / Last commit (user)**  
-  First/last date of non-merge commit considered for that user.
+  First/last author date of non-merge commits considered for that user. Rebase and
+  cherry-pick committer dates do not move this activity window. Older downloads
+  without an author date use their recorded committer date until the next explicit
+  GitHub refresh fills the missing dates. If GitHub supplies no author date, the
+  committer date remains the fallback.
 
 ---
 

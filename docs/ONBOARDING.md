@@ -209,8 +209,8 @@ prepares these changes; setting the version does not publish a release.
 - Configuration and repository writes use completed temporary files. POSIX config
   permissions are owner-only, including existing installations. `GITHUB_TOKEN`
   takes precedence at runtime and never enters the saved configuration or editor.
-  Combined dialog saves restore the repository list on a reported config failure;
-  a process crash between two file replacements is still not a two-file transaction.
+  Combined saves now use a private undo journal and an interprocess lock; interrupted
+  saves restore the previous config/list pair on startup before loading settings.
 - Repository deduplication ignores URL scheme and case while retaining the first
   spelling, preserving the URL-based keys of existing downloads and author rules.
   `.` and `..` path segments are invalid.
@@ -228,9 +228,9 @@ Reviewed suggestions that do not justify changing behavior automatically:
 | Observation | Decision |
 | --- | --- |
 | CSV decimals in Spanish Excel | Keep the stable `.` numeric format; document explicit import settings. No interactive Excel validation was performed. |
-| Commit versus author date | Keep committer dates for compatibility with saved snapshots; the UI's activity dates describe history commits, not proof of when a person authored code. Switching semantics requires a raw-data migration and an explicit product decision. |
+| Commit versus author date | Both dates are retained. Repository history uses committer dates; individual non-merge activity uses author dates. Legacy records remain readable with committer-date fallback; explicit refresh completes their active author dates once, retaining original file data. Unknown dates are omitted from extrema. |
 | Discovery cancellation | Already calls `SwingWorker.cancel(true)` and ignores late results; existing tests cover an uninterruptible source. Local discovery may take time to return from filesystem I/O; cancellation does not permit a late save. |
-| Manually edited group/team size | Explicit reload/refresh and reopening authorship reread settings; there is no live file watcher. |
+| Manually edited group/team size | Closing the authorship editor synchronizes the reloaded metadata, including on cancellation. Metadata projections preserve complete metrics and do not mutate the previous view. Applying authorship also updates metadata for the other exported results. |
 | Full initial history per branch | Optimized: list the default branch once, then follow unknown parent IDs from other heads until reaching stored commits. Explore every merge parent and unrelated roots; do not stop a chronological history list at its first known SHA. Read parent IDs after commit file metadata has been populated, without eagerly resolving parent objects. |
 | Vendored libraries, SBOM/CVE scanning, CI action SHA pinning | Keep the current offline Eclipse workflow and dependencies. Supply-chain automation is a separate follow-up; these changes do not claim a CVE audit. |
 | Legacy `DataManager` methods | Retain the legacy loading API and its deserialization regression tests. Removing it does not fix a current user-facing defect. |
@@ -239,3 +239,20 @@ Reviewed suggestions that do not justify changing behavior automatically:
 
 Validation covers offline regression tests, release-layout checks and packaging.
 The live GitHub API and interactive GUI were not exercised.
+
+
+The contributor activity window uses `Commit.activityTimestamp()`: captured author
+metadata, or the retained committer date when unavailable. `Commit.timestamp()`
+keeps its original committer semantics. The added nullable author-date field keeps
+old five-field serialized records readable; `null` means an old record awaiting
+metadata completion and `-1` means GitHub supplied no author date. No network call
+is made during offline projection or deserialization.
+
+The configuration editor captures and validates Swing values on the event thread,
+then saves and recalculates in a background worker. An interrupted combined save
+leaves `resources/.settings-pending.properties`, an owner-only undo journal that
+can contain old credentials. Never commit it. Recovery restores both original
+files before loading settings, supports custom repository-list paths and retains
+the journal for retry if restoration fails. File replacement is atomic where the
+filesystem supports it; recovery covers process interruption, not simultaneous
+manual edits or a hardware guarantee against power loss.
