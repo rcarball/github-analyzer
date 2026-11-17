@@ -17,6 +17,6 @@ del "%TEMP%\ga-sources.txt"
 
 REM Run every test on the classpath (headless: no GUI window pops up).
 java -Djava.awt.headless=true -cp "%JUNIT%;%OUT%;lib/*" org.junit.platform.console.ConsoleLauncher execute ^
-     --scan-classpath="%OUT%" --details=tree
+     --scan-classpath="%OUT%" --details=summary
 
 endlocal

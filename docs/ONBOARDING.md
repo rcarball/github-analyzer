@@ -80,6 +80,40 @@ python3 scripts/check-release-layout.py  # Python 3, Bash and sha256sum required
 CI runs this check before the Java tests; it also verifies failure propagation
 and rejects stale artifacts from the other layout.
 
+### Test suite review
+
+Reviewed all 18 JUnit test classes against their production call sites and
+regression scenarios, plus the four release-layout checks. The baseline on
+`master` had 204 Java tests. This change removes or consolidates four methods
+and adds three behavior tests, leaving 203. Test count alone is not a reason to
+remove a distinct failure case.
+
+| Area | Decision and reason |
+| --- | --- |
+| `RawDataPipelineTest`, `GitHubDataLoaderTest` | Remove the 27-commit console-batch test: that verbose output is no longer the normal contract. Keep unique expansion, shared ancestors, every merge parent, unrelated roots, pagination, incremental checkpoints, cancellation and preserved originals in dedicated tests. Retain the legacy entry-point tests because those methods still exist. |
+| Download failure fixture | Reduce 27 commits to three: a successful head followed by a failing ancestor still proves full-SHA diagnostics and rejection of partial history, without irrelevant traversal and deliberate API throttling. |
+| `RepoStatsTest`, `UserStatsTest`, `SimpleGitUserTest` | Remove the test's hand-written stream aggregation: it tested its own sums, while actual aggregation is exercised by `StatisticsCalculatorTest`. Keep append/deduplication, null handling, normalization, locale independence and derived metrics. Legacy identity classes remain supported. |
+| `MainWindowInterpretationTest` | Fold the separate one-eighth case into the existing exact-boundary test, retaining both inputs. Keep the other thresholds, absent-activity guards, team sizes, rounding and overflow cases: they protect different decisions. |
+| `DataManagerTest`, `RawDataStoreTest` | Move the snapshot-version getter/setter check into an actual serialization round trip. Remove the unused `shouldStoreRefresh` helper and its test; real failed/empty refresh tests still verify that valid caches and CSVs are preserved. Retain deserialization allowlists, malformed types, format versions, historical records, recovery and atomic writes. |
+| `StatisticsCalculatorTest`, `ContributionMetricsTest` | Keep calculation and role/share tests: low-level formulas, projection of saved originals and displayed classification protect separate layers. Full email matching prevents unrelated people from being excluded as teachers. |
+| `AuthorshipFormTest`, `AuthorshipDiscoveryPanelTest`, `AuthorshipStoreTest` | Keep editor/reordering/merge interactions, background work, late-result cancellation, assignments and persistence. Similar-looking cases exercise different UI paths or timing boundaries. |
+| `RepositoryConfigTest`, `ConfiguratorTest`, `ConfigurationFormTest`, `SettingsTransactionTest`, `MainWindowRefreshTest` | Keep parsing, metadata, unreadable configuration, atomic multi-file rollback, crash recovery and UI lifecycle tests. A passing parser does not prove that an editor saves the captured values or restores controls after failure. |
+| Release-layout checks | Retain both supported layouts and both negative cases (failed tests and stale/missing artifacts). |
+
+New tests cover optional detailed diagnostics, completion only after a successful
+statistics write (including a reported write failure), and an actual failed atomic
+cache save preserving the previous bytes. Existing console tests now assert
+bounded repository summaries while retaining API-read and file-preservation
+checks. Both command-line runners print a JUnit summary rather than a success tree.
+
+Local verification: baseline 204/204 passed in 9.581 s; revised suite 203/203
+passed in 7.674 s (JUnit execution time, one run each, not a benchmark). Two
+additional temporary fault-injection checks confirmed that retained tests fail
+when the exact one-eighth boundary becomes inclusive of the lower band, or when
+teacher email matching uses only the local part. No injected code was retained.
+The four release-layout checks and runnable JAR build also passed. Live GitHub,
+interactive windows and the Windows runner were not exercised locally.
+
 ## 5. Architecture (packages under `src/es/deusto/prog3/githubanalyzer/`)
 - `Main` — entry point (load raw data → recalculate locally → open GUI → check update counts in background).
 - `GitHubDataLoader` — incremental download and metadata-only update checks via `github-api`.
@@ -237,7 +271,7 @@ Reviewed suggestions that do not justify changing behavior automatically:
 | Discovery cancellation | Already calls `SwingWorker.cancel(true)` and ignores late results; existing tests cover an uninterruptible source. Local discovery may take time to return from filesystem I/O; cancellation does not permit a late save. |
 | Manually edited group/team size | Closing the authorship editor synchronizes the reloaded metadata, including on cancellation. Metadata projections preserve complete metrics and do not mutate the previous view. Applying authorship also updates metadata for the other exported results. |
 | Full initial history per branch | Optimized: list the default branch once, then follow unknown parent IDs from other heads until reaching stored commits. Explore every merge parent and unrelated roots; do not stop a chronological history list at its first known SHA. Read parent IDs after commit file metadata has been populated, without eagerly resolving parent objects. |
-| Vendored libraries, SBOM/CVE scanning, CI action SHA pinning | Keep the current offline Eclipse workflow and dependencies. Supply-chain automation is a separate follow-up; these changes do not claim a CVE audit. |
+| Vendored libraries, SBOM/CVE scanning, CI action SHA pinning | Dependency inventory, SBOM and OSV scanning are now implemented (see below). Migration to a build manager and SHA pinning of the pre-existing CI/release actions remain separate follow-ups. |
 | Legacy `DataManager` methods | Retain the legacy loading API and its deserialization regression tests. Removing it does not fix a current user-facing defect. |
 | `RepoStats` ordering versus equality | Retain group/name presentation sorting and URL identity; document that natural order differs from equality for changed metadata. Do not use this mutable presentation model as a sorted identity set. |
 | Serialization/compiler warnings | No serialized field layout changes or cosmetic suppressions were introduced; keep compatibility with existing local data. |
@@ -261,3 +295,22 @@ files before loading settings, supports custom repository-list paths and retains
 the journal for retry if restoration fails. File replacement is atomic where the
 filesystem supports it; recovery covers process interruption, not simultaneous
 manual edits or a hardware guarantee against power loss.
+
+## 9. Dependency inventory and audit
+
+`dependencies.lock.json` is the reviewed inventory for the actual JARs shipped in
+`lib/`; `sbom.cdx.json` is its reproducible CycloneDX projection. Keep both in sync
+with library, Eclipse classpath and application version changes. No Maven or
+Gradle installation is required; Eclipse and the existing offline build remain
+available as before.
+
+Run `python3 scripts/check-dependencies.py` and
+`python3 scripts/dependencies.py verify` for offline validation. The separate
+**Dependency audit** workflow verifies Maven Central provenance and queries OSV
+on PRs, pushes to `master`, a daily schedule and manual dispatch. Findings and
+incomplete scans fail the workflow; the JSON report and SBOM are retained as
+workflow artifacts. New workflow actions are pinned to reviewed full commit SHAs.
+
+See [Third-party notices](THIRD_PARTY_NOTICES.md#dependency-review-and-updates) for
+the review results, embedded-library coverage and update procedure. The dependency
+lock is a verification inventory, not a dependency resolver or build-manager lock.

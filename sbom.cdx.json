@@ -1,0 +1,1160 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "bom-ref": "github-analyzer",
+      "name": "GitHub Analyzer",
+      "version": "1.4.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/ch.randelshofer/fastdoubleparser@2.0.1",
+      "group": "ch.randelshofer",
+      "name": "fastdoubleparser",
+      "version": "2.0.1",
+      "purl": "pkg:maven/ch.randelshofer/fastdoubleparser@2.0.1",
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/ch/randelshofer/fastdoubleparser/2.0.1/fastdoubleparser-2.0.1.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.21.7/jackson-core-2.21.7.pom"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "runtime"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.21.7"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/maven/com.fasterxml.jackson.core/jackson-core/pom.xml"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.21",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-annotations",
+      "version": "2.21",
+      "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.21",
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "runtime"
+        },
+        {
+          "name": "github-analyzer:file",
+          "value": "lib/jackson-annotations-2.21.jar"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.21.7",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-core",
+      "version": "2.21.7",
+      "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.21.7",
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.21.7/jackson-core-2.21.7.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "runtime"
+        },
+        {
+          "name": "github-analyzer:file",
+          "value": "lib/jackson-core-2.21.7.jar"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8c5623b98f32d5f7e1287ff61ed50e08ab7b11381e991fff89327faabba42261"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.21.7",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "version": "2.21.7",
+      "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.21.7",
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.21.7/jackson-databind-2.21.7.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "runtime"
+        },
+        {
+          "name": "github-analyzer:file",
+          "value": "lib/jackson-databind-2.21.7.jar"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1290c2795e93e8a6861a6c4d9ff0d844d32f5ea178362cb2721edf5561e828b1"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/commons-io/commons-io@2.22.0",
+      "group": "commons-io",
+      "name": "commons-io",
+      "version": "2.22.0",
+      "purl": "pkg:maven/commons-io/commons-io@2.22.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/commons-io/commons-io/2.22.0/commons-io-2.22.0.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "runtime"
+        },
+        {
+          "name": "github-analyzer:file",
+          "value": "lib/commons-io-2.22.0.jar"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2b9a7b1f726fb86216dbd2c8321eabe0221dbd5b1be81c18e1cb53811b104758"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/de.siegmar/fastcsv@4.2.0",
+      "group": "de.siegmar",
+      "name": "fastcsv",
+      "version": "4.2.0",
+      "purl": "pkg:maven/de.siegmar/fastcsv@4.2.0",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/de/siegmar/fastcsv/4.2.0/fastcsv-4.2.0.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://raw.githubusercontent.com/junit-team/junit-framework/f59f60d2cebdf2224235d81f781b1f310cbc8138/gradle/libs.versions.toml"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "upstream build revision f59f60d2cebdf2224235d81f781b1f310cbc8138"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/info.picocli/picocli@4.7.7",
+      "group": "info.picocli",
+      "name": "picocli",
+      "version": "4.7.7",
+      "purl": "pkg:maven/info.picocli/picocli@4.7.7",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/info/picocli/picocli/4.7.7/picocli-4.7.7.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://raw.githubusercontent.com/junit-team/junit-framework/f59f60d2cebdf2224235d81f781b1f310cbc8138/gradle/libs.versions.toml"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "upstream build revision f59f60d2cebdf2224235d81f781b1f310cbc8138"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/junit/junit@4.13.2",
+      "group": "junit",
+      "name": "junit",
+      "version": "4.13.2",
+      "purl": "pkg:maven/junit/junit@4.13.2",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-1.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.apache.commons/commons-lang3@3.21.0",
+      "group": "org.apache.commons",
+      "name": "commons-lang3",
+      "version": "3.21.0",
+      "purl": "pkg:maven/org.apache.commons/commons-lang3@3.21.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.21.0/commons-lang3-3.21.0.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "runtime"
+        },
+        {
+          "name": "github-analyzer:file",
+          "value": "lib/commons-lang3-3.21.0.jar"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a2af247ec4db6eb8947e18e23e0433e4871a7c5d0a40e1f92e46ede54ae1defe"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.apiguardian/apiguardian-api@1.1.2",
+      "group": "org.apiguardian",
+      "name": "apiguardian-api",
+      "version": "1.1.2",
+      "purl": "pkg:maven/org.apiguardian/apiguardian-api@1.1.2",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.hamcrest/hamcrest-core@1.3",
+      "group": "org.hamcrest",
+      "name": "hamcrest-core",
+      "version": "1.3",
+      "purl": "pkg:maven/org.hamcrest/hamcrest-core@1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.jupiter/junit-jupiter-api@6.1.3",
+      "group": "org.junit.jupiter",
+      "name": "junit-jupiter-api",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.jupiter/junit-jupiter-api@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/jupiter/junit-jupiter-api/6.1.3/junit-jupiter-api-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.jupiter/junit-jupiter-engine@6.1.3",
+      "group": "org.junit.jupiter",
+      "name": "junit-jupiter-engine",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.jupiter/junit-jupiter-engine@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/jupiter/junit-jupiter-engine/6.1.3/junit-jupiter-engine-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.jupiter/junit-jupiter-params@6.1.3",
+      "group": "org.junit.jupiter",
+      "name": "junit-jupiter-params",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.jupiter/junit-jupiter-params@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/jupiter/junit-jupiter-params/6.1.3/junit-jupiter-params-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-commons@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-commons",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-commons@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-commons/6.1.3/junit-platform-commons-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-console-standalone",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:file",
+          "value": "lib/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e62b96ac475dbcde8599ea905d088f65d90778f86e259b856a49fa5c4ea256ec"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-console@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-console",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-console@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console/6.1.3/junit-platform-console-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-engine@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-engine",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-engine@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-engine/6.1.3/junit-platform-engine-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-launcher@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-launcher",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-launcher@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-launcher/6.1.3/junit-platform-launcher-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-reporting@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-reporting",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-reporting@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-reporting/6.1.3/junit-platform-reporting-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-suite-api@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-suite-api",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-suite-api@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-api/6.1.3/junit-platform-suite-api-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.platform/junit-platform-suite-engine@6.1.3",
+      "group": "org.junit.platform",
+      "name": "junit-platform-suite-engine",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.platform/junit-platform-suite-engine@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-suite-engine/6.1.3/junit-platform-suite-engine-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.junit.vintage/junit-vintage-engine@6.1.3",
+      "group": "org.junit.vintage",
+      "name": "junit-vintage-engine",
+      "version": "6.1.3",
+      "purl": "pkg:maven/org.junit.vintage/junit-vintage-engine@6.1.3",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "EPL-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/vintage/junit-vintage-engine/6.1.3/junit-vintage-engine-6.1.3.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.kohsuke/github-api@1.330",
+      "group": "org.kohsuke",
+      "name": "github-api",
+      "version": "1.330",
+      "purl": "pkg:maven/org.kohsuke/github-api@1.330",
+      "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/kohsuke/github-api/1.330/github-api-1.330.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "runtime"
+        },
+        {
+          "name": "github-analyzer:file",
+          "value": "lib/github-api-1.330.jar"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "740cbe21fddcd88b3baa9e006e50e5759db160822b12e93154f79013cf6d1e31"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.opentest4j.reporting/open-test-reporting-events@0.2.5",
+      "group": "org.opentest4j.reporting",
+      "name": "open-test-reporting-events",
+      "version": "0.2.5",
+      "purl": "pkg:maven/org.opentest4j.reporting/open-test-reporting-events@0.2.5",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/opentest4j/reporting/open-test-reporting-events/0.2.5/open-test-reporting-events-0.2.5.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://raw.githubusercontent.com/junit-team/junit-framework/f59f60d2cebdf2224235d81f781b1f310cbc8138/gradle/libs.versions.toml"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "upstream build revision f59f60d2cebdf2224235d81f781b1f310cbc8138"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.opentest4j.reporting/open-test-reporting-tooling-spi@0.2.5",
+      "group": "org.opentest4j.reporting",
+      "name": "open-test-reporting-tooling-spi",
+      "version": "0.2.5",
+      "purl": "pkg:maven/org.opentest4j.reporting/open-test-reporting-tooling-spi@0.2.5",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/opentest4j/reporting/open-test-reporting-tooling-spi/0.2.5/open-test-reporting-tooling-spi-0.2.5.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.opentest4j/opentest4j@1.3.0",
+      "group": "org.opentest4j",
+      "name": "opentest4j",
+      "version": "1.3.0",
+      "purl": "pkg:maven/org.opentest4j/opentest4j@1.3.0",
+      "scope": "excluded",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://repo.maven.apache.org/maven2/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar"
+        },
+        {
+          "type": "evidence",
+          "url": "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/6.1.3/junit-platform-console-standalone-6.1.3.jar"
+        }
+      ],
+      "properties": [
+        {
+          "name": "github-analyzer:usage",
+          "value": "test"
+        },
+        {
+          "name": "github-analyzer:embedded-in",
+          "value": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3"
+        },
+        {
+          "name": "github-analyzer:evidence",
+          "value": "META-INF/shadowed-artifacts"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "github-analyzer",
+      "dependsOn": [
+        "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.21",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.21.7",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.21.7",
+        "pkg:maven/commons-io/commons-io@2.22.0",
+        "pkg:maven/org.apache.commons/commons-lang3@3.21.0",
+        "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3",
+        "pkg:maven/org.kohsuke/github-api@1.330"
+      ]
+    },
+    {
+      "ref": "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.21",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.21.7",
+      "dependsOn": [
+        "pkg:maven/ch.randelshofer/fastdoubleparser@2.0.1"
+      ]
+    },
+    {
+      "ref": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.21.7",
+      "dependsOn": [
+        "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.21",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.21.7"
+      ]
+    },
+    {
+      "ref": "pkg:maven/commons-io/commons-io@2.22.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:maven/org.apache.commons/commons-lang3@3.21.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:maven/org.junit.platform/junit-platform-console-standalone@6.1.3",
+      "dependsOn": [
+        "pkg:maven/de.siegmar/fastcsv@4.2.0",
+        "pkg:maven/info.picocli/picocli@4.7.7",
+        "pkg:maven/junit/junit@4.13.2",
+        "pkg:maven/org.apiguardian/apiguardian-api@1.1.2",
+        "pkg:maven/org.hamcrest/hamcrest-core@1.3",
+        "pkg:maven/org.junit.jupiter/junit-jupiter-api@6.1.3",
+        "pkg:maven/org.junit.jupiter/junit-jupiter-engine@6.1.3",
+        "pkg:maven/org.junit.jupiter/junit-jupiter-params@6.1.3",
+        "pkg:maven/org.junit.platform/junit-platform-commons@6.1.3",
+        "pkg:maven/org.junit.platform/junit-platform-console@6.1.3",
+        "pkg:maven/org.junit.platform/junit-platform-engine@6.1.3",
+        "pkg:maven/org.junit.platform/junit-platform-launcher@6.1.3",
+        "pkg:maven/org.junit.platform/junit-platform-reporting@6.1.3",
+        "pkg:maven/org.junit.platform/junit-platform-suite-api@6.1.3",
+        "pkg:maven/org.junit.platform/junit-platform-suite-engine@6.1.3",
+        "pkg:maven/org.junit.vintage/junit-vintage-engine@6.1.3",
+        "pkg:maven/org.opentest4j.reporting/open-test-reporting-events@0.2.5",
+        "pkg:maven/org.opentest4j.reporting/open-test-reporting-tooling-spi@0.2.5",
+        "pkg:maven/org.opentest4j/opentest4j@1.3.0"
+      ]
+    },
+    {
+      "ref": "pkg:maven/org.kohsuke/github-api@1.330",
+      "dependsOn": [
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.21.7",
+        "pkg:maven/commons-io/commons-io@2.22.0",
+        "pkg:maven/org.apache.commons/commons-lang3@3.21.0"
+      ]
+    }
+  ]
+}

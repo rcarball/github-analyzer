@@ -95,6 +95,7 @@ public class MainWindowInterpretationTest {
     public void veryLowBoundaryIsInclusiveOfBelow() {
         // share == 0.125 must NOT be VERY_LOW (strict <), it is the start of BELOW.
         assertEquals(ContributionBadge.BELOW, badge(125));
+        assertEquals(ContributionBadge.BELOW, MainWindow.classifyBadge(1, 2, 8, N));
     }
 
     @Test
@@ -116,12 +117,6 @@ public class MainWindowInterpretationTest {
     public void contributorCountZeroIsTreatedAsOne() {
         // n = max(1, 0) = 1 => expected = 1.0, okMax = 1.2; a full-share user is BALANCED.
         assertEquals(ContributionBadge.BALANCED, MainWindow.classifyBadge(1000, COMMITS, 1000, 0));
-    }
-
-    @Test
-    public void exactOneEighthStartsTheBelowBand() {
-        // 1/8 = 0.125 exactly -> BELOW boundary.
-        assertEquals(ContributionBadge.BELOW, MainWindow.classifyBadge(1, 2, 8, N));
     }
 
     // ---------------- isAiPasteLike ----------------

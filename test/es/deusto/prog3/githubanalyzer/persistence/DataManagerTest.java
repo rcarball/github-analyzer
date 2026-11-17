@@ -98,12 +98,21 @@ public class DataManagerTest {
     }
 
     @Test
-    public void refreshWithConfiguredRepositoriesNeedsAtLeastOneResultToReplaceCache() {
-        assertFalse(DataManager.shouldStoreRefresh(1, List.of()));
-        assertFalse(DataManager.shouldStoreRefresh(1, null));
-        assertTrue(DataManager.shouldStoreRefresh(1, List.of(new RepoStats())));
-        assertTrue(DataManager.shouldStoreRefresh(0, List.of()),
-                "An empty repository configuration intentionally produces an empty cache");
+    public void failedAtomicSaveReportsTheErrorAndKeepsExistingData(@TempDir Path dir) throws Exception {
+        DataManager manager = DataManager.getInstance();
+        Path file = dir.resolve("stats.dat");
+        RepoStats repo = new RepoStats(); repo.setName("Saved");
+        manager.storeData(List.of(repo), file);
+        assertEquals("Saved", manager.loadData(file).get(0).getName());
+        byte[] original = Files.readAllBytes(file);
+        // A directory at the temporary path prevents writing, before replacement.
+        Files.createDirectory(dir.resolve("stats.dat.tmp"));
+        Files.writeString(dir.resolve("stats.dat.tmp/blocker"), "keep");
+        IllegalStateException error = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> manager.storeData(List.of(), file));
+        assertTrue(error.getMessage().contains(file.toString()));
+        org.junit.jupiter.api.Assertions.assertNotNull(error.getCause());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, Files.readAllBytes(file));
     }
 
     @Test
@@ -227,11 +236,14 @@ public class DataManagerTest {
     @Test
     public void serializableResultsRetainStablePeopleAndDeclaredTeamMetadata(@TempDir Path tmp) throws Exception {
         RepoStats repo = new RepoStats(); repo.setTeamSize(4); repo.setAuthorCount(3); repo.setAnalysisComplete(true);
+        assertEquals(0, repo.getFileSnapshotVersion());
+        repo.setFileSnapshotVersion(4);
         UserStats user = new UserStats("renamed", "mail@example.org", 1, 1, 3, 0, 3, 0, 0);
         user.setPerson("stable", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.TEACHER); repo.addUserStats(user);
         Path file = tmp.resolve("stats.dat"); writeObject(file, new ArrayList<>(List.of(repo)));
         RepoStats loaded = DataManager.getInstance().loadData(file).get(0);
         assertEquals(4, loaded.getTeamSize()); assertEquals(3, loaded.getAuthorCount()); assertTrue(loaded.isAnalysisComplete());
+        assertEquals(4, loaded.getFileSnapshotVersion());
         assertEquals("stable", loaded.getUserStats().get(0).getPersonId());
         assertEquals(user.getParticipationRole(), loaded.getUserStats().get(0).getParticipationRole());
     }
