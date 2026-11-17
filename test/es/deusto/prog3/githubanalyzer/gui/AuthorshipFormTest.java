@@ -72,7 +72,7 @@ class AuthorshipFormTest {
             AuthorshipForm form = new AuthorshipForm(authors, input, 4);
             String first = form.snapshot().personFor(a).id();
             String second = form.snapshot().personFor(b).id();
-            assertEquals(List.of("Person", "Participation", "Identities", "Java commits", "Observed share"),
+            assertEquals(List.of("Person", "Role", "Identities", "Java commits", "Observed share"),
                     java.util.stream.IntStream.range(0, 5).mapToObj(form.people::getColumnName).toList());
             select(form, first, second);
             assertNull(form.mergeTarget.getSelectedItem());
@@ -239,8 +239,9 @@ class AuthorshipFormTest {
             assertEquals("login", restored.personFor(a).name());
             assertEquals(Role.MEMBER, restored.personFor(a).role());
             assertEquals("", restored.personFor(a).email());
-            assertTrue(form.summary.getText().contains("4 (declared)"));
-            assertTrue(form.summary.getText().contains("25,00 %"));
+            assertEquals("4", form.teamSizeValue.getText());
+            assertEquals("Declared", form.teamSizeSource.getText());
+            assertEquals("25,00 %", form.expectedShareValue.getText());
             form.undo(); assertRules(initial, form.snapshot());
             form.redo(); assertRules(restored, form.snapshot());
             AuthorshipForm reopened = new AuthorshipForm(authors, initial, 4);
@@ -271,7 +272,7 @@ class AuthorshipFormTest {
     @Test void percentagesUseSpanishFormattingAndExcludedOrUnavailableValuesUseADash() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             AuthorshipForm form = new AuthorshipForm(List.of(), new AuthorshipConfig(), 4);
-            assertTrue(form.summary.getText().contains("25,00 %"));
+            assertEquals("25,00 %", form.expectedShareValue.getText());
             for (float value : new float[] {.25f, Float.NaN, Float.POSITIVE_INFINITY}) {
                 JLabel label = (JLabel) form.people.getDefaultRenderer(Float.class)
                         .getTableCellRendererComponent(form.people, value, false, false, 0, 4);
@@ -437,6 +438,72 @@ class AuthorshipFormTest {
             form.unifyButton.doClick();
             assertEquals(before.personFor(a).id(), form.snapshot().personFor(b).id());
             form.undo(); assertRules(before, form.snapshot());
+        });
+    }
+
+    @Test void documentationAndMergeOnlyAuthorsStayVisibleAndCanBeCombinedAndRestored() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            Commit java = new Commit("java", a, 1000, List.of(), List.of(new ChangedFile("Example.java", "", 10, 0)));
+            Commit docs = new Commit("docs", b, 2000, List.of("java"), List.of(new ChangedFile("README.md", "", 30, 0)));
+            Commit merge = new Commit("merge", c, 3000, List.of("java", "docs"), List.of());
+            RepositorySnapshot source = new RepositorySnapshot(1, "https://github.com/course/all-authors", "all-authors", 4000,
+                    1, 3000, true, "main", Map.of("main", "merge"), List.of(java, docs, merge), List.of());
+            AuthorshipForm form = new AuthorshipForm(source, new AuthorshipConfig(), null);
+            AuthorshipConfig initial = form.snapshot();
+            assertEquals(3, form.people.getRowCount());
+            assertEquals("3", form.identityCount.getText());
+            assertEquals("3", form.peopleCount.getText());
+            assertEquals("1", form.contributorCountLabel.getText());
+            assertEquals("1", form.teamSizeValue.getText());
+            assertEquals("Inferred", form.teamSizeSource.getText());
+            assertEquals("100,00 %", form.expectedShareValue.getText());
+            form.searchField.setText(b.email());
+            assertEquals(1, form.people.getRowCount());
+            assertEquals(0, form.people.getValueAt(0, 3));
+            form.searchField.setText("");
+            select(form, initial.personFor(b).id(), initial.personFor(c).id());
+            destination(form, initial.personFor(b).id());
+            form.unifyButton.doClick();
+            assertEquals(2, form.people.getRowCount());
+            assertEquals(initial.personFor(b).id(), form.snapshot().personFor(c).id());
+            assertEquals("1", form.contributorCountLabel.getText());
+            form.undo(); assertRules(initial, form.snapshot());
+            form.redo(); assertEquals(2, form.people.getRowCount());
+            form.restoreOriginal(); assertRules(initial, form.snapshot());
+            assertEquals(List.of(java, docs, merge), source.commits());
+        });
+    }
+
+    @Test void repositoriesWithoutJavaStillListEveryAuthorAndHaveNoInferredJavaShare() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            Commit first = new Commit("first", a, 1000, List.of(), List.of(new ChangedFile("README.md", "", 10, 0)));
+            Commit second = new Commit("second", b, 2000, List.of("first"), List.of(new ChangedFile("notes.txt", "", 20, 0)));
+            RepositorySnapshot source = new RepositorySnapshot(1, "https://github.com/course/docs", "docs", 3000,
+                    1, 2000, true, "main", Map.of("main", "second"), List.of(first, second), List.of());
+            AuthorshipForm form = new AuthorshipForm(source, new AuthorshipConfig(), null);
+            assertEquals(2, form.people.getRowCount());
+            assertEquals("2", form.peopleCount.getText());
+            assertEquals("0", form.contributorCountLabel.getText());
+            assertEquals("0", form.teamSizeValue.getText());
+            assertEquals("—", form.expectedShareValue.getText());
+            assertFalse(form.summaryWarning.isVisible());
+        });
+    }
+
+    @Test void roleLabelsAreCompactAndPreserveTeacherAndOtherExclusions() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorshipConfig config = new AuthorshipConfig();
+            config.discover(a, Role.TEACHER); config.discover(b, Role.EXCLUDED);
+            AuthorshipForm form = new AuthorshipForm(authors, config, null);
+            String[] labels = {"Teacher", "Other", "Teammate"};
+            for (int row = 0; row < labels.length; row++) {
+                JLabel label = (JLabel) form.people.prepareRenderer(form.people.getCellRenderer(row, 1), row, 1);
+                assertEquals(labels[row], label.getText());
+            }
+            select(form, form.snapshot().personFor(b).id());
+            assertEquals(Role.EXCLUDED, form.participation.getSelectedItem());
+            assertEquals(Role.EXCLUDED, form.snapshot().personFor(b).role());
+            assertEquals(1, form.contributorCount());
         });
     }
 

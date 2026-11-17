@@ -876,8 +876,8 @@ class RawDataPipelineTest {
     @Test void selectiveRefreshTracksFailuresEvenWhenOldResultsExistAndCanRetryJustThatRepository(@TempDir Path dir) throws Exception {
         String other = URL + "-other", missing = URL + "-missing";
         RawDataStore store = new RawDataStore(dir);
-        Repository archived = initial();
-        new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(), () -> url -> archived,
+        Map<String, Repository> archived = Map.of(URL, initial(), other, initial());
+        new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(), () -> archived::get,
                 ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate).loadData();
         byte[] original = Files.readAllBytes(store.pathFor(URL)), untouched = Files.readAllBytes(store.pathFor(other));
         Repository fresh = initial(); fresh.add("new", B, 20, "a"); fresh.heads.put("main", "new");
@@ -959,8 +959,14 @@ class RawDataPipelineTest {
         String other = URL + "-other";
         RawDataStore store = new RawDataStore(dir);
         Repository remote = initial();
-        new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(), () -> url -> remote,
-                ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate).loadData();
+        // Parallel downloads must not share the mutable counters and lists of an API fixture.
+        Map<String, Repository> remotes = Map.of(URL, remote, other, initial());
+        GitHubDataLoader seed = new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(), () -> remotes::get,
+                ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate);
+        seed.loadData();
+        assertEquals(2, seed.getLastConfirmedRepositoryCount());
+        assertNotNull(store.load(URL));
+        assertNotNull(store.load(other));
         remote.add("new", B, 20, "a"); remote.heads.put("main", "new");
         GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(),
                 () -> url -> remote, ignored -> { }, results -> {

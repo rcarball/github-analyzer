@@ -6,6 +6,8 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
 import java.awt.Graphics;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -79,7 +81,14 @@ final class AuthorshipForm extends JPanel {
     private Map<String, String> viewAssignments;
 
     final JLabel previewStatus = new JLabel("Local preview · Apply recalculates without connecting to GitHub.");
-    final JLabel summary = new JLabel();
+    final JPanel summary = new JPanel(new BorderLayout(8, 8));
+    final JLabel identityCount = literalLabel();
+    final JLabel peopleCount = literalLabel();
+    final JLabel contributorCountLabel = literalLabel();
+    final JLabel teamSizeValue = literalLabel();
+    final JLabel teamSizeSource = literalLabel();
+    final JLabel expectedShareValue = literalLabel();
+    final JLabel summaryWarning = literalLabel();
     final JLabel historyStatus = new JLabel("No pending changes");
     final JTable people;
     final JTable identities;
@@ -139,7 +148,7 @@ final class AuthorshipForm extends JPanel {
 
         peopleModel = new AbstractTableModel() {
             private static final long serialVersionUID = 1L;
-            private final String[] columns = {"Person", "Participation", "Identities", "Java commits", "Observed share"};
+            private final String[] columns = {"Person", "Role", "Identities", "Java commits", "Observed share"};
             @Override public int getRowCount() { return activePeople.size(); }
             @Override public int getColumnCount() { return columns.length; }
             @Override public String getColumnName(int col) { return columns[col]; }
@@ -168,12 +177,17 @@ final class AuthorshipForm extends JPanel {
         people.setShowGrid(false);
         people.setIntercellSpacing(new Dimension(8, 2));
         people.setPreferredScrollableViewportSize(new Dimension(560, 420));
-        int[] widths = {180, 140, 65, 85, 130};
-        for (int col = 0; col < widths.length; col++) people.getColumnModel().getColumn(col).setPreferredWidth(widths[col]);
-        people.getColumnModel().getColumn(1).setMinWidth(110);
-        people.getColumnModel().getColumn(2).setMinWidth(65);
-        people.getColumnModel().getColumn(3).setMinWidth(95);
-        people.getColumnModel().getColumn(4).setMinWidth(110);
+        // Compact metadata columns leave the remaining space for names and their badges.
+        int[] widths = {300, 84, 70, 64, 86};
+        int[] minimums = {180, 76, 64, 56, 76};
+        int[] maximums = {Integer.MAX_VALUE, 96, 76, 76, 100};
+        for (int col = 0; col < widths.length; col++) {
+            var column = people.getColumnModel().getColumn(col);
+            column.setMinWidth(minimums[col]);
+            column.setMaxWidth(maximums[col]);
+            column.setPreferredWidth(widths[col]);
+        }
+        configurePeopleHeader();
         DefaultTableCellRenderer personRenderer = new DefaultTableCellRenderer() {
             private static final long serialVersionUID = 1L;
             { putClientProperty("html.disable", Boolean.TRUE); }
@@ -299,7 +313,7 @@ final class AuthorshipForm extends JPanel {
         GridBagConstraints contribution = constraints(0, 1);
         contribution.gridwidth = 2;
         fields.add(contributionHint, contribution);
-        addField(fields, 2, "Participation:", participation);
+        addField(fields, 2, "Role:", participation);
         GridBagConstraints hint = constraints(0, 3);
         hint.gridwidth = 2;
         fields.add(roleHint, hint);
@@ -326,7 +340,7 @@ final class AuthorshipForm extends JPanel {
         mergeHint.gridwidth = 2;
         mergeFields.add(mergeInstructions, mergeHint);
         addField(mergeFields, 1, "Destination:", mergeTarget);
-        addField(mergeFields, 2, "Participation:", mergeRole);
+        addField(mergeFields, 2, "Role:", mergeRole);
         GridBagConstraints mergeCounts = constraints(0, 3);
         mergeCounts.gridwidth = 2;
         mergeFields.add(mergeSummary, mergeCounts);
@@ -347,6 +361,7 @@ final class AuthorshipForm extends JPanel {
         split.setResizeWeight(.52);
         split.setDividerLocation(560);
         split.setBorder(null);
+        configureSummary();
         add(summary, BorderLayout.NORTH);
         add(split, BorderLayout.CENTER);
         JPanel footer = new JPanel(new BorderLayout(8, 8));
@@ -356,7 +371,7 @@ final class AuthorshipForm extends JPanel {
         footer.add(history, BorderLayout.NORTH);
         footer.add(previewStatus, BorderLayout.SOUTH);
         add(footer, BorderLayout.SOUTH);
-        setPreferredSize(new Dimension(1160, 650));
+        setPreferredSize(new Dimension(1160, 700));
         undoButton.addActionListener(event -> runAction(this::undo));
         redoButton.addActionListener(event -> runAction(this::redo));
         discardButton.addActionListener(event -> runAction(this::discardSession));
@@ -376,6 +391,69 @@ final class AuthorshipForm extends JPanel {
         moveButton.addActionListener(event -> runAction(this::chooseMoveTarget));
         installHistoryKeys();
         refresh(List.of());
+    }
+
+    private void configurePeopleHeader() {
+        var header = people.getTableHeader();
+        Font font = people.getFont().deriveFont(Font.BOLD);
+        header.setFont(font);
+        header.setPreferredSize(new Dimension(header.getPreferredSize().width, Math.max(36, font.getSize() * 2 + 8)));
+        var renderer = header.getDefaultRenderer();
+        header.setDefaultRenderer((table, value, selected, focus, row, column) -> {
+            Component component = renderer.getTableCellRendererComponent(table, value, selected, focus, row, column);
+            component.setFont(font);
+            if (component instanceof JLabel label) {
+                int modelColumn = table.convertColumnIndexToModel(column);
+                // Only trusted column titles use HTML; author metadata always remains literal.
+                label.setText(modelColumn == 3 ? "<html>Java<br>commits</html>"
+                        : modelColumn == 4 ? "<html>Observed<br>share</html>" : String.valueOf(value));
+                label.setHorizontalAlignment(modelColumn == 0 ? SwingConstants.LEFT : SwingConstants.CENTER);
+                label.setToolTipText(modelColumn == 4 ? "Observed share of team Java churn, excluding Teacher and Other accounts."
+                        : String.valueOf(value));
+            }
+            return component;
+        });
+    }
+
+    private void configureSummary() {
+        JPanel metrics = new JPanel(new GridLayout(1, 5, 10, 0));
+        addSummaryMetric(metrics, "GitHub identities", identityCount, new JLabel("Original author identities"),
+                "Original Git author identities from the downloaded GitHub repository; multiple identities can belong to one person.", true);
+        addSummaryMetric(metrics, "People", peopleCount, new JLabel("All observed authors"),
+                "All people with commits in the current analysis, including authors without Java commits.", false);
+        addSummaryMetric(metrics, "Contributors", contributorCountLabel, new JLabel("Teammates with Java commits"),
+                "Teammates with Java commits used for the inferred team size. Authors without Java commits remain visible in People.", false);
+        addSummaryMetric(metrics, "Team size", teamSizeValue, teamSizeSource,
+                "Declared team size when configured; otherwise inferred from teammates with Java commits.", false);
+        addSummaryMetric(metrics, "Expected share", expectedShareValue, new JLabel("Per teammate"),
+                "Expected contribution is one divided by the declared or inferred team size.", false);
+        summaryWarning.setForeground(RepositoryTreeRenderer.PENDING);
+        summary.add(metrics, BorderLayout.CENTER);
+        summary.add(summaryWarning, BorderLayout.SOUTH);
+    }
+
+    private void addSummaryMetric(JPanel metrics, String title, JLabel value, JLabel detail, String tooltip, boolean githubIcon) {
+        JPanel metric = new JPanel(new BorderLayout(0, 4));
+        Color line = javax.swing.UIManager.getColor("Separator.foreground");
+        metric.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(line == null ? Color.LIGHT_GRAY : line),
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+        JLabel caption = new JLabel(title);
+        caption.setFont(caption.getFont().deriveFont(Font.BOLD));
+        caption.setPreferredSize(new Dimension(caption.getPreferredSize().width, 24));
+        caption.setLabelFor(value);
+        if (githubIcon) {
+            var icon = MainWindow.loadIcon("github.png");
+            if (icon != null) caption.setIcon(MainWindow.scaleIcon(icon));
+        }
+        value.setFont(value.getFont().deriveFont(Font.BOLD, value.getFont().getSize2D() + 6));
+        value.getAccessibleContext().setAccessibleName(title);
+        detail.setFont(detail.getFont().deriveFont(Math.max(10f, detail.getFont().getSize2D() - 1)));
+        for (JLabel label : List.of(caption, value, detail)) label.setToolTipText(tooltip);
+        metric.add(caption, BorderLayout.NORTH);
+        metric.add(value, BorderLayout.CENTER);
+        metric.add(detail, BorderLayout.SOUTH);
+        metrics.add(metric);
     }
 
     private JTable literalTable(AbstractTableModel model) {
@@ -441,13 +519,13 @@ final class AuthorshipForm extends JPanel {
         combo.setRenderer(new javax.swing.DefaultListCellRenderer() {
             private static final long serialVersionUID = 1L;
             @Override public Component getListCellRendererComponent(javax.swing.JList<?> list, Object value, int index, boolean selected, boolean focus) {
-                return super.getListCellRendererComponent(list, value instanceof Role role ? roleLabel(role) : "Choose participation…", index, selected, focus);
+                return super.getListCellRendererComponent(list, value instanceof Role role ? roleLabel(role) : "Choose role…", index, selected, focus);
             }
         });
     }
 
     private static String roleLabel(Role role) {
-        return switch (role) { case MEMBER -> "Team member"; case TEACHER -> "Teacher"; case EXCLUDED -> "Other account"; };
+        return switch (role) { case MEMBER -> "Teammate"; case TEACHER -> "Teacher"; case EXCLUDED -> "Other"; };
     }
 
     private AuthorshipConfig rules() { return viewRules; }
@@ -615,11 +693,16 @@ final class AuthorshipForm extends JPanel {
             }
             int contributors = contributorCount();
             int size = declaredTeamSize == null ? contributors : declaredTeamSize;
-            summary.setText(String.format("<html>Git identities: <b>%d</b> · People: <b>%d</b> · Java contributors: <b>%d</b><br>"
-                    + "Team size: <b>%d (%s)</b> · Expected share: <b>%s</b>%s</html>",
-                    authors.size(), activePeople.size(), contributors, size, declaredTeamSize == null ? "inferred" : "declared",
-                    NumberFormats.percentage(size == 0 ? Double.NaN : 1.0 / size),
-                    declaredTeamSize != null && declaredTeamSize != contributors ? " · Declared size differs from observed contributors" : ""));
+            identityCount.setText(Integer.toString(authors.size()));
+            peopleCount.setText(Integer.toString(activePeople.size()));
+            contributorCountLabel.setText(Integer.toString(contributors));
+            teamSizeValue.setText(Integer.toString(size));
+            teamSizeSource.setText(declaredTeamSize == null ? "Inferred" : "Declared");
+            expectedShareValue.setText(NumberFormats.percentage(size == 0 ? Double.NaN : 1.0 / size));
+            boolean mismatch = declaredTeamSize != null && declaredTeamSize != contributors;
+            summaryWarning.setText(mismatch ? "Declared team size (" + declaredTeamSize
+                    + ") differs from teammates with Java commits (" + contributors + ")." : "");
+            summaryWarning.setVisible(mismatch);
         } finally { updating = false; }
         showDetails();
         updateActions();
@@ -644,7 +727,7 @@ final class AuthorshipForm extends JPanel {
         unifyButton.setEnabled(multiple);
         unifyButton.setText(ready ? "Confirm combination" : "Combine selected…");
         String instructions = !destinationChosen ? "Choose the destination person before confirming."
-                : !roleChosen ? "Choose participation for the combined person."
+                : !roleChosen ? "Choose the role of the combined person."
                 : "Review the resulting person before combining.";
         mergeInstructions.setText(instructions);
         unifyButton.setToolTipText(multiple ? instructions : "Select at least two people to combine them.");
@@ -677,7 +760,7 @@ final class AuthorshipForm extends JPanel {
         List<String> selected = selectedPeople();
         PersonChoice target = (PersonChoice) mergeTarget.getSelectedItem();
         Role role = (Role) mergeRole.getSelectedItem();
-        if (target == null || role == null) throw new IllegalStateException("Choose a destination and participation before combining.");
+        if (target == null || role == null) throw new IllegalStateException("Choose a destination and role before combining.");
         commitDetails();
         draft.merge(new LinkedHashSet<>(selected), target.id(), role);
         refresh(List.of(target.id()));
@@ -813,7 +896,7 @@ final class AuthorshipForm extends JPanel {
             Person oldPerson = before.people().get(id), newPerson = after.people().get(id);
             if (oldPerson != null && !oldPerson.equals(newPerson))
                 result.append("Person: ").append(oldPerson.name()).append(" → ").append(newPerson.name())
-                        .append("\n  Participation: ").append(roleLabel(oldPerson.role())).append(" → ").append(roleLabel(newPerson.role()))
+                        .append("\n  Role: ").append(roleLabel(oldPerson.role())).append(" → ").append(roleLabel(newPerson.role()))
                         .append("\n  Email: ").append(oldPerson.email()).append(" → ").append(newPerson.email())
                         .append("\n  GitHub: ").append(oldPerson.login()).append(" → ").append(newPerson.login()).append('\n');
         }

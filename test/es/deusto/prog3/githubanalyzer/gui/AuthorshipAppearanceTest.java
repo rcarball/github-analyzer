@@ -91,4 +91,22 @@ class AuthorshipAppearanceTest {
             assertFalse(form.contributionHint.getText().contains("%"));
         });
     }
+    @Test void compactBoldHeadersFollowModelColumnsAndKeepSortIndicators() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorshipForm form = new AuthorshipForm(List.of(), new AuthorshipConfig(), 4);
+            var header = form.people.getTableHeader();
+            assertTrue(header.getFont().isBold());
+            assertEquals(form.people.getFont().getSize(), header.getFont().getSize());
+            assertTrue(header.getPreferredSize().height >= 36);
+            form.people.getRowSorter().setSortKeys(List.of(new javax.swing.RowSorter.SortKey(3, javax.swing.SortOrder.ASCENDING)));
+            form.people.moveColumn(3, 0);
+            JLabel commits = (JLabel) header.getDefaultRenderer().getTableCellRendererComponent(form.people,
+                    form.people.getColumnName(0), false, false, -1, 0);
+            assertTrue(commits.getFont().isBold());
+            assertEquals("<html>Java<br>commits</html>", commits.getText());
+            assertEquals("Java commits", commits.getToolTipText());
+            assertNotNull(commits.getIcon());
+        });
+    }
+
 }
