@@ -8,7 +8,7 @@ on:
       tag:
         description: "Existing tag to validate without publishing"
         required: true
-        default: "v1.3.1"
+        default: "v1.4.0"
         type: string
 
 permissions:
@@ -105,6 +105,9 @@ jobs:
           path: |
             dist/github-analyzer-${{ steps.version.outputs.version }}.jar
             dist/github-analyzer-${{ steps.version.outputs.version }}.jar.sha256
+            lib/dependencies.lock.json
+            lib/sbom.cdx.json
+            docs/releases/${{ steps.version.outputs.version }}.md
           if-no-files-found: error
           retention-days: 7
 
@@ -121,7 +124,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-${{ needs.verify.outputs.version }}
-          path: dist
+          path: .
 
       - name: Publish the release
         env:
@@ -135,5 +138,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             "dist/github-analyzer-$VERSION.jar" \
             "dist/github-analyzer-$VERSION.jar.sha256" \
-            --verify-tag --generate-notes --latest \
+            "lib/dependencies.lock.json" \
+            "lib/sbom.cdx.json" \
+            --verify-tag --notes-file "docs/releases/$VERSION.md" --latest \
             --title "GitHub Analyzer $RELEASE_TAG"

@@ -27,22 +27,21 @@ class InventoryTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="dependency-test-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        for name in ("dependencies.lock.json", "CITATION.cff", "sbom.cdx.json"):
-            shutil.copyfile(audit.ROOT / name, self.root / name)
+        shutil.copyfile(audit.ROOT / "CITATION.cff", self.root / "CITATION.cff")
         shutil.copytree(audit.ROOT / "lib", self.root / "lib")
         (self.root / "scripts").mkdir()
         shutil.copyfile(SCRIPT, self.root / "scripts/dependencies.py")
-        self.lock = json.loads((self.root / "dependencies.lock.json").read_text())
+        self.lock = json.loads((self.root / "lib/dependencies.lock.json").read_text())
         (self.root / ".classpath").write_text('<classpath>' + ''.join(
             f'<classpathentry kind="lib" path="{a["file"]}"/>' for a in self.lock["artifacts"]) + '</classpath>')
 
     def save(self):
-        (self.root / "dependencies.lock.json").write_text(audit.json_text(self.lock))
+        (self.root / "lib/dependencies.lock.json").write_text(audit.json_text(self.lock))
 
     def test_real_inventory_includes_nested_libraries_and_test_scope(self):
         lock = audit.inventory(self.root)
         bom = audit.sbom(lock, self.root)
-        self.assertEqual((self.root / "sbom.cdx.json").read_text(), audit.json_text(bom))
+        self.assertEqual((self.root / "lib/sbom.cdx.json").read_text(), audit.json_text(bom))
         by_name = {c["name"]: c for c in bom["components"]}
         self.assertEqual(by_name["fastdoubleparser"]["scope"], "required")
         for name in ("junit", "hamcrest-core", "picocli", "fastcsv", "open-test-reporting-events"):
@@ -139,12 +138,12 @@ class InventoryTest(unittest.TestCase):
         script = str(self.root / "scripts/dependencies.py")
         def run(*args):
             return subprocess.run([sys.executable, script, *args], capture_output=True, text=True)
-        original = (self.root / "sbom.cdx.json").read_text(encoding="utf-8").encode("utf-8")
+        original = (self.root / "lib/sbom.cdx.json").read_text(encoding="utf-8").encode("utf-8")
         self.assertEqual(run("generate", "--check").returncode, 0)
-        (self.root / "sbom.cdx.json").write_text("{}\n")
+        (self.root / "lib/sbom.cdx.json").write_text("{}\n")
         self.assertEqual(run("verify").returncode, 2)
         self.assertEqual(run("generate").returncode, 0)
-        self.assertEqual((self.root / "sbom.cdx.json").read_bytes(), original)
+        self.assertEqual((self.root / "lib/sbom.cdx.json").read_bytes(), original)
         citation = self.root / "CITATION.cff"
         citation.write_text(citation.read_text().replace('version: "1.4.0"', 'version: "1.4.1"'))
         self.assertEqual(run("verify").returncode, 2)

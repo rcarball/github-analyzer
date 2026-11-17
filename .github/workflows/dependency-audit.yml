@@ -46,8 +46,8 @@ jobs:
         with:
           name: dependency-audit
           path: |
-            dependencies.lock.json
-            sbom.cdx.json
+            lib/dependencies.lock.json
+            lib/sbom.cdx.json
             build/security/osv-report.json
           if-no-files-found: error
           retention-days: 30

@@ -1,4 +1,14 @@
-package es.deusto.prog3.githubanalyzer;
+// IAG (herramientas: ChatGPT (OpenAI), Claude Code (Anthropic), Codex (OpenAI))
+// SIN CAMBIOS
+
+/*
+ * AI-GENERATED TEST CASES
+ *
+ * All test cases in this file were generated entirely with the assistance of
+ * the AI tools identified above.
+ */
+
+package benchmarks;
 
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +25,8 @@ import org.kohsuke.github.GHContent;
 import org.kohsuke.github.GHRepository;
 import org.kohsuke.github.GitHub;
 
+import es.deusto.prog3.githubanalyzer.GitHubDataLoader;
+import es.deusto.prog3.githubanalyzer.StatisticsCalculator;
 import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig;
 import es.deusto.prog3.githubanalyzer.domain.RepositoryConfig;
 import es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot;

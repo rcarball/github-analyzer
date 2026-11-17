@@ -22,14 +22,18 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 
 ## Repository layout
 
-- `src/`, `test/`: application and test sources.
-- `lib/`: bundled compilation and test dependencies.
+- `src/`, `test/`: application and test sources; `test/benchmarks/` contains
+  standalone performance measurements, run manually with the benchmark script.
+- `lib/`: bundled compilation and test dependencies, their reviewed inventory
+  (`dependencies.lock.json`) and generated SBOM (`sbom.cdx.json`).
 - `resources/`: versioned icons/templates plus ignored local configuration and data.
 - `scripts/`: build and test entry points for macOS/Linux (`.sh`) and Windows (`.bat`).
-- `docs/`: [developer onboarding](docs/ONBOARDING.md) and third-party notices.
+- `docs/`: [developer onboarding](docs/ONBOARDING.md), third-party notices and the
+  [consolidated audit](docs/AUDIT.md), with priorities by impact, relevance and effort.
+  Versioned release notes are kept in `docs/releases/`.
 - `build/`: regenerable files: `eclipse/`, `test-classes/`, `jar-classes/`, and `fat/`.
-- `dist/`: ignored runnable JARs and checksums. Historical local binaries may be
-  kept under `dist/archive/`; published versions belong in GitHub Releases.
+- `dist/`: ignored current-release runnable JAR and checksum; published versions
+  and historical binaries belong in GitHub Releases.
 - `.github/workflows/`: CI and release automation.
 
 `README.md`, `LICENSE`, `NOTICE`, `CITATION.cff`, and `LICENSES/` stay at the root.
@@ -158,8 +162,9 @@ checks were consolidated and why the remaining regression tests are retained.
 
 To compare large Java source processing with a previous revision, run
 `./scripts/benchmark-java-files.sh 4ded5fd` (macOS/Linux, a JDK with thread-allocation
-counters). This optional offline probe measures loading and calculation separately;
-it is not part of CI. See the [measurement method and results](docs/ONBOARDING.md#large-java-source-measurements).
+counters). This optional offline probe in `test/benchmarks/` measures loading and
+calculation separately; CI does not run these measurements. See the
+[measurement method and results](docs/ONBOARDING.md#large-java-source-measurements).
 
 ### Continuous integration
 [GitHub Actions](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
@@ -173,9 +178,9 @@ project.
 
 ### Dependency inventory and vulnerability checks
 
-`dependencies.lock.json` records the reviewed Maven identities, licenses and SHA-256
+`lib/dependencies.lock.json` records the reviewed Maven identities, licenses and SHA-256
 hashes of every JAR in `lib/`, including the components embedded in Jackson and
-JUnit. `sbom.cdx.json` is the reproducible CycloneDX 1.6 inventory for the source
+JUnit. `lib/sbom.cdx.json` is the reproducible CycloneDX 1.6 inventory for the source
 distribution; test-only components have `excluded` scope and are still scanned.
 
 ```bash
