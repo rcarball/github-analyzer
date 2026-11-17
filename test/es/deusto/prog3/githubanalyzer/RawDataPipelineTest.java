@@ -18,6 +18,7 @@ import es.deusto.prog3.githubanalyzer.persistence.RawDataStore;
 
 @ResourceLock(Resources.SYSTEM_OUT)
 @ResourceLock(Resources.SYSTEM_ERR)
+@ResourceLock(Resources.SYSTEM_PROPERTIES)
 class RawDataPipelineTest {
     private static final String URL = "https://github.com/course/project";
     private static final AuthorIdentity A = new AuthorIdentity("Name", "school@example.org", "login");
@@ -330,39 +331,45 @@ class RawDataPipelineTest {
         } finally { Thread.interrupted(); }
     }
     private record ConsoleOutput(String out, String err) { }
-    private static ConsoleOutput captureConsole(Runnable action) {
+    private static ConsoleOutput captureConsole(Runnable action) { return captureConsole(false, action); }
+    private static ConsoleOutput captureConsole(boolean debug, Runnable action) {
+        String oldDebug = System.getProperty("githubanalyzer.debug");
         ByteArrayOutputStream output = new ByteArrayOutputStream(), errors = new ByteArrayOutputStream();
         PrintStream oldOut = System.out, oldErr = System.err;
         try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
              PrintStream err = new PrintStream(errors, true, StandardCharsets.UTF_8)) {
+            System.setProperty("githubanalyzer.debug", Boolean.toString(debug));
             System.setOut(out); System.setErr(err);
             action.run();
-        } finally { System.setOut(oldOut); System.setErr(oldErr); }
+        } finally {
+            System.setOut(oldOut); System.setErr(oldErr);
+            if (oldDebug == null) System.clearProperty("githubanalyzer.debug");
+            else System.setProperty("githubanalyzer.debug", oldDebug);
+        }
         return new ConsoleOutput(output.toString(StandardCharsets.UTF_8), errors.toString(StandardCharsets.UTF_8));
     }
     @Test void consoleProgressDistinguishesFullIncrementalUnchangedAndLocalWork(@TempDir Path dir) throws Exception {
         Repository remote = initial(); RawDataStore store = new RawDataStore(dir); AtomicInteger clients = new AtomicInteger();
         GitHubDataLoader loader = loader(remote, store, clients);
         ConsoleOutput first = captureConsole(loader::loadData);
-        assertTrue(first.out().contains("starting a complete download"));
-        assertTrue(first.out().contains("Full history ready: 1 unique commits"));
-        assertTrue(first.out().contains("1 Java contents downloaded"));
-        assertTrue(first.out().contains("Repository tasks finished: 1/1"));
-        assertTrue(first.out().lines().filter(line -> line.contains("[download course/project]")).allMatch(line -> line.matches("\\[\\d{2}:\\d{2}:\\d{2}\\] \\[[^\\]]+\\] .*")));
-        assertTrue(first.out().contains("[download course/project]"));
-        assertTrue(first.out().indexOf("Saving complete original download") < first.out().indexOf("Original download saved"));
+        assertEquals(4, first.out().lines().count(), first.out());
+        assertTrue(first.out().contains("Starting GitHub synchronization"));
+        assertTrue(first.out().contains("[download course/project] Starting repository"));
+        assertTrue(first.out().contains("Repository complete (1/1)"));
+        assertTrue(first.out().contains("Synchronization finished"));
+        assertTrue(first.out().lines().allMatch(line -> line.matches("\\[\\d{2}:\\d{2}:\\d{2}\\] \\[[^\\]]+\\] .*")));
         assertTrue(first.err().isEmpty());
 
         remote.add("b", B, 20, "a"); remote.heads.put("main", "b");
         ConsoleOutput incremental = captureConsole(() -> loader.refreshRepository(URL));
-        assertTrue(incremental.out().contains("checkpoint a → remote b"));
-        assertTrue(incremental.out().contains("Incremental history ready: 1 new commits downloaded; 1 archived originals retained"));
-        assertTrue(incremental.out().contains("0 Java contents downloaded, 1 unchanged entries reused"));
+        assertEquals(2, incremental.out().lines().count(), incremental.out());
+        assertTrue(incremental.out().contains("Repository complete"));
         assertEquals(Map.of("a", 1, "b", 1), remote.fileReads); assertEquals(List.of("b"), remote.commitReads);
 
         byte[] original = Files.readAllBytes(store.pathFor(URL));
         ConsoleOutput unchanged = captureConsole(() -> loader.refreshRepository(URL));
-        assertTrue(unchanged.out().contains("unchanged; reusing original download without fetching commit files"));
+        assertEquals(2, unchanged.out().lines().count(), unchanged.out());
+        assertTrue(unchanged.out().contains("Repository complete"));
         assertFalse(unchanged.out().contains("Original download saved"));
         assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
         assertEquals(Map.of("a", 1, "b", 1), remote.fileReads);
@@ -374,18 +381,41 @@ class RawDataPipelineTest {
         assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
         assertFalse((first.out() + incremental.out() + local.out()).contains(A.email()));
     }
-    @Test void longInitialDownloadReportsBatchesWithoutDuplicateCommitReads(@TempDir Path dir) {
-        Repository remote = initial(); String parent = "a";
-        for (int i = 1; i <= 26; i++) { String sha = "commit-" + i; remote.add(sha, A, 1, parent); parent = sha; }
-        remote.heads.put("main", parent);
+    @Test void detailedDiagnosticsAreOptIn(@TempDir Path dir) {
+        Repository remote = initial();
         GitHubDataLoader loader = loader(remote, new RawDataStore(dir), new AtomicInteger());
-        ConsoleOutput console = captureConsole(loader::loadData);
-        assertTrue(console.out().contains("changed-file details: 1/27"));
-        assertTrue(console.out().contains("changed-file details: 25/27"));
-        assertTrue(console.out().contains("changed-file details: 27/27"));
-        assertEquals(3, console.out().lines().filter(line -> line.contains("Downloading changed-file details:")).count());
-        assertEquals(27, remote.fileReads.size()); assertTrue(remote.fileReads.values().stream().allMatch(count -> count == 1));
-        assertTrue(console.out().contains("Full history ready: 27 unique commits"));
+        ConsoleOutput console = captureConsole(true, () -> loader.refreshRepository(URL));
+        assertTrue(console.out().contains("Full history ready: 1 unique commits"));
+        assertTrue(console.out().contains("Original download saved"));
+        assertTrue(console.out().contains("Repository complete"));
+        assertTrue(console.err().isEmpty());
+    }
+    @Test void repositoryCompletionFollowsPersistenceAndSaveFailuresNameTheRepository(@TempDir Path dir) {
+        for (boolean failSave : new boolean[] {false, true}) {
+            Repository remote = initial(); RawDataStore store = new RawDataStore(dir.resolve(Boolean.toString(failSave)));
+            AtomicInteger writes = new AtomicInteger();
+            GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL), ignored -> new AuthorshipConfig(),
+                    () -> ignored -> remote, results -> {
+                        if (writes.incrementAndGet() == 1) {
+                            // The per-repository summary must wait for this write to succeed.
+                            System.out.println("TEST: saving repository results");
+                            if (failSave) throw new IllegalStateException("Simulated statistics save failure");
+                        }
+                    }, ignored -> { }, store::load, store::save);
+            ConsoleOutput console = captureConsole(loader::loadData);
+            if (failSave) {
+                assertFalse(console.out().contains("Repository complete"));
+                assertTrue(console.err().contains("[download course/project] Could not save repository results"));
+                assertTrue(console.err().contains("Simulated statistics save failure"));
+                assertEquals(0, loader.getLastConfirmedRepositoryCount());
+            } else {
+                assertTrue(console.out().indexOf("TEST: saving repository results") < console.out().indexOf("Repository complete"));
+                assertEquals(1, loader.getLastConfirmedRepositoryCount());
+                assertTrue(console.err().isEmpty());
+            }
+            assertEquals(2, writes.get());
+            assertNotNull(store.load(URL));
+        }
     }
     @Test void updateCheckReportsAnAccessSetupFailureWithoutTouchingOriginals(@TempDir Path dir) throws Exception {
         RawDataStore store = new RawDataStore(dir);
@@ -472,17 +502,16 @@ class RawDataPipelineTest {
             assertFalse(Files.exists(store.pathFor(URL)));
         }
     }
-    @Test void fullDownloadFailureBetweenProgressBatchesNamesTheFullCommitSha(@TempDir Path dir) {
+    @Test void fullDownloadFailureNamesTheFullCommitShaWithoutSavingPartialHistory(@TempDir Path dir) {
         String failedSha = "0123456789abcdef0123456789abcdef01234567";
-        Repository remote = initial(); String parent = "a";
-        for (int i = 1; i <= 26; i++) {
-            String sha = i == 25 ? failedSha : "commit-" + i;
-            remote.add(sha, A, 1, parent); parent = sha;
-        }
-        remote.heads.put("main", parent); remote.failSha = failedSha;
+        Repository remote = initial();
+        remote.add(failedSha, A, 1, "a");
+        remote.add("head", A, 1, failedSha);
+        remote.heads.put("main", "head"); remote.failSha = failedSha;
         RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
         ConsoleOutput console = captureConsole(() -> assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL)));
-        assertTrue(console.out().contains("changed-file details: 1/27 commits (commit-26)"));
+        assertEquals(1, console.out().lines().count());
+        assertFalse(console.out().contains("Repository complete"));
         assertTrue(console.err().contains("Could not download commit " + failedSha));
         assertTrue(console.err().contains("Simulated incomplete commit"));
         assertEquals(2, remote.fileReads.size()); assertTrue(remote.fileReads.containsKey(failedSha));
@@ -504,7 +533,7 @@ class RawDataPipelineTest {
             remote.add(failedSha, A, 1, "a"); remote.add("new-head", A, 1, failedSha); remote.heads.put("main", "new-head");
             if (!metadataFailure) remote.failSha = failedSha;
             ConsoleOutput console = captureConsole(() -> assertThrows(IllegalStateException.class, () -> loader.refreshRepository(URL)));
-            assertTrue(console.out().contains("Downloading new commit #1 (new-head)"));
+            assertFalse(console.out().contains("Repository complete"));
             assertTrue(console.err().contains("Could not download commit " + failedSha));
             assertTrue(console.err().contains(metadataFailure ? "Simulated commit metadata failure" : "Simulated incomplete commit"));
             assertEquals("a", store.load(URL).branchHeads().get("main"));
@@ -588,7 +617,8 @@ class RawDataPipelineTest {
         List<GitHubDataLoader.UpdateStatus> updates = new ArrayList<>();
         ConsoleOutput console = captureConsole(() -> loader.checkForUpdates((url, status) -> updates.add(status)));
         assertTrue(console.out().contains("[check course/project]"));
-        assertTrue(console.out().contains("500 comparison IDs read"));
+        assertEquals(4, console.out().lines().count(), console.out());
+        assertFalse(console.out().contains("comparison IDs read"));
         assertTrue(console.out().contains("501 commits not downloaded"));
         assertTrue(console.out().contains("1/1 successful, 0 failed"));
         assertEquals(501, updates.get(0).pendingCommits()); assertEquals(Map.of("a", 1), remote.fileReads);
@@ -601,7 +631,7 @@ class RawDataPipelineTest {
         ConsoleOutput console = captureConsole(() -> stats.addAll(loader.loadData()));
         assertTrue(console.err().contains("[download course/project] Download/analysis failed after"));
         assertTrue(console.err().contains("Simulated incomplete commit"));
-        assertTrue(console.out().contains("Repository tasks finished: 1/1"));
+        assertFalse(console.out().contains("Repository complete"));
         assertTrue(console.out().contains("0/1 repositories confirmed, 1 not confirmed"));
         assertFalse(console.out().contains("Original download saved"));
         assertEquals(0, loader.getLastConfirmedRepositoryCount()); assertEquals(1, stats.size());

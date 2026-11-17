@@ -137,6 +137,10 @@ remain accessible. Dot-only path segments are rejected.
 ./scripts/run-tests.sh          # Windows: scripts\run-tests.bat  (or "Run as > JUnit Test" in Eclipse)
 ```
 
+The runner prints totals and failures instead of listing every successful test.
+The [test review](docs/ONBOARDING.md#test-suite-review) records which redundant
+checks were consolidated and why the remaining regression tests are retained.
+
 ### Continuous integration
 [GitHub Actions](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
 runs on every push and pull request targeting `master`. It verifies formatting,
@@ -275,16 +279,21 @@ editor also synchronizes its repository metadata, including after cancellation.
 Configuration saves run in the background with editing and closing disabled until
 the operation completes.
 
-The console (Eclipse Console, or the terminal used to launch the app) shows timestamped
-progress tagged by operation and `owner/repository`, including while repositories run
-in parallel. It distinguishes metadata-only update checks, complete downloads,
-incremental downloads and local recalculation. Messages show branch checkpoints,
-commit-ID counts, batches of downloaded commit details, source files downloaded or
-reused, saving of originals, repository completion counts, failures and elapsed time.
-Large histories report progress in batches rather than printing every commit. Logs
-go to the console; no additional log files or configuration settings are required.
-Cancelled update checks are reported as cancellations rather than remote failures.
-Commit download errors include the full affected SHA, even between progress batches.
+The console (Eclipse Console, or the terminal used to launch the app) shows
+one start and one completion message per downloaded repository, tagged with
+`owner/repository` and a timestamp. Completion includes elapsed time, commits and
+people; batch downloads also show the completed-repository count. The final
+summary distinguishes confirmed repositories from failures. Update checks and
+local recalculations use repository summaries too; the internal recalculation
+following a download does not announce each repository again.
+
+Failures retain the repository, cause and full affected commit SHA. Cancelled
+update checks are reported as cancellations. A failed statistics save propagates
+to the caller, so it cannot produce a successful repository-completion message.
+For branch checkpoints, commit batches and file reuse diagnostics, enable
+`-Dgithubanalyzer.debug=true` before `-jar` when launching Java (or as a VM argument
+in Eclipse). Detailed progress callbacks remain available to callers.
+
 
 Select a repository and click **Manage authorship…** to work entirely locally:
 

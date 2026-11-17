@@ -23,4 +23,4 @@ javac --release 17 -cp "lib/*" -d "$OUT" $(find src test -name '*.java')
 
 # Run every test on the classpath (headless: no GUI window pops up).
 java -Djava.awt.headless=true -cp "$JUNIT:$OUT:lib/*" org.junit.platform.console.ConsoleLauncher execute \
-     --scan-classpath="$OUT" --details=tree
+     --scan-classpath="$OUT" --details=summary

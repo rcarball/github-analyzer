@@ -97,6 +97,9 @@ public class GitHubDataLoader {
     private static final int COMMIT_PROGRESS_INTERVAL = 25;
 
     private static void trace(String scope, String message) { trace(System.out, scope, message); }
+    private static void traceDetail(String scope, String message) {
+        if (Boolean.getBoolean("githubanalyzer.debug")) trace(scope, message);
+    }
     private static void trace(PrintStream stream, String scope, String message) {
         // Keep concurrent repositories on separate complete lines, including metadata containing line breaks.
         stream.printf("[%s] [%s] %s%n", LocalTime.now().format(LOG_TIME),
@@ -218,30 +221,35 @@ public class GitHubDataLoader {
             trace("sync", "Starting GitHub synchronization: " + repos.size() + " repositories, up to " + threads + " parallel tasks.");
             executorService = Executors.newFixedThreadPool(threads);
 
-            trace("sync", "Preparing GitHub access…");
+            traceDetail("sync", "Preparing GitHub access…");
             RepositoryReader reader = repos.isEmpty() ? null : apiSource.get();
 
             List<Future<?>> futures = new ArrayList<>();
 
             for (String repoUrl : repos) {
                 futures.add(executorService.submit(() -> {
+                    long repoStarted = System.nanoTime();
+                    RepoStats confirmed = null;
                     boolean successful = false;
                     try {
-                        RepoStats confirmed = analyzeRepo(repoUrl, reader);
+                        confirmed = analyzeRepo(repoUrl, reader);
                         if (confirmed == null) return;
                         synchronized (resultLock) {
                             List<RepoStats> updated = replaceResult(progressiveResults, confirmed);
+                            resultWriter.accept(new ArrayList<>(updated));
                             progressiveResults.clear();
                             progressiveResults.addAll(updated);
-                            trace("download " + repositoryName(repoUrl), "Writing progressively calculated statistics…");
-                            resultWriter.accept(new ArrayList<>(progressiveResults));
                         }
                         confirmedRepositories.incrementAndGet();
                         successful = true;
+                    } catch (Exception ex) {
+                        traceFailure("download " + repositoryName(repoUrl), "Could not save repository results", ex);
                     } finally {
                         synchronized (resultLock) {
-                            trace("sync", "Repository tasks finished: " + completedRepositories.incrementAndGet() + "/" + repos.size()
-                                    + " — " + repositoryName(repoUrl) + (successful ? " ready." : " failed; see the repository error."));
+                            int completed = completedRepositories.incrementAndGet();
+                            if (successful) trace("download " + repositoryName(repoUrl),
+                                    "Repository complete (" + completed + "/" + repos.size() + ") in " + elapsed(repoStarted)
+                                    + ": " + confirmed.getCommits() + " active commits, " + confirmed.getUserStats().size() + " people.");
                         }
                     }
                 }));
@@ -261,7 +269,7 @@ public class GitHubDataLoader {
         }
 
         List<RepoStats> result = readLocalData(false);
-        trace("sync", "Writing derived statistics and CSV for " + result.size() + " available repositories…");
+        traceDetail("sync", "Writing derived statistics and CSV for " + result.size() + " available repositories…");
         if (!result.isEmpty() || repos.isEmpty()) {
             resultWriter.accept(result);
             csvWriter.accept(result);
@@ -276,22 +284,23 @@ public class GitHubDataLoader {
     private RepoStats analyzeRepo(String repoUrl, RepositoryReader reader) {
         String scope = "download " + repositoryName(repoUrl);
         long started = System.nanoTime();
+        trace(scope, "Starting repository download and analysis.");
         try {
-            trace(scope, "Reading the last saved original download…");
+            traceDetail(scope, "Reading the last saved original download…");
             RepositorySnapshot previous = snapshotUpdateReader.apply(repoUrl);
-            trace(scope, previous == null ? "No usable checkpoint: starting a complete download."
+            traceDetail(scope, previous == null ? "No usable checkpoint: starting a complete download."
                     : "Incremental update: " + previous.commits().size() + " original commits already stored.");
-            trace(scope, "Fetching repository metadata from GitHub…");
-            RepositorySnapshot raw = downloadSnapshot(repoUrl, reader.get(repoUrl), message -> trace(scope, message), previous);
+            traceDetail(scope, "Fetching repository metadata from GitHub…");
+            RepositorySnapshot raw = downloadSnapshot(repoUrl, reader.get(repoUrl), message -> traceDetail(scope, message), previous);
             raw.activeCommits();
             if (raw != previous) {
-                trace(scope, "Saving complete original download (" + raw.commits().size() + " archived commits)…");
+                traceDetail(scope, "Saving complete original download (" + raw.commits().size() + " archived commits)…");
                 snapshotWriter.accept(raw);
-                trace(scope, "Original download saved; branch checkpoints updated.");
+                traceDetail(scope, "Original download saved; branch checkpoints updated.");
             }
-            trace(scope, "Recalculating statistics locally with saved authorship assignments…");
+            traceDetail(scope, "Recalculating statistics locally with saved authorship assignments…");
             RepoStats result = calculate(raw, configured(repoUrl), authorshipSource.apply(repoUrl));
-            trace(scope, "Ready in " + elapsed(started) + ": " + result.getCommits() + " active commits, "
+            traceDetail(scope, "Ready in " + elapsed(started) + ": " + result.getCommits() + " active commits, "
                     + result.getUserStats().size() + " people, " + result.getCodeLines() + " Java source lines.");
             return result;
         } catch (Exception ex) {
@@ -325,28 +334,28 @@ public class GitHubDataLoader {
     private List<RepoStats> readLocalData(boolean persist) {
         reloadRepositories();
         long started = System.nanoTime();
-        trace("local", "Recalculating " + repos.size() + " repositories from saved originals; no GitHub requests.");
+        if (persist) trace("local", "Recalculating " + repos.size() + " repositories from saved originals; no GitHub requests.");
         List<RepoStats> result = new ArrayList<>();
         for (RepositoryConfig config : repositoryConfigs.values()) {
             String scope = "local " + repositoryName(config.url());
             try {
-                trace(scope, "Reading original download and authorship assignments…");
+                traceDetail(scope, "Reading original download and authorship assignments…");
                 RepositorySnapshot raw = snapshotReader.apply(config.url());
                 if (raw != null) {
                     RepoStats stats = calculate(raw, config, authorshipSource.apply(config.url()));
                     result.add(stats);
-                    trace(scope, "Calculated: " + stats.getCommits() + " active commits, " + stats.getUserStats().size() + " people.");
-                } else trace(scope, "Pending: no original download; a first GitHub download is required.");
+                    if (persist) trace(scope, "Calculated: " + stats.getCommits() + " active commits, " + stats.getUserStats().size() + " people.");
+                } else if (persist) trace(scope, "Pending: no original download; a first GitHub download is required.");
             } catch (IllegalStateException ex) {
                 traceFailure(scope, "Local analysis pending", ex);
             }
         }
         Collections.sort(result);
         if (persist && (!result.isEmpty() || repos.isEmpty())) {
-            trace("local", "Writing derived statistics and CSV…");
+            traceDetail("local", "Writing derived statistics and CSV…");
             resultWriter.accept(result); csvWriter.accept(result);
         }
-        trace("local", "Local recalculation finished in " + elapsed(started) + ": " + result.size() + "/" + repos.size() + " results available.");
+        if (persist) trace("local", "Local recalculation finished in " + elapsed(started) + ": " + result.size() + "/" + repos.size() + " results available.");
         return result;
     }
 
@@ -371,8 +380,11 @@ public class GitHubDataLoader {
     public RepoStats refreshRepository(String url) {
         reloadRepositories();
         if (!repositoryConfigs.containsKey(url)) throw new IllegalStateException("Repository is no longer configured.");
+        long started = System.nanoTime();
         RepoStats result = analyzeRepo(url, apiSource.get());
         if (result == null) throw new IllegalStateException("Download failed. The previous original download has been kept.");
+        trace("download " + repositoryName(url), "Repository complete in " + elapsed(started) + ": "
+                + result.getCommits() + " active commits, " + result.getUserStats().size() + " people.");
         return result;
     }
 
@@ -594,7 +606,7 @@ public class GitHubDataLoader {
                 long repoStarted = System.nanoTime();
                 trace(scope, "Checking repository " + (++checked) + "/" + repos.size() + ": fetching remote metadata and reading the local checkpoint…");
                 try {
-                    UpdateStatus status = inspectUpdates(reader.get(url), snapshotReader.apply(url), message -> trace(scope, message));
+                    UpdateStatus status = inspectUpdates(reader.get(url), snapshotReader.apply(url), message -> traceDetail(scope, message));
                     checkInterrupted();
                     listener.accept(url, status);
                     checkInterrupted();
