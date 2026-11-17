@@ -152,7 +152,10 @@ interactive windows and the Windows runner were not exercised locally.
   checked default-branch head; reuse unchanged blobs. Persist only complete downloads.
 - **Startup checks are metadata-only.** Count unique unknown SHAs with paginated
   comparisons, falling back to history IDs when a base cannot be compared. Do not read
-  file diffs or persist originals during checks. Detect default-branch and visibility
+  file diffs or persist originals during checks. Reuse completed comparisons by
+  `(base SHA, head SHA)` and full history-ID queries by head SHA within one repository
+  check. Never treat a partially read query as complete or retain this cache across
+  checks. Different comparison bases remain distinct. Detect default-branch and visibility
   changes even with zero unknown SHAs. Ignore stale background UI checks after downloads.
 - **Recover unreadable originals only on explicit download.** Preserve a byte-identical,
   uniquely named copy under `raw.directory/recovery/` before rebuilding in full. Abort
@@ -180,7 +183,11 @@ interactive windows and the Windows runner were not exercised locally.
   cancellation must not change rules or original data. Visible unify/separate/restore
   actions operate on a detached draft and preview local Java shares.
 - **Derived results.** Rebuild from original records and current rules, with deterministic
-  sorting and distinct-path unions. Last complete downloads survive network failures;
+  sorting and distinct-path unions. A batch refresh reuses its progressively saved
+  results for the final projection, applying reloaded group/team metadata without
+  changing the calculated contributor records. Only unconfirmed repositories use
+  local fallback. Each separate local recalculation reads authorship rules again;
+  no projection cache survives a batch. Last complete downloads survive network failures;
   their timestamp and the tree's pending counts distinguish them from current GitHub data.
 - **CSV export is spreadsheet-safe.** Use `DataManager.csvTextCell` for every text
   field: it quotes separators, quotes and line breaks, and makes formula-like values

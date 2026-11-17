@@ -34,6 +34,9 @@ class RawDataPipelineTest {
         final List<String> historyHeads = new ArrayList<>();
         int sourceReads, comparisons, queries;
         int historyPageSize = Integer.MAX_VALUE;
+        int comparisonPageSize = Integer.MAX_VALUE;
+        boolean missingComparisonBase;
+        final List<String> comparisonPairs = new ArrayList<>();
         boolean paginated;
         @Override public void setCompareUsePaginatedCommits(boolean enabled) { paginated = enabled; }
         String failSha;
@@ -94,13 +97,15 @@ class RawDataPipelineTest {
             heads.values().forEach(head -> histories.put(head, reachable(head).stream().map(commits::get).toList()));
             return new org.kohsuke.github.OfflineCommitQuery(histories, historyHeads::add, historyPageSize);
         }
-        @Override public GHCompare getCompare(String base, String head) {
+        @Override public GHCompare getCompare(String base, String head) throws IOException {
             assertTrue(paginated, "Explicitly enable paginated comparisons before counting commits");
             comparisons++;
+            comparisonPairs.add(base + ".." + head);
+            if (missingComparisonBase) throw new GHFileNotFoundException("Comparison base unavailable");
             Set<String> delta = reachable(head); delta.removeAll(reachable(base));
             GHCompare.Commit[] values = delta.stream().map(sha -> new GHCompare.Commit() { @Override public String getSHA1() { return sha; } }).toArray(GHCompare.Commit[]::new);
             return new GHCompare() {
-                @Override public PagedIterable<GHCompare.Commit> listCommits() { return org.kohsuke.github.OfflinePages.of(values); }
+                @Override public PagedIterable<GHCompare.Commit> listCommits() { return org.kohsuke.github.OfflinePages.of(values, comparisonPageSize); }
                 @Override public GHCompare.Commit[] getCommits() { throw new AssertionError("Use paginated metadata, not a truncated comparison"); }
             };
         }
@@ -609,6 +614,115 @@ class RawDataPipelineTest {
         Repository remote = initial(); loader(remote, store, new AtomicInteger()).loadData();
         assertEquals(1, loader.loadLocalData().size()); assertEquals(1, loader.discoverAuthors(URL).size());
     }
+    @Test void equivalentUpdateComparisonsAreReadOnceAcrossPagesAndRefreshedOnEachCheck(@TempDir Path dir) throws Exception {
+        Repository remote = initial();
+        for (int i = 0; i < 31; i++) remote.heads.put("alias-" + i, "a");
+        RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+        loader.refreshRepository(URL); byte[] original = Files.readAllBytes(store.pathFor(URL));
+        String parent = "a";
+        for (int i = 0; i < 501; i++) { String sha = "new-" + i; remote.add(sha, B, 1, parent); parent = sha; }
+        remote.heads.replaceAll((branch, head) -> "new-500"); remote.comparisonPageSize = 37;
+        List<GitHubDataLoader.UpdateStatus> updates = new ArrayList<>();
+        loader.checkForUpdates((url, status) -> updates.add(status));
+        assertEquals(501, updates.get(0).pendingCommits()); assertTrue(updates.get(0).headsChanged());
+        assertEquals(1, remote.comparisons, "All 32 branches share one base/head pair");
+        loader.checkForUpdates((url, status) -> updates.add(status));
+        assertEquals(501, updates.get(1).pendingCommits(), "A new check must not reuse the previous check's cache");
+        assertEquals(2, remote.comparisons);
+        remote.add("new-tip", B, 1, "new-500"); remote.heads.replaceAll((branch, head) -> "new-tip");
+        loader.checkForUpdates((url, status) -> updates.add(status));
+        assertEquals(502, updates.get(2).pendingCommits());
+        assertEquals(List.of("a..new-500", "a..new-500", "a..new-tip"), remote.comparisonPairs);
+        assertEquals(List.of("a"), remote.historyHeads);
+        assertTrue(remote.commitReads.isEmpty()); assertEquals(Map.of("a", 1), remote.fileReads);
+        assertEquals(1, remote.sourceReads); assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
+    }
+
+    @Test void updateChecksShareFullPaginatedHistoriesForNewBranchesAndUnavailableBases(@TempDir Path dir) throws Exception {
+        for (boolean missingBase : new boolean[] {false, true}) {
+            Repository remote = initial();
+            for (int i = 0; i < 31; i++) remote.heads.put("alias-" + i, "a");
+            RawDataStore store = new RawDataStore(dir.resolve(Boolean.toString(missingBase)));
+            GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+            RepositorySnapshot previous = null;
+            if (missingBase) { loader.refreshRepository(URL); previous = store.load(URL); }
+            remote.historyHeads.clear(); remote.queries = 0;
+            String parent = "a";
+            for (int i = 0; i < 20; i++) { String sha = "extra-" + i; remote.add(sha, B, 1, parent); parent = sha; }
+            remote.heads.replaceAll((branch, head) -> "extra-19");
+            remote.missingComparisonBase = missingBase; remote.historyPageSize = 3;
+            GitHubDataLoader.UpdateStatus status = loader.inspectUpdates(remote, previous);
+            assertEquals(missingBase ? 20 : 21, status.pendingCommits()); assertTrue(status.headsChanged());
+            assertEquals(1, remote.queries); assertEquals(List.of("extra-19"), remote.historyHeads);
+            assertEquals(missingBase ? 1 : 0, remote.comparisons);
+            assertEquals(missingBase ? Map.of("a", 1) : Map.of(), remote.fileReads);
+            assertTrue(remote.commitReads.isEmpty());
+        }
+    }
+
+    @Test void comparisonsWithDifferentBasesRemainDistinctEvenWhenRemoteHeadsMatch(@TempDir Path dir) {
+        Repository remote = initial(); remote.add("other-root", B, 3); remote.heads.put("feature", "other-root");
+        RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
+        loader.refreshRepository(URL);
+        remote.add("side", B, 4, "other-root"); remote.add("merge", A, 0, "a", "side");
+        remote.heads.replaceAll((branch, head) -> "merge"); remote.comparisonPageSize = 1;
+        List<GitHubDataLoader.UpdateStatus> updates = new ArrayList<>();
+        loader.checkForUpdates((url, status) -> updates.add(status));
+        assertEquals(2, updates.get(0).pendingCommits());
+        assertEquals(List.of("other-root..merge", "a..merge"), remote.comparisonPairs);
+        assertEquals(Map.of("a", 1, "other-root", 1), remote.fileReads);
+    }
+
+    @Test void completedResultsAreReusedWithCurrentTeamMetadataButLaterLocalRunsRecalculate(@TempDir Path dir) {
+        Repository remote = initial(); RawDataStore store = new RawDataStore(dir);
+        var repositories = new java.util.concurrent.atomic.AtomicReference<>(List.of(URL + ";G01;4"));
+        AtomicInteger rawReads = new AtomicInteger(), authorshipReads = new AtomicInteger(), clients = new AtomicInteger();
+        List<List<RepoStats>> writes = new ArrayList<>(), exports = new ArrayList<>();
+        AuthorshipConfig rules = new AuthorshipConfig();
+        GitHubDataLoader loader = new GitHubDataLoader(repositories::get,
+                url -> { authorshipReads.incrementAndGet(); return rules; },
+                () -> { clients.incrementAndGet(); return url -> remote; }, results -> {
+                    writes.add(results); repositories.set(List.of(URL + ";G02;6"));
+                }, exports::add, url -> { rawReads.incrementAndGet(); return store.load(url); }, store::save, store::loadForUpdate);
+        RepoStats result = loader.loadData().get(0);
+        assertEquals(1, authorshipReads.get()); assertEquals(0, rawReads.get());
+        assertEquals(2, writes.size()); assertSame(result, exports.get(0).get(0));
+        assertSame(writes.get(0).get(0).getUserStats(), result.getUserStats(), "Reuse the actual calculated contributors");
+        assertEquals("G01", writes.get(0).get(0).getGroup()); assertEquals(4, writes.get(0).get(0).getTeamSize());
+        assertEquals("G02", result.getGroup()); assertEquals(6, result.getTeamSize()); assertEquals(10, result.getLinesChanged());
+        rules.putPerson(new Person("person", "Renamed", Role.MEMBER)); rules.assign(store.load(URL).commits().get(0).author().key(), "person");
+        RepoStats local = loader.loadLocalData().get(0);
+        assertEquals("Renamed", local.getUserStats().get(0).getUsername());
+        assertEquals(2, authorshipReads.get()); assertEquals(1, rawReads.get()); assertEquals(1, clients.get());
+        assertEquals(Map.of("a", 1), remote.fileReads);
+    }
+
+    @Test void finalResultsOnlyReadLocalOriginalsForFailedOrPendingRepositories(@TempDir Path dir) throws Exception {
+        String failed = URL + "-failed", pending = URL + "-pending";
+        RawDataStore store = new RawDataStore(dir); Repository archived = initial();
+        new GitHubDataLoader(() -> List.of(failed), url -> new AuthorshipConfig(), () -> url -> archived,
+                ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate).loadData();
+        byte[] original = Files.readAllBytes(store.pathFor(failed)); Repository remote = initial();
+        Map<String, Integer> rawReads = new HashMap<>();
+        Map<String, AtomicInteger> authorshipReads = new java.util.concurrent.ConcurrentHashMap<>();
+        List<List<RepoStats>> writes = new ArrayList<>(), exports = new ArrayList<>();
+        GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL + ";G02;4", failed + ";G01;3", pending),
+                url -> { authorshipReads.computeIfAbsent(url, ignored -> new AtomicInteger()).incrementAndGet(); return new AuthorshipConfig(); },
+                () -> url -> { if (!url.equals(URL)) throw new IOException("Simulated offline repository"); return remote; },
+                writes::add, exports::add, url -> { rawReads.merge(url, 1, Integer::sum); return store.load(url); },
+                store::save, store::loadForUpdate);
+        List<RepoStats> results = loader.loadData();
+        assertEquals(1, loader.getLastConfirmedRepositoryCount());
+        assertEquals(List.of(failed, URL), results.stream().map(RepoStats::getUrl).toList());
+        assertEquals(Map.of(failed, 1, pending, 1), rawReads);
+        assertEquals(1, authorshipReads.get(URL).get()); assertEquals(1, authorshipReads.get(failed).get());
+        assertFalse(authorshipReads.containsKey(pending));
+        assertEquals(2, writes.size()); assertEquals(List.of(URL), writes.get(0).stream().map(RepoStats::getUrl).toList());
+        assertEquals(results, writes.get(1)); assertEquals(results, exports.get(0));
+        assertEquals(10, results.get(0).getLinesChanged());
+        assertArrayEquals(original, Files.readAllBytes(store.pathFor(failed)));
+    }
+
     @Test void updateCheckUsesAllComparisonPagesBeyondTwoHundredFiftyCommits(@TempDir Path dir) {
         Repository remote = initial(); RawDataStore store = new RawDataStore(dir); GitHubDataLoader loader = loader(remote, store, new AtomicInteger());
         loader.loadData(); String previous = "a";
