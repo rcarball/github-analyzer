@@ -385,12 +385,17 @@ in Eclipse). Detailed progress callbacks remain available to callers.
 
 Select a repository and click **Manage authorship…** to work entirely locally:
 
-1. The sortable **People** table shows participation, identity counts, Java commits
-   and observed contribution bars. Icons, contribution colors and thresholds match
-   the main results table; selection has an additional side marker. Search by
+1. The sortable **People** table gives names the most space and shows **Role**
+   (**Teacher**, **Teammate**, or the exceptional **Other**), identity counts, Java
+   commits and observed contribution bars. All observed authors remain visible,
+   including documentation-only and merge-only authors with zero Java commits.
+   The summary separates GitHub author identities, grouped people, Java contributors,
+   declared/inferred team size and expected share. **Contributors** counts teammates
+   with Java commits for the inferred team size; it does not filter the People table.
+   Icons, contribution colors and thresholds match the main results table; selection has an additional side marker. Search by
    name, email or GitHub account.
 2. Select one person to edit their visible name, representative email, GitHub account
-   and participation in the right-hand panel. Contact choices come from that person's
+   and role in the right-hand panel. Contact choices come from that person's
    original identities. All three name/contact dropdowns use native selection
    controls; **Edit name** temporarily enables inline custom-name editing, and
    **Done** finishes the edit. Empty contact
