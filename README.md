@@ -257,7 +257,10 @@ these are shown as `(0; changes pending)` so they are not mistaken for an up-to-
 The repository panel provides horizontal scrolling when needed to read long names
 and update suffixes in full, including while background checks update the labels.
 
-**Refresh from GitHub** downloads missing commits in the background. After the first
+**Refresh from GitHub** downloads missing commits in the background. The first
+download lists the default branch's complete history once, then follows the other
+branch heads only through commits not already downloaded. Shared ancestors and
+branch aliases do not cause another complete history listing. After that first
 complete download it follows each branch head and fetches only unknown SHAs and their
 missing parents, including side histories introduced by merges. Existing commit
 records remain unchanged. Default-branch files are pinned to the checked head SHA;
