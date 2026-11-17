@@ -121,12 +121,27 @@ java  -cp "build/eclipse:lib/*" es.deusto.prog3.githubanalyzer.Main
 ```
 
 ### CSV export compatibility
-`stats.csv` uses UTF-8 (with BOM) and `;` as its separator so it opens cleanly in
-common spreadsheet applications. Text fields are quoted, including values with
-semicolons, quotes or line breaks. Values that could be interpreted as spreadsheet
-formulas are exported as literal text. Decimal values use `.` independently of the
-system locale. When importing in Excel with Spanish regional settings, choose `;`
-as the delimiter and `.` as the decimal separator (or an English numeric locale).
+`stats.csv` targets Excel with Spanish (Spain) regional separators: UTF-8 with BOM,
+`;` between columns, **`,` as the decimal separator** and CRLF between records.
+The output is independent of the computer's language settings. Text fields remain
+quoted, including semicolons, quotes and embedded line breaks; formula-looking
+text remains escaped.
+
+`JAVA_CHURN_SHARE` and `EXPECTED_SHARE` remain numeric **fractions between 0 and 1**
+with six decimals, for example `0,250000`. They are not percentage strings: apply a
+percentage cell format in Excel to display 25%. Undefined shares remain `-`.
+Columns, their order and the underlying metrics are unchanged. Earlier exports
+used a decimal point; scripts reading new exports must now parse a decimal comma.
+
+If Excel uses custom or non-Spanish separators, import through **Data → From
+Text/CSV**, selecting UTF-8, `;` and Spanish (Spain) numeric interpretation.
+Microsoft documents [regional list/decimal separators](https://support.microsoft.com/es-es/excel/get-started/import-or-export-text-txt-or-csv-files)
+and [opening UTF-8 CSV files with BOM](https://support.microsoft.com/en-gb/excel/opening-csv-utf-8-files-correctly-in-excel).
+
+Percentages throughout the application—table cells, bars, tooltips and the
+authorship editor—use the same Spanish presentation: **`25,00 %`**, two decimals
+and one space before `%`. An unavailable percentage is `—`. Display rounding does
+not change contribution shares or badge boundaries.
 
 Repository URLs are deduplicated independently of HTTP/HTTPS and letter case.
 The first configured spelling is kept so existing downloads and author assignments

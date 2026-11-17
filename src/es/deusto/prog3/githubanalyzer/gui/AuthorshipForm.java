@@ -27,6 +27,7 @@ import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig;
 import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Person;
 import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role;
 import es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics;
+import es.deusto.prog3.githubanalyzer.format.NumberFormats;
 
 /** Detached editor: no configuration or results are changed until the dialog saves. */
 final class AuthorshipForm extends JPanel {
@@ -231,7 +232,7 @@ final class AuthorshipForm extends JPanel {
         }));
         people.setDefaultRenderer(Float.class, (table, value, selected, focus, row, col) ->
                 new javax.swing.table.DefaultTableCellRenderer().getTableCellRendererComponent(table,
-                        value == null || Float.isNaN((Float) value) ? "—" : String.format(java.util.Locale.ROOT, "%.2f%%", (Float) value * 100),
+                        NumberFormats.percentage(value == null ? Double.NaN : (Float) value),
                         selected, focus, row, col));
         JPanel tables = new JPanel(new GridLayout(2, 1, 8, 8));
         JPanel originalPanel = section("1. Select identities (Ctrl/Cmd or Shift), then unify or separate", identities);
@@ -361,7 +362,7 @@ final class AuthorshipForm extends JPanel {
         summary.setText(String.format("<html>Author identities: <b>%d</b> · People: <b>%d</b> · Contributors: <b>%d</b><br>"
                 + "Team size: <b>%d (%s)</b> · Expected share: <b>%s</b>%s</html>",
                 authors.size(), activePeople.size(), contributors, size, declaredTeamSize == null ? "inferred" : "declared",
-                size == 0 ? "—" : String.format(java.util.Locale.ROOT, "%.2f%%", 100.0 / size),
+                NumberFormats.percentage(size == 0 ? Double.NaN : 1.0 / size),
                 declaredTeamSize != null && declaredTeamSize != contributors ? " · Declared size differs from observed contributors" : ""));
         identityModel.fireTableDataChanged();
         peopleModel.fireTableDataChanged();

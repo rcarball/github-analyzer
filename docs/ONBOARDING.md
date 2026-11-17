@@ -150,7 +150,11 @@ and rejects stale artifacts from the other layout.
   their timestamp and the tree's pending counts distinguish them from current GitHub data.
 - **CSV export is spreadsheet-safe.** Use `DataManager.csvTextCell` for every text
   field: it quotes separators, quotes and line breaks, and makes formula-like values
-  literal. Keep metric values numeric; the export is UTF-8 with BOM and `;` separators.
+  literal. Keep metric values numeric; the export is UTF-8 with BOM, `;` separators,
+  decimal commas and CRLF record endings. Share columns remain unquoted fractions
+  with six decimals, not percentage strings. `NumberFormats` owns CSV fraction and
+  UI percentage presentation; all UI percentages use `25,00 %`, independent of the
+  default locale. Do not feed display rounding back into metric calculations.
 - **Legacy deserialization is filtered.** `DataManager` uses an `ObjectInputFilter`
   (allow-list + limits). If you add a serialized field type outside `java.util`/`java.lang`
   /`…domain`, extend the filter pattern.
@@ -158,7 +162,8 @@ and rejects stale artifacts from the other layout.
   (`\b…\b`) — see `GitHubDataLoader.countExternalMarkers`.
 - **Dates.** Repository overview timestamps use `yyyy-MMM-dd - HH:mm`; contributor
   table dates use `yyyy-MM-dd`, both with `Locale.ROOT`. CSV dates use `yyyy/MM/dd`
-  for spreadsheet compatibility.
+  with `Locale.ROOT` as well, keeping ASCII digits and Gregorian years even on a
+  computer configured with another calendar or numeral system.
 - **Resources** (icons) load from the **classpath** first (`/images/…`), filesystem
   fallback for the IDE — required for the JAR to work.
 - **GUI errors** are surfaced to the user (dialogs), not swallowed with `printStackTrace`.
@@ -227,7 +232,7 @@ Reviewed suggestions that do not justify changing behavior automatically:
 
 | Observation | Decision |
 | --- | --- |
-| CSV decimals in Spanish Excel | Keep the stable `.` numeric format; document explicit import settings. No interactive Excel validation was performed. |
+| CSV decimals in Spanish Excel | Export decimal commas, semicolons, UTF-8 BOM and CRLF records. Shared number formatting unifies all displayed percentages. Tests check complete numeric parsing using Spanish conventions and identical bytes under Spanish, English, Arabic and Thai locales. Interactive Excel validation has not been performed. |
 | Commit versus author date | Both dates are retained. Repository history uses committer dates; individual non-merge activity uses author dates. Legacy records remain readable with committer-date fallback; explicit refresh completes their active author dates once, retaining original file data. Unknown dates are omitted from extrema. |
 | Discovery cancellation | Already calls `SwingWorker.cancel(true)` and ignores late results; existing tests cover an uninterruptible source. Local discovery may take time to return from filesystem I/O; cancellation does not permit a late save. |
 | Manually edited group/team size | Closing the authorship editor synchronizes the reloaded metadata, including on cancellation. Metadata projections preserve complete metrics and do not mutate the previous view. Applying authorship also updates metadata for the other exported results. |
