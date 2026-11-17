@@ -151,6 +151,30 @@ its latest commit, and resolved review conversations. Force pushes and branch
 deletion are blocked. No approval is mandatory while this is a single-maintainer
 project.
 
+### Dependency inventory and vulnerability checks
+
+`dependencies.lock.json` records the reviewed Maven identities, licenses and SHA-256
+hashes of every JAR in `lib/`, including the components embedded in Jackson and
+JUnit. `sbom.cdx.json` is the reproducible CycloneDX 1.6 inventory for the source
+distribution; test-only components have `excluded` scope and are still scanned.
+
+```bash
+python3 scripts/dependencies.py verify           # Offline: JARs, metadata, local Eclipse classpath if present, and SBOM
+python3 scripts/check-dependencies.py            # Offline regression tests
+python3 scripts/dependencies.py verify-upstream  # Online: compare bytes with Maven Central
+python3 scripts/dependencies.py scan             # Online: check all components against OSV
+```
+
+The commands require Python 3.9+ and its standard library, with no extra packages.
+The **Dependency audit** workflow runs on pull requests, pushes to `master`, daily
+at 06:23 UTC, and manually. It saves the inventory, SBOM and JSON vulnerability
+report as workflow artifacts. Any active finding fails the check; an unavailable
+service or incomplete response also fails, rather than reporting a clean scan.
+The normal **Test and package** check also verifies the inventory and offline tests.
+
+See [Third-party notices](docs/THIRD_PARTY_NOTICES.md#dependency-review-and-updates)
+for review evidence, coverage limits and the dependency update procedure.
+
 ### Publish a release
 The version in `CITATION.cff` controls both build scripts. Update its `version`
 and `date-released` through a pull request before creating a release tag.

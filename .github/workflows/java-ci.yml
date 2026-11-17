@@ -35,6 +35,11 @@ jobs:
       - name: Check release layout compatibility
         run: python3 scripts/check-release-layout.py
 
+      - name: Test dependency audit and verify SBOM
+        run: |
+          python3 scripts/check-dependencies.py
+          python3 scripts/dependencies.py verify
+
       - name: Run automated tests
         run: ./scripts/run-tests.sh
 
