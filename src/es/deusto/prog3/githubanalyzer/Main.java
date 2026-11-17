@@ -24,33 +24,34 @@ import es.deusto.prog3.githubanalyzer.gui.MainWindow;
 import es.deusto.prog3.githubanalyzer.persistence.CsvExportException;
 
 public class Main {
-	
-    public static void main(String[] args) {
-        List<RepoStats> statsMap = new java.util.ArrayList<>();
-        CsvExportException csvFailure = null;
-        try {
-            GitHubDataLoader loader = GitHubDataLoader.getInstance();
-            loader.reloadRepositories();
-            statsMap = loader.loadLocalData();
-        } catch (CsvExportException ex) {
-            statsMap = ex.results();
-            csvFailure = ex;
-        } catch (RuntimeException ex) {
-            System.err.println("* Analysis pending: " + ex.getMessage());
-        } catch (ExceptionInInitializerError ex) {
-            String reason = ex.getCause() == null ? ex.toString() : ex.getCause().getMessage();
-            SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(null,
-                    "Could not load local settings. Check file access and restart.\n" + reason,
-                    "GitHub Analyzer", javax.swing.JOptionPane.ERROR_MESSAGE));
-            return;
-        }
 
-    	final List<RepoStats> list = statsMap;
+	public static void main(String[] args) {
+		List<RepoStats> statsMap = new java.util.ArrayList<>();
+		CsvExportException csvFailure = null;
+		try {
+			GitHubDataLoader loader = GitHubDataLoader.getInstance();
+			loader.reloadRepositories();
+			statsMap = loader.loadLocalData();
+		} catch (CsvExportException ex) {
+			statsMap = ex.results();
+			csvFailure = ex;
+		} catch (RuntimeException ex) {
+			System.err.println("* Analysis pending: " + ex.getMessage());
+		} catch (ExceptionInInitializerError ex) {
+			String reason = ex.getCause() == null ? ex.toString() : ex.getCause().getMessage();
+			SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(null,
+					"Could not load local settings. Check file access and restart.\n" + reason, "GitHub Analyzer",
+					javax.swing.JOptionPane.ERROR_MESSAGE));
+			return;
+		}
 
-        final CsvExportException exportFailure = csvFailure;
-        SwingUtilities.invokeLater(() -> {
-            MainWindow window = new MainWindow(list);
-            if (exportFailure != null) window.reportCsvExportFailure(exportFailure);
-        });
-   }
+		final List<RepoStats> list = statsMap;
+
+		final CsvExportException exportFailure = csvFailure;
+		SwingUtilities.invokeLater(() -> {
+			MainWindow window = new MainWindow(list);
+			if (exportFailure != null)
+				window.reportCsvExportFailure(exportFailure);
+		});
+	}
 }

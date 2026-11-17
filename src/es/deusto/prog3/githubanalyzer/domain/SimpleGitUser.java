@@ -19,43 +19,53 @@ package es.deusto.prog3.githubanalyzer.domain;
 import java.util.Objects;
 
 public class SimpleGitUser {
-    private final String name;
-    private final String email;
+	private final String name;
+	private final String email;
 
-    public SimpleGitUser(String name, String email) {
-        this.name = norm(name);
-        this.email = norm(email);
-    }
+	public SimpleGitUser(String name, String email) {
+		this.name = norm(name);
+		this.email = norm(email);
+	}
 
-    public String getName() { return name; }
-    public String getEmail() { return email; }
+	public String getName() {
+		return name;
+	}
 
-    private static String norm(String s) {
-        if (s == null) return "";
-        s = s.trim();
-        return s.isEmpty() ? "" : s.toLowerCase();
-    }
+	public String getEmail() {
+		return email;
+	}
 
-    private String key() {
-        if (!email.isEmpty()) return "e:" + email;
-        if (!name.isEmpty()) return "n:" + name;
-        return "unknown";
-    }
+	private static String norm(String s) {
+		if (s == null)
+			return "";
+		s = s.trim();
+		return s.isEmpty() ? "" : s.toLowerCase();
+	}
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof SimpleGitUser other)) return false;
-        return this.key().equals(other.key());
-    }
+	private String key() {
+		if (!email.isEmpty())
+			return "e:" + email;
+		if (!name.isEmpty())
+			return "n:" + name;
+		return "unknown";
+	}
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(key());
-    }
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof SimpleGitUser other))
+			return false;
+		return this.key().equals(other.key());
+	}
 
-    @Override
-    public String toString() {
-        return "SimpleGitUser[name=" + name + ", email=" + email + "]";
-    }
+	@Override
+	public int hashCode() {
+		return Objects.hash(key());
+	}
+
+	@Override
+	public String toString() {
+		return "SimpleGitUser[name=" + name + ", email=" + email + "]";
+	}
 }

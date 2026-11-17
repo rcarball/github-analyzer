@@ -23,22 +23,28 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 
 	private static final long serialVersionUID = 1L;
 	private String username, email;
-    private String personId;
-    private AuthorshipConfig.Role participationRole;
+	private String personId;
+	private AuthorshipConfig.Role participationRole;
 
-    public String getPersonId() { return personId; }
-    public AuthorshipConfig.Role getParticipationRole() { return participationRole; }
-    public void setPerson(String id, AuthorshipConfig.Role role) {
-        personId = id;
-        participationRole = role;
-    }
+	public String getPersonId() {
+		return personId;
+	}
+
+	public AuthorshipConfig.Role getParticipationRole() {
+		return participationRole;
+	}
+
+	public void setPerson(String id, AuthorshipConfig.Role role) {
+		personId = id;
+		participationRole = role;
+	}
+
 	private int commits, javaFiles;
 	private int added, deleted, changed;
 	private long firstCommit, lastCommit;
-	
-	public UserStats(String username, String email, int commits, 
-			         int javaFiles, int added, int deleted, 
-			         int changed, long firstCommit, long lastCommit) {		
+
+	public UserStats(String username, String email, int commits, int javaFiles, int added, int deleted, int changed,
+			long firstCommit, long lastCommit) {
 		this.username = username;
 		this.email = email;
 		this.commits = commits;
@@ -51,9 +57,9 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	}
 
 	public String getEmail() {
-        return email;
+		return email;
 	}
-	
+
 	public String getUsername() {
 		return username;
 	}
@@ -69,13 +75,13 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	public int getAdded() {
 		return added;
 	}
-	
+
 	public int getDeleted() {
 		return deleted;
 	}
-	
+
 	public int getChanged() {
-        return changed;
+		return changed;
 	}
 
 	public long getFirstCommit() {
@@ -89,14 +95,15 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	public int getChurn() {
 		return added + deleted;
 	}
-	
+
 	public int getNetLines() {
 		return added - deleted;
 	}
 
 	@Override
 	public int hashCode() {
-        if (personId != null) return personId.hashCode();
+		if (personId != null)
+			return personId.hashCode();
 		String e = (email == null) ? "" : email.toLowerCase(java.util.Locale.ROOT);
 		String u = (username == null) ? "" : username.toLowerCase(java.util.Locale.ROOT);
 		return Objects.hash(e, u);
@@ -111,16 +118,17 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		if (getClass() != obj.getClass())
 			return false;
 		UserStats other = (UserStats) obj;
-        if (personId != null || other.personId != null) return Objects.equals(personId, other.personId);
-		
+		if (personId != null || other.personId != null)
+			return Objects.equals(personId, other.personId);
+
 		String thisEmail = (this.email == null) ? "" : this.email.toLowerCase(java.util.Locale.ROOT);
 		String otherEmail = (other.email == null) ? "" : other.email.toLowerCase(java.util.Locale.ROOT);
 		String thisUser = (this.username == null) ? "" : this.username.toLowerCase(java.util.Locale.ROOT);
 		String otherUser = (other.username == null) ? "" : other.username.toLowerCase(java.util.Locale.ROOT);
-		
+
 		return thisEmail.equals(otherEmail) && thisUser.equals(otherUser);
 	}
-	
+
 	@Override
 	public String toString() {
 		return "UserStats [username=" + username + ", email=" + email + ", commits=" + commits + ", javaFiles="
@@ -128,33 +136,37 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 				+ firstCommit + ", lastCommit=" + lastCommit + "]";
 	}
 
-	
 	@Override
 	public int compareTo(UserStats o) {
-	    if (o == null) return -1;
+		if (o == null)
+			return -1;
 
-	    int thisChurn = this.added + this.deleted;
-	    int otherChurn = o.added + o.deleted;
+		int thisChurn = this.added + this.deleted;
+		int otherChurn = o.added + o.deleted;
 
-	    // 1) Churn
-	    int c = Integer.compare(otherChurn, thisChurn);
-	    if (c != 0) return c;
+		// 1) Churn
+		int c = Integer.compare(otherChurn, thisChurn);
+		if (c != 0)
+			return c;
 
-	    // 2) Commits
-	    c = Integer.compare(o.commits, this.commits);
-	    if (c != 0) return c;
+		// 2) Commits
+		c = Integer.compare(o.commits, this.commits);
+		if (c != 0)
+			return c;
 
-	    // 3) Files
-	    c = Integer.compare(o.javaFiles, this.javaFiles);
-	    if (c != 0) return c;
+		// 3) Files
+		c = Integer.compare(o.javaFiles, this.javaFiles);
+		if (c != 0)
+			return c;
 
-	    // 4) Last Commit
-	    c = Long.compare(o.lastCommit, this.lastCommit);
-	    if (c != 0) return c;
+		// 4) Last Commit
+		c = Long.compare(o.lastCommit, this.lastCommit);
+		if (c != 0)
+			return c;
 
-	    // 5) Username
-	    String u1 = (this.username == null) ? "" : this.username;
-	    String u2 = (o.username == null) ? "" : o.username;
-	    return u1.compareToIgnoreCase(u2);
+		// 5) Username
+		String u1 = (this.username == null) ? "" : this.username;
+		String u2 = (o.username == null) ? "" : o.username;
+		return u1.compareToIgnoreCase(u2);
 	}
 }

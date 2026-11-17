@@ -18,10 +18,10 @@ package es.deusto.prog3.githubanalyzer.domain;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.TreeMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable {
 
@@ -30,34 +30,62 @@ public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable
 	private String url;
 	private String name;
 	private String group;
-    private Integer teamSize;
-    private int authorCount;
-    private boolean analysisComplete;
-    private long dataCapturedAt;
-    public long getDataCapturedAt() { return dataCapturedAt; }
-    public void setDataCapturedAt(long capturedAt) { dataCapturedAt = capturedAt; }
+	private Integer teamSize;
+	private int authorCount;
+	private boolean analysisComplete;
+	private long dataCapturedAt;
 
-    public Integer getTeamSize() { return teamSize; }
-    public void setTeamSize(Integer size) {
-        if (size != null && size <= 0) throw new IllegalArgumentException("Team size must be positive.");
-        teamSize = size;
-    }
-    /** A metadata projection; downloaded metrics and contributor records are reused, not mutated. */
-    public RepoStats withSettings(RepositoryConfig settings) {
-        if (!Objects.equals(url, settings.url())) throw new IllegalArgumentException("Settings belong to another repository.");
-        try {
-            RepoStats copy = (RepoStats) super.clone();
-            copy.setGroup(settings.group());
-            copy.setTeamSize(settings.teamSize());
-            return copy;
-        } catch (CloneNotSupportedException ex) {
-            throw new AssertionError(ex);
-        }
-    }
-    public int getAuthorCount() { return authorCount; }
-    public void setAuthorCount(int count) { authorCount = count; }
-    public boolean isAnalysisComplete() { return analysisComplete; }
-    public void setAnalysisComplete(boolean complete) { analysisComplete = complete; }
+	public long getDataCapturedAt() {
+		return dataCapturedAt;
+	}
+
+	public void setDataCapturedAt(long capturedAt) {
+		dataCapturedAt = capturedAt;
+	}
+
+	public Integer getTeamSize() {
+		return teamSize;
+	}
+
+	public void setTeamSize(Integer size) {
+		if (size != null && size <= 0)
+			throw new IllegalArgumentException("Team size must be positive.");
+		teamSize = size;
+	}
+
+	/**
+	 * A metadata projection; downloaded metrics and contributor records are reused,
+	 * not mutated.
+	 */
+	public RepoStats withSettings(RepositoryConfig settings) {
+		if (!Objects.equals(url, settings.url()))
+			throw new IllegalArgumentException("Settings belong to another repository.");
+		try {
+			RepoStats copy = (RepoStats) super.clone();
+			copy.setGroup(settings.group());
+			copy.setTeamSize(settings.teamSize());
+			return copy;
+		} catch (CloneNotSupportedException ex) {
+			throw new AssertionError(ex);
+		}
+	}
+
+	public int getAuthorCount() {
+		return authorCount;
+	}
+
+	public void setAuthorCount(int count) {
+		authorCount = count;
+	}
+
+	public boolean isAnalysisComplete() {
+		return analysisComplete;
+	}
+
+	public void setAnalysisComplete(boolean complete) {
+		analysisComplete = complete;
+	}
+
 	private List<UserStats> userStats = new ArrayList<>();
 	private long creationDate;
 	private long firstCommit = -1;
@@ -73,9 +101,9 @@ public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable
 	// Bumped when cached metric calculations change. The original field name is
 	// retained for serialization compatibility; old caches use 0 and refresh once.
 	private int fileSnapshotVersion;
-	
+
 	private Map<String, Integer> fileTypeMap = new TreeMap<>();
-	
+
 	public int getBranches() {
 		return branches;
 	}
@@ -107,7 +135,7 @@ public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable
 	public void setUserStats(List<UserStats> userStats) {
 		this.userStats = userStats;
 	}
-	
+
 	public void addUserStats(UserStats user) {
 		if (user != null && !userStats.contains(user)) {
 			userStats.add(user);
@@ -146,7 +174,9 @@ public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable
 		this.commits = commits;
 	}
 
-	/** Number of unique merge commits (parents &gt; 1) among the analyzed commits. */
+	/**
+	 * Number of unique merge commits (parents &gt; 1) among the analyzed commits.
+	 */
 	public int getMergeCommits() {
 		return mergeCommits;
 	}
@@ -155,7 +185,10 @@ public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable
 		this.mergeCommits = mergeCommits;
 	}
 
-	/** Non-merge commits = total unique commits minus merge commits (never negative). */
+	/**
+	 * Non-merge commits = total unique commits minus merge commits (never
+	 * negative).
+	 */
 	public int getNonMergeCommits() {
 		return Math.max(0, commits - mergeCommits);
 	}
@@ -195,15 +228,15 @@ public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable
 	public boolean isPublic() {
 		return isPublic;
 	}
-	
+
 	public void setPublic(boolean isPublic) {
 		this.isPublic = isPublic;
 	}
-	
+
 	public String getGroup() {
 		return group;
 	}
-	
+
 	public void setGroup(String group) {
 		this.group = group;
 	}
@@ -225,23 +258,27 @@ public class RepoStats implements Serializable, Comparable<RepoStats>, Cloneable
 		return Objects.equals(url, other.url);
 	}
 
-    /** Presentation order by group, name and URL. This order is inconsistent
-     * with URL-only equality when repository metadata differs; use URL keys for
-     * identity and deduplication, and lists for presentation sorting.
-     */
+	/**
+	 * Presentation order by group, name and URL. This order is inconsistent with
+	 * URL-only equality when repository metadata differs; use URL keys for identity
+	 * and deduplication, and lists for presentation sorting.
+	 */
 	@Override
 	public int compareTo(RepoStats o) {
-		if (o == null) return 1;
+		if (o == null)
+			return 1;
 		String thisGroup = this.group == null ? "" : this.group;
-		String oGroup    = o.group    == null ? "" : o.group;
+		String oGroup = o.group == null ? "" : o.group;
 		int cmp = thisGroup.compareTo(oGroup);
-		if (cmp != 0) return cmp;
+		if (cmp != 0)
+			return cmp;
 		String thisName = this.name == null ? "" : this.name;
-		String oName    = o.name    == null ? "" : o.name;
+		String oName = o.name == null ? "" : o.name;
 		cmp = thisName.compareTo(oName);
-		if (cmp != 0) return cmp;
+		if (cmp != 0)
+			return cmp;
 		String thisUrl = this.url == null ? "" : this.url;
-		String oUrl    = o.url    == null ? "" : o.url;
+		String oUrl = o.url == null ? "" : o.url;
 		return thisUrl.compareTo(oUrl);
 	}
 
