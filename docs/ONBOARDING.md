@@ -80,6 +80,48 @@ python3 scripts/check-release-layout.py  # Python 3, Bash and sha256sum required
 CI runs this check before the Java tests; it also verifies failure propagation
 and rejects stale artifacts from the other layout.
 
+### Large Java source measurements
+
+Run `./scripts/benchmark-java-files.sh 4ded5fd` to compile both that revision and
+the working source in temporary directories using the same bundled libraries.
+The probe is offline, uses real library content objects and production download/
+calculation paths, and lives outside the normal test suite and runnable JAR.
+It requires a JDK exposing `com.sun.management.ThreadMXBean` allocation counters.
+
+Local measurement: macOS ARM64, OpenJDK 25.0.5, Java 17 compilation target,
+`-Xbatch -Xms512m -Xmx512m`, eight warm-up operations and five measured operations
+per case in separate baseline/current JVMs. The table shows median calculation
+latency and median bytes allocated by the calling thread per operation, converted
+to MiB. Input strings are prepared before measurement. These are local observations,
+not CI timing thresholds, peak heap/RSS measurements or a general speed guarantee.
+
+| Input | UTF-8 MiB | Before, ms | After, ms | Before allocation, MiB | After allocation, MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Many short lines, markers and CRLF | 8.00 | 190.208 | 30.527 | 100.574 | 0.003 |
+| One long line, no markers | 8.00 | 160.207 | 18.737 | 16.003 | 0.003 |
+| Unicode, markers and mixed CRLF/LF | 9.04 | 241.264 | 35.428 | 171.854 | 0.003 |
+
+The source scan counts lines and markers together without allocating a string for
+every line or a result object for every match. It checks literal marker candidates
+and reuses the existing regex with transparent region bounds so adjacent Unicode
+word characters still prevent a standalone match. CR, LF, CRLF and trailing-line
+semantics match `String.lines()`. Cancellation is checked periodically, including
+inside a single long line, and the interrupt flag is retained.
+
+Loading is measured separately and deliberately unchanged: its allocation remains
+34.669 MiB for the ASCII inputs and 73.237 MiB for the Unicode input. The original
+text remains in the saved snapshot for offline reprocessing; no raw format or
+migration changes were made. Avoiding the library's extra decoded-byte copy would
+require a different loading strategy; the deprecated encoded-content accessor is
+not introduced. The current [library documentation](https://hub4j.github.io/github-api/apidocs/org.kohsuke.github.api/org/kohsuke/github/GHContent.html)
+recommends `read()` for content access.
+
+Three regression tests compare 1,500 seeded randomized texts and explicit Unicode/
+line-boundary cases with the previous expressions, verify exact metrics on large
+multi-line and single-line files without modifying their original text, and verify
+cancellation for empty and long source text without any commits. Existing download,
+UTF-8, persistence and CSV tests continue to exercise the unchanged surrounding flow.
+
 ### Test suite review
 
 Reviewed all 18 JUnit test classes against their production call sites and

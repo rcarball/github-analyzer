@@ -10,6 +10,51 @@ class StatisticsCalculatorTest {
     private static final String URL = "https://github.com/course/project";
     private static final AuthorIdentity A = new AuthorIdentity("Name", "school@example.org", "first");
     private static final AuthorIdentity B = new AuthorIdentity("Alias", "home@example.org", "second");
+    @Test void sourceScanMatchesLegacyLinesAndUnicodeWordBoundaries() {
+        List<String> inputs = new ArrayList<>(List.of("", "\n", "\r", "\r\n", "a\r\nb\rc\nd\n", "IAG", "FUENTE-EXTERNA\r\n",
+                "IAGIAG _IAG IAG_ 1IAG IAG1 IAG-FUENTE-EXTERNA", "éIAG IAG漢 \u0301IAG IAG\u0301 😀IAG😀 𐐀IAG IAG𐐀",
+                "IAG\u0085FUENTE-EXTERNA\u2028IAG\u2029", "FUENTE-\nEXTERNA", "IAG\n\nFUENTE-EXTERNA"));
+        String[] tokens = {"IAG", "FUENTE-EXTERNA", "iag", "x", "_", "7", "é", "漢", "\u0301", "𐐀", "😀", "\r", "\n", " ", "-", "\u2028", "\u0085", "\ud800", "\udc00"};
+        Random random = new Random(5317);
+        for (int sample = 0; sample < 1500; sample++) {
+            StringBuilder text = new StringBuilder();
+            for (int i = 0, count = random.nextInt(50); i < count; i++) text.append(tokens[random.nextInt(tokens.length)]);
+            inputs.add(text.toString());
+        }
+        var legacy = java.util.regex.Pattern.compile("\\bIAG\\b|\\bFUENTE-EXTERNA\\b");
+        for (String input : inputs) {
+            var actual = StatisticsCalculator.sourceMetrics(input);
+            assertEquals(input.lines().count(), actual.lines(), "Line boundaries changed: " + input);
+            assertEquals(input.lines().mapToLong(line -> legacy.matcher(line).results().count()).sum(), actual.references(),
+                    "Marker boundaries changed: " + input);
+        }
+    }
+
+    @Test void largeMultiLineAndSingleLineSourcesKeepExactMetricsAndOriginalText() {
+        String multi = "// IAG FUENTE-EXTERNA\r\nclass Big {}\n".repeat(100_000);
+        String single = "x".repeat(2 * 1024 * 1024) + " IAG";
+        var raw = new RepositorySnapshot(1, URL, "project", 1, 1, 1, true, "main", Map.of(), List.of(),
+                List.of(new RepositorySnapshot.SourceFile("src/Large.JAVA", multi),
+                        new RepositorySnapshot.SourceFile("src/OneLine.java", single), new RepositorySnapshot.SourceFile("README.md", null)));
+        RepoStats stats = StatisticsCalculator.calculate(raw, new RepositoryConfig(URL, "", null), new AuthorshipConfig(), id -> Role.MEMBER);
+        assertEquals(200_001, stats.getCodeLines()); assertEquals(200_001, stats.getExternalReferences());
+        assertEquals(Map.of(".java", 2, ".md", 1), stats.getFileTypeMap());
+        assertSame(multi, raw.sourceFiles().get(0).javaContent()); assertSame(single, raw.sourceFiles().get(1).javaContent());
+    }
+
+    @Test void sourceCalculationHonorsCancellationEvenWithoutCommitsOrLineBreaks() {
+        for (String text : List.of("", "x".repeat(2 * 1024 * 1024))) {
+            var raw = new RepositorySnapshot(1, URL, "project", 1, 1, 1, true, "main", Map.of(), List.of(),
+                    List.of(new RepositorySnapshot.SourceFile("Large.java", text)));
+            try {
+                Thread.currentThread().interrupt();
+                assertThrows(java.util.concurrent.CancellationException.class,
+                        () -> StatisticsCalculator.calculate(raw, new RepositoryConfig(URL, "", null), new AuthorshipConfig(), id -> Role.MEMBER));
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally { Thread.interrupted(); }
+        }
+    }
+
     @Test void authorActivitySurvivesRebaseDatesWhileRepositoryTracksCommitterDates() {
         var first = new RepositorySnapshot.Commit("a", A, 5000, List.of(), List.of(), 1000L);
         var next = new RepositorySnapshot.Commit("b", A, 4000, List.of("a"), List.of(), 2000L);

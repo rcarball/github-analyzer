@@ -48,8 +48,9 @@ public final class StatisticsCalculator {
             String extension = name.substring(dot).toLowerCase(Locale.ROOT);
             types.merge(extension, 1, Integer::sum);
             if (extension.equals(".java")) {
-                lines += (int) file.javaContent().lines().count();
-                references += file.javaContent().lines().mapToInt(StatisticsCalculator::countExternalMarkers).sum();
+                SourceMetrics metrics = sourceMetrics(file.javaContent());
+                lines += metrics.lines();
+                references += metrics.references();
             }
         }
         repo.setCodeLines(lines); repo.setExternalReferences(references); repo.setFileTypeMap(types);
@@ -116,9 +117,43 @@ public final class StatisticsCalculator {
         return result;
     }
 
+    record SourceMetrics(int lines, int references) { }
+
+    /** Scan the retained text without creating strings or match-result objects for each line. */
+    static SourceMetrics sourceMetrics(String text) {
+        checkInterrupted();
+        int lines = 0, references = 0, checkedAt = 0;
+        // Inspect neighboring characters too: an embedded identifier must not become a standalone marker.
+        var matcher = MARKERS.matcher(text).useTransparentBounds(true);
+        for (int index = 0; index < text.length(); index++) {
+            if (index - checkedAt >= 4096) {
+                checkInterrupted();
+                checkedAt = index;
+            }
+            char current = text.charAt(index);
+            if (current == '\r' || current == '\n') {
+                lines++;
+                if (current == '\r' && index + 1 < text.length() && text.charAt(index + 1) == '\n') index++;
+            } else {
+                String marker = current == 'I' ? "IAG" : current == 'F' ? "FUENTE-EXTERNA" : null;
+                if (marker != null && text.startsWith(marker, index)
+                        && matcher.region(index, index + marker.length()).matches()) {
+                    references++;
+                    index += marker.length() - 1;
+                }
+            }
+        }
+        if (!text.isEmpty() && text.charAt(text.length() - 1) != '\r' && text.charAt(text.length() - 1) != '\n') lines++;
+        checkInterrupted();
+        return new SourceMetrics(lines, references);
+    }
+
     static int countExternalMarkers(String line) {
         if (line == null) return 0;
-        return (int) MARKERS.matcher(line).results().count();
+        var matcher = MARKERS.matcher(line);
+        int count = 0;
+        while (matcher.find()) count++;
+        return count;
     }
     private static void checkInterrupted() {
         if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Calculation cancelled.");
