@@ -5,7 +5,7 @@ REM Produces dist\github-analyzer-<version>.jar with the application classes, al
 REM all third-party libraries bundled inside — no lib\ folder needed at runtime.
 REM
 REM Run it (from any directory) with:
-REM     java -jar dist\github-analyzer-1.3.1.jar
+REM     java -jar dist\github-analyzer-1.4.0.jar
 REM Keep a resources\ folder (with your config.properties and repositories.txt)
 REM next to the jar — those files stay EXTERNAL and editable (never bundled).
 setlocal

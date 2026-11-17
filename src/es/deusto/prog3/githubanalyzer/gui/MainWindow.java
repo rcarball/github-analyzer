@@ -101,7 +101,7 @@ public class MainWindow extends JFrame {
     private JLabel lblAuthors;
 	private JLabel lblStatus = new JLabel(" ");
 	private SimpleDateFormat dateFormatShort = new SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
-	private SimpleDateFormat dateFormatLong = new SimpleDateFormat("yyyy-MMM-dd - hh:mm", java.util.Locale.ROOT);
+	private SimpleDateFormat dateFormatLong = new SimpleDateFormat("yyyy-MMM-dd - HH:mm", java.util.Locale.ROOT);
 	private JTable jTableUserStats;
 	private DefaultTableModel tableModelUserStats;
 	private JTree jTreeFileType;
@@ -260,6 +260,8 @@ public class MainWindow extends JFrame {
 		jTreeRepos.setRowHeight(23);
 		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
 			private static final long serialVersionUID = 1L;
+            private final Map<String, ImageIcon> icons = new java.util.HashMap<>();
+            { putClientProperty("html.disable", Boolean.TRUE); }
 
 			@Override
 			public Component getTreeCellRendererComponent(JTree tree, Object value, 
@@ -267,7 +269,8 @@ public class MainWindow extends JFrame {
 					boolean leaf, int row, boolean hasFocus) {
 				Component component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
 
-				String iconFile = "github.png";
+				setToolTipText(null);
+                String iconFile = "github.png";
 
 				DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
 				Object userObject = node.getUserObject();
@@ -303,15 +306,26 @@ public class MainWindow extends JFrame {
 				    setBackgroundSelectionColor(new Color(0, 120, 215));
 				}
 
-				ImageIcon icon = loadIcon(iconFile);
-				if (icon != null) this.setIcon(scaleIcon(icon));
+				ImageIcon icon = icons.computeIfAbsent(iconFile, name -> {
+                    ImageIcon loaded = loadIcon(name);
+                    return loaded == null ? null : scaleIcon(loaded);
+                });
+                setIcon(icon);
 
 				return component;
 			}
 		});
 
 		jTreeRepos.addTreeSelectionListener(e -> {
-			DefaultMutableTreeNode selectedNode = ((DefaultMutableTreeNode) e.getPath().getLastPathComponent());
+            if (jTreeRepos.getSelectionPath() == null) {
+                loadRepoStats(null);
+                selectedRepo = null;
+                return;
+            }
+            boolean selectionAdded = Arrays.stream(e.getPaths())
+                    .anyMatch(path -> path.equals(jTreeRepos.getSelectionPath()) && e.isAddedPath(path));
+            if (!selectionAdded) return;
+			DefaultMutableTreeNode selectedNode = ((DefaultMutableTreeNode) jTreeRepos.getSelectionPath().getLastPathComponent());
 			Object nodeValue = selectedNode.getUserObject();
 
 			if (nodeValue instanceof RepoStats) {
@@ -526,11 +540,7 @@ public class MainWindow extends JFrame {
 						showRefreshFailedDialog();
 					} catch (ExecutionException ex) {
 						Throwable cause = ex.getCause();
-						if (cause instanceof IllegalStateException) {
-							showRefreshFailedDialog(cause.getMessage());
-						} else {
-							showRefreshFailedDialog();
-						}
+                        showRefreshFailedDialog(cause == null ? ex.getMessage() : cause.getMessage());
 					} finally {
 						setCursor(Cursor.getDefaultCursor());
                         setStatusText(" ");
@@ -700,7 +710,8 @@ public class MainWindow extends JFrame {
 	        // 1) Safe value and formatted text
 	        Object v = (value == null) ? "" : value;
 	        String text = formatCellValue(v);
-	        label.setText(text.startsWith("<html>") ? text : (" " + text));
+	        label.putClientProperty("html.disable", Boolean.TRUE);
+	        label.setText(" " + text);
 
 	        // 2) Alignment rules (decided once, no redundant overrides)
 	        label.setHorizontalAlignment(computeAlignment(v, column));
@@ -1177,7 +1188,8 @@ public class MainWindow extends JFrame {
             @Override protected List<RepoStats> doInBackground() { return GitHubDataLoader.getInstance().loadLocalData(); }
             @Override protected void refreshFinished() {
                 try { updateReposJTree(get()); selectedRepo = null; loadRepoStats(null); setStatusText("Local statistics updated. Download missing data with Refresh from GitHub."); }
-                catch (Exception ex) { showRefreshFailedDialog(errorMessage(ex)); }
+                catch (InterruptedException ex) { Thread.currentThread().interrupt(); showRefreshFailedDialog(errorMessage(ex)); }
+                catch (ExecutionException | RuntimeException ex) { showRefreshFailedDialog(errorMessage(ex)); }
                 checkForUpdates();
             }
         }.execute();
@@ -1188,7 +1200,7 @@ public class MainWindow extends JFrame {
     }
 
     private void populateAuthorshipDialog(JDialog dialog, AuthorshipDiscoveryPanel.Result result, AuthorshipConfig[] accepted) {
-        AuthorshipForm form = new AuthorshipForm(result.source(), result.rules(), result.teamSize());
+        AuthorshipForm form = new AuthorshipForm(result.authors(), result.rules(), result.teamSize(), result.source());
         dialog.getContentPane().removeAll();
         dialog.add(form, BorderLayout.CENTER);
         JButton save = new JButton("Apply and recalculate locally");
@@ -1254,6 +1266,7 @@ public class MainWindow extends JFrame {
 		ConfigurationForm form = new ConfigurationForm(cfg);
 
 		JDialog dialog = new JDialog(this, "Configuration", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
 		dialog.getContentPane().add(form, BorderLayout.CENTER);
 
 		JButton save = new JButton("Save");
@@ -1495,7 +1508,7 @@ public class MainWindow extends JFrame {
 	 * the caller decides). Package-visible for unit testing.
 	 *
 	 * <p>With {@code expected = 1/n} (n = declared or inferred team size, min 1) and
-	 * {@code share = round(userChurn/teamChurn, 4)} where {@code teamChurn} is the
+	 * {@code share = userChurn/teamChurn} where {@code teamChurn} is the
 	 * total churn of those same active contributors, the badge is chosen over
 	 * contiguous ranges: {@code share < 0.5*expected} → VERY_LOW,
 	 * {@code < 0.8*expected} → BELOW, {@code <= 1.2*expected} → BALANCED,
@@ -1509,24 +1522,14 @@ public class MainWindow extends JFrame {
 	        return ContributionBadge.VERY_LOW;
 	    }
 
-	    int n = Math.max(1, contributorCount);
-	    double expected = 1.0 / n;
-
-	    // User share of the team Java churn (ratio in [0..1]).
-	    double shareRaw = (teamChurn <= 0) ? 0.0 : (userChurn / (double) teamChurn);
-
-	    // Keep the classification consistent with the GUI: the GUI shows share as
-	    // a percentage with 2 decimals (e.g., 62.47%), i.e. the ratio rounded to 4.
-	    double share = Math.round(shareRaw * 10000.0) / 10000.0;
-
-	    double veryLow = expected * THRESHOLD_VERY_LOW;
-	    double okMin   = expected * THRESHOLD_BELOW;
-	    double okMax   = expected * THRESHOLD_HIGH;
-
-	    if (share < veryLow) return ContributionBadge.VERY_LOW;
-	    else if (share < okMin) return ContributionBadge.BELOW;
-	    else if (share <= okMax) return ContributionBadge.BALANCED;
-	    else return ContributionBadge.HIGH;
+        if (teamChurn <= 0 || userChurn < 0 || commitsJava < 0) return ContributionBadge.VERY_LOW;
+        // Cross-multiply the exact ratios. The product of two positive ints fits
+        // in long; divide the thresholds to avoid overflow even for huge teams.
+        long weightedChurn = (long) userChurn * Math.max(1, contributorCount);
+        if (weightedChurn < (teamChurn + 1L) / 2) return ContributionBadge.VERY_LOW;
+        if (weightedChurn < (4L * teamChurn + 4) / 5) return ContributionBadge.BELOW;
+        if (weightedChurn <= 6L * teamChurn / 5) return ContributionBadge.BALANCED;
+        return ContributionBadge.HIGH;
 	}
 
 	/**

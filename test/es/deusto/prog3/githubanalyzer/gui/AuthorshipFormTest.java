@@ -267,8 +267,7 @@ class AuthorshipFormTest {
             assertFalse(form.unifyButton.isEnabled());
             form.identities.setRowSelectionInterval(0, 1);
             assertTrue(form.unifyButton.isEnabled()); form.unifyButton.doClick();
-            assertEquals(1, form.contributorCount()); assertEquals(2, form.people.getValueAt(0, 4));
-            assertEquals(1f, form.people.getValueAt(0, 5));
+            assertEquals(1, form.contributorCount());
             form.people.setRowSelectionInterval(0, 0);
             assertEquals(2, form.identities.getSelectedRowCount()); assertTrue(form.separateButton.isEnabled());
             form.separateButton.doClick(); assertEquals(2, form.contributorCount());
@@ -276,6 +275,54 @@ class AuthorshipFormTest {
             form.restoreButton.doClick(); assertEquals(2, form.contributorCount());
             assertNotEquals(form.snapshot().personFor(a).id(), form.snapshot().personFor(b).id());
             assertTrue(original.assignments().isEmpty()); assertEquals(List.of(first, second), raw.commits());
+        });
+    }
+
+    @Test void untrustedNamesAndChoicesNeverActivateSwingHtml() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            String attack = "<html><img src='http://127.0.0.1/should-not-load'>student";
+            AuthorIdentity identity = new AuthorIdentity(attack, "student@example.org", "");
+            AuthorshipForm form = new AuthorshipForm(List.of(new AuthorSummary(identity, 1)), new AuthorshipConfig(), null);
+            for (javax.swing.JTable table : List.of(form.identities, form.people)) {
+                javax.swing.JLabel label = (javax.swing.JLabel) table.prepareRenderer(table.getCellRenderer(0, 0), 0, 0);
+                assertEquals(attack, label.getText());
+                assertNull(label.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey));
+            }
+            JComboBox<?> combo = editPerson(form, 0, 0);
+            @SuppressWarnings("unchecked")
+            javax.swing.ListCellRenderer<Object> renderer = (javax.swing.ListCellRenderer<Object>) combo.getRenderer();
+            javax.swing.JLabel choice = (javax.swing.JLabel) renderer.getListCellRendererComponent(new javax.swing.JList<>(), attack, 0, false, false);
+            assertNull(choice.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey));
+        });
+    }
+
+
+    @Test void asynchronousPreviewUsesLatestAssignmentsAndKeepsEdtResponsive() throws Exception {
+        var completed = new java.util.concurrent.CountDownLatch(1);
+        var view = new java.util.concurrent.atomic.AtomicReference<AuthorshipForm>();
+        SwingUtilities.invokeAndWait(() -> {
+            var first = new es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot.Commit("first", a, 1000, List.of(), List.of(new es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot.ChangedFile("Same.java", "", 10, 0)));
+            var second = new es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot.Commit("second", b, 2000, List.of("first"), List.of(new es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot.ChangedFile("Same.java", "", 20, 0)));
+            var raw = new es.deusto.prog3.githubanalyzer.domain.RepositorySnapshot(1, "https://github.com/course/project", "project", 3000, 1, 2000, true, "main", java.util.Map.of("main", "second"), List.of(first, second), List.of());
+            AuthorshipForm form = new AuthorshipForm(raw, new AuthorshipConfig(), null);
+            view.set(form);
+            form.identities.setRowSelectionInterval(0, 1); form.unifySelected();
+            form.separateSelected();
+            form.identities.setRowSelectionInterval(0, 1); form.unifySelected();
+            form.previewStatus.addPropertyChangeListener("text", event -> {
+                if (event.getNewValue().toString().startsWith("Local preview ·")) completed.countDown();
+            });
+            form.people.setRowSelectionInterval(0, 0);
+            assertTrue(form.people.editCellAt(0, 0));
+            assertTrue(form.previewStatus.getText().startsWith("Calculating"));
+        });
+        assertTrue(completed.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> {
+            assertEquals(1, view.get().contributorCount());
+            assertEquals(0, view.get().people.getSelectedRow());
+            assertTrue(view.get().people.isEditing(), "Preview completion must not interrupt a name edit");
+            assertEquals(2, view.get().people.getValueAt(0, 4));
+            assertEquals(1f, view.get().people.getValueAt(0, 5));
         });
     }
 }

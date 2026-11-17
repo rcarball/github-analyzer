@@ -68,13 +68,19 @@ public class Configurator {
 	private String teacherUser = "";
 	private String teacherEmail = "";
 	private final Path baseDir;
+    private final java.util.function.Supplier<String> environmentToken;
 
 	private Configurator() {
 		this(BASE_DIR);
 	}
 
 	/** Independent configuration rooted in a controlled directory (used by tests). */
-	Configurator(Path baseDir) {
+    Configurator(Path baseDir) {
+        this(baseDir, () -> System.getenv("GITHUB_TOKEN"));
+    }
+
+    Configurator(Path baseDir, java.util.function.Supplier<String> environmentToken) {
+        this.environmentToken = environmentToken;
 		this.baseDir = baseDir;
 		ensureResources();
 		load();
@@ -111,14 +117,17 @@ public class Configurator {
 			Path cfg = Paths.get(resolvePath(PROPERTIES_FILE));
 			boolean firstRun = !Files.exists(cfg);
 			if (firstRun) {
-				Files.writeString(cfg, DEFAULT_CONFIG, StandardCharsets.UTF_8);
+				writeAtomically(cfg, writer -> writer.write(DEFAULT_CONFIG), true);
 				System.out.format("- Created default config at '%s'%n", cfg);
 			}
+            if (Files.isRegularFile(cfg) && Files.getFileStore(cfg).supportsFileAttributeView("posix")) {
+                Files.setPosixFilePermissions(cfg, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+            }
 			Path repos = Paths.get(resolvePath(REPOSITORIES_FILE));
 			// A missing list in an existing installation is an error, not a new
 			// empty configuration that may replace the user's cached statistics.
 			if (firstRun && !Files.exists(repos)) {
-				Files.writeString(repos, DEFAULT_REPOS, StandardCharsets.UTF_8);
+				writeAtomically(repos, writer -> writer.write(DEFAULT_REPOS), false);
 				System.out.format("- Created default repositories file at '%s'%n", repos);
 			}
 		} catch (Exception ex) {
@@ -159,8 +168,56 @@ public class Configurator {
 
     /** Use the Properties encoder to preserve backslashes, whitespace and control characters. */
     static void storeProperties(Properties values, Path destination) throws IOException {
-        try (BufferedWriter writer = Files.newBufferedWriter(destination, StandardCharsets.UTF_8)) {
-            values.store(writer, "GitHub Analyzer configuration.\nIMPORTANT: never commit this file with a real token.");
+        writeAtomically(destination, writer -> values.store(writer,
+                "GitHub Analyzer configuration.\nIMPORTANT: never commit this file with a real token."), true);
+    }
+
+    @FunctionalInterface
+    private interface WriteOperation { void write(BufferedWriter writer) throws IOException; }
+
+    private static void writeAtomically(Path destination, WriteOperation operation, boolean privateFile) throws IOException {
+        Path parent = destination.toAbsolutePath().getParent();
+        boolean posix = Files.getFileStore(parent).supportsFileAttributeView("posix");
+        Path temporary = posix && privateFile
+                ? Files.createTempFile(parent, ".config-", ".tmp",
+                        java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                                java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")))
+                : Files.createTempFile(parent, ".settings-", ".tmp");
+        try {
+            try (BufferedWriter writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
+                operation.write(writer);
+            }
+            // Do not replace directories, even on systems that allow renaming over
+            // an empty directory. Such paths are configuration errors.
+            if (Files.isDirectory(destination)) throw new IOException("Destination is a directory: " + destination);
+            try {
+                Files.move(temporary, destination, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+                Files.move(temporary, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    /** Save the dialog as one operation, restoring the list if configuration saving fails.
+     * Each replacement is atomic; a process crash between the two replacements is
+     * not a filesystem transaction.
+     */
+    public synchronized void saveSettings(String user, String token, String tUser, String tEmail, String repositories) {
+        if (repositories == null) {
+            save(user, token, tUser, tEmail);
+            return;
+        }
+        String previous = readRepositoriesText();
+        saveRepositories(repositories);
+        try {
+            save(user, token, tUser, tEmail);
+        } catch (RuntimeException ex) {
+            try { saveRepositories(previous); }
+            catch (RuntimeException rollback) { ex.addSuppressed(rollback); }
+            throw ex;
         }
     }
 
@@ -176,7 +233,7 @@ public class Configurator {
 	/** Overwrites repositories.txt with the given text. */
 	public synchronized void saveRepositories(String text) {
 		try {
-			Files.writeString(Paths.get(getRepositoriesFile()), text == null ? "" : text, StandardCharsets.UTF_8);
+			writeAtomically(Paths.get(getRepositoriesFile()), writer -> writer.write(text == null ? "" : text), false);
 		} catch (Exception ex) {
 			throw new IllegalStateException("Could not save the repository list.", ex);
 		}
@@ -234,9 +291,9 @@ public class Configurator {
 
     public boolean isConfigured() {
 		return githubUser != null &&
-			   githubToken != null &&
-			   !githubUser.isEmpty() &&
-			   !githubToken.isEmpty();
+               getGithubToken() != null &&
+               !githubUser.isBlank() &&
+               !getGithubToken().isBlank();
 	}
 
 	public static Configurator getInstance() {
@@ -247,9 +304,15 @@ public class Configurator {
 		return githubUser;
 	}
 
-	public String getGithubToken() {
-		return githubToken;
-	}
+    /** Environment credentials take precedence and are never written to disk. */
+    public String getGithubToken() {
+        String token = environmentToken.get();
+        return token == null || token.isBlank() ? githubToken : token.trim();
+    }
+
+    public String getStoredGithubToken() {
+        return githubToken;
+    }
 
 
 	public String getStatsFile() {

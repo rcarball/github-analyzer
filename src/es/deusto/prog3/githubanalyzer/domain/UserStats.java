@@ -97,8 +97,8 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 	@Override
 	public int hashCode() {
         if (personId != null) return personId.hashCode();
-		String e = (email == null) ? "" : email.toLowerCase();
-		String u = (username == null) ? "" : username.toLowerCase();
+		String e = (email == null) ? "" : email.toLowerCase(java.util.Locale.ROOT);
+		String u = (username == null) ? "" : username.toLowerCase(java.util.Locale.ROOT);
 		return Objects.hash(e, u);
 	}
 
@@ -113,10 +113,10 @@ public class UserStats implements Serializable, Comparable<UserStats> {
 		UserStats other = (UserStats) obj;
         if (personId != null || other.personId != null) return Objects.equals(personId, other.personId);
 		
-		String thisEmail = (this.email == null) ? "" : this.email.toLowerCase();
-		String otherEmail = (other.email == null) ? "" : other.email.toLowerCase();
-		String thisUser = (this.username == null) ? "" : this.username.toLowerCase();
-		String otherUser = (other.username == null) ? "" : other.username.toLowerCase();
+		String thisEmail = (this.email == null) ? "" : this.email.toLowerCase(java.util.Locale.ROOT);
+		String otherEmail = (other.email == null) ? "" : other.email.toLowerCase(java.util.Locale.ROOT);
+		String thisUser = (this.username == null) ? "" : this.username.toLowerCase(java.util.Locale.ROOT);
+		String otherUser = (other.username == null) ? "" : other.username.toLowerCase(java.util.Locale.ROOT);
 		
 		return thisEmail.equals(otherEmail) && thisUser.equals(otherUser);
 	}

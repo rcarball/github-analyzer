@@ -173,4 +173,18 @@ public class ContributionMetricsTest {
         explicitMember.setPerson("explicit-member", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER);
         assertFalse(ContributionMetrics.isTeacher(explicitMember, config), "Explicit per-repository roles still take precedence");
     }
+
+    @Test void teacherEmailRequiresTheCompleteAddress(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) {
+        Configurator config = new Configurator(dir);
+        config.save("user", "token", "professor", "jperez@deusto.es");
+        for (String email : List.of("jperez@gmail.com", "jperez@alumnos.deusto.es", "jperez", "")) {
+            UserStats student = new UserStats("student", email, 1, 1, 10, 0, 10, 0, 0);
+            assertFalse(ContributionMetrics.isTeacher(student, config), email);
+            assertEquals(es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER,
+                    ContributionMetrics.defaultRole(new es.deusto.prog3.githubanalyzer.domain.AuthorIdentity("student", email, "student"), config));
+        }
+        assertTrue(ContributionMetrics.isTeacher(new UserStats("other", " JPEREZ@DEUSTO.ES ", 1, 1, 1, 0, 1, 0, 0), config));
+        assertTrue(ContributionMetrics.isTeacher(new UserStats("PROFESSOR", "other@example.org", 1, 1, 1, 0, 1, 0, 0), config));
+    }
+
 }

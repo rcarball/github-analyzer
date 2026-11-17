@@ -119,8 +119,8 @@ public class MainWindowInterpretationTest {
     }
 
     @Test
-    public void shareIsRoundedToFourDecimals() {
-        // 1/8 = 0.125 exactly -> BELOW boundary, confirming the rounding path.
+    public void exactOneEighthStartsTheBelowBand() {
+        // 1/8 = 0.125 exactly -> BELOW boundary.
         assertEquals(ContributionBadge.BELOW, MainWindow.classifyBadge(1, 2, 8, N));
     }
 
@@ -153,4 +153,16 @@ public class MainWindowInterpretationTest {
     public void aiPasteFalseWhenTeamAverageIsZero() {
         assertFalse(MainWindow.isAiPasteLike(500, 2, 1000, 0));
     }
+
+    @Test void exactBalancedBoundariesForDifferentTeamSizes() {
+        for (int[] values : new int[][] {{16,5}, {8,10}, {40,3}, {20,6}, {10,12}})
+            assertEquals(ContributionBadge.BALANCED, MainWindow.classifyBadge(values[0], 1, 100, values[1]));
+    }
+
+    @Test void displayRoundingCannotMoveTheBadgeAcrossABoundary() {
+        assertEquals(ContributionBadge.BELOW, MainWindow.classifyBadge(15999, 1, 100000, 5));
+        assertEquals(ContributionBadge.HIGH, MainWindow.classifyBadge(24001, 1, 100000, 5));
+        assertEquals(ContributionBadge.HIGH, MainWindow.classifyBadge(Integer.MAX_VALUE, 1, Integer.MAX_VALUE, Integer.MAX_VALUE));
+    }
+
 }

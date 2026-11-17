@@ -262,8 +262,10 @@ public class GitHubDataLoader {
 
         List<RepoStats> result = readLocalData(false);
         trace("sync", "Writing derived statistics and CSV for " + result.size() + " available repositories…");
-        if (!result.isEmpty() || repos.isEmpty()) resultWriter.accept(result);
-        csvWriter.accept(result);
+        if (!result.isEmpty() || repos.isEmpty()) {
+            resultWriter.accept(result);
+            csvWriter.accept(result);
+        }
 
         trace("sync", "Synchronization finished in " + elapsed(started) + ": " + lastConfirmedRepositoryCount + "/" + repos.size()
                 + " repositories confirmed, " + (repos.size() - lastConfirmedRepositoryCount) + " not confirmed; "
@@ -701,6 +703,11 @@ public class GitHubDataLoader {
             throttleHeavyCalls();
             checkInterrupted();
             List<GHCommit.File> files = commit.listFiles().toList();
+            // GitHub caps this endpoint at 3,000 files. At the cap completeness
+            // cannot be established, so keep the prior snapshot rather than
+            // silently accepting truncated contribution metrics.
+            if (files.size() >= 3000) throw new IllegalStateException(
+                    "Commit " + safeSha(commit) + " reaches GitHub's 3,000-file limit; complete contribution metrics cannot be guaranteed.");
             checkInterrupted();
             return files;
 

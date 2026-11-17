@@ -355,7 +355,7 @@ public class GitHubDataLoaderTest {
         assertTrue(loader.loadData(List.of(old), false).isEmpty());
         assertEquals(0, loader.getLastConfirmedRepositoryCount());
         assertTrue(writes.isEmpty(), "A failed analysis must not persist any old result");
-        assertEquals(List.of(List.of()), exports);
+        assertTrue(exports.isEmpty(), "A failed refresh must keep the existing CSV");
         assertEquals(42, old.getCodeLines());
     }
 
@@ -511,5 +511,19 @@ public class GitHubDataLoaderTest {
         assertEquals(0, GitHubDataLoader.countExternalMarkers(null));
         assertEquals(0, GitHubDataLoader.countExternalMarkers(""));
         assertEquals(0, GitHubDataLoader.countExternalMarkers("nothing to see here"));
+    }
+
+    @Test void commitAtGithubFileLimitCannotBeAcceptedAsComplete() {
+        GHCommit commit = new GHCommit() {
+            @Override public String getSHA1() { return "oversized"; }
+            @Override public List<GHCommit> getParents() { return List.of(); }
+            @Override public PagedIterable<GHCommit.File> listFiles() {
+                return org.kohsuke.github.OfflinePages.of(new GHCommit.File[3000]);
+            }
+        };
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> GitHubDataLoader.getInstance().downloadCommit(commit,
+                        new es.deusto.prog3.githubanalyzer.domain.AuthorIdentity("student", "student@example.org", "")));
+        assertTrue(error.getCause().getMessage().contains("3,000-file limit"));
     }
 }

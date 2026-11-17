@@ -5,11 +5,19 @@
 # all third-party libraries bundled inside — no lib/ folder needed at runtime.
 #
 # Run it (from any directory) with:
-#     java -jar dist/github-analyzer-1.3.1.jar
+#     java -jar dist/github-analyzer-1.4.0.jar
 # Keep a `resources/` folder (with your config.properties and repositories.txt)
 # next to the jar — those files stay EXTERNAL and editable (never bundled, since
 # they hold your token and student data).
 set -e
+if [ -z "${JAVA_HOME:-}" ] && [ "$(uname -s)" = Darwin ] && [ -x /usr/libexec/java_home ]; then
+    JAVA_HOME=$(/usr/libexec/java_home 2>/dev/null) || true
+    export JAVA_HOME
+fi
+if [ -n "${JAVA_HOME:-}" ]; then
+    PATH="$JAVA_HOME/bin:$PATH"
+    export PATH
+fi
 cd "$(dirname "$0")/.."
 
 OUT=build/jar-classes

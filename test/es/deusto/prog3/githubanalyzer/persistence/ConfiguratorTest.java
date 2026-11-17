@@ -225,4 +225,51 @@ public class ConfiguratorTest {
         Files.writeString(settings, Files.readString(settings).replace("raw.directory=course-data/originals", "raw.directory=")); config.reload();
         assertThrows(IllegalStateException.class, config::getRawDataDirectory);
     }
+
+    @Test void environmentTokenOverridesDiskWithoutBeingPersisted(@TempDir Path dir) throws Exception {
+        var token = new java.util.concurrent.atomic.AtomicReference<String>("environment-secret");
+        Configurator config = new Configurator(dir, token::get);
+        config.save("user", "disk-secret", "", "");
+        assertEquals("environment-secret", config.getGithubToken());
+        assertEquals("disk-secret", config.getStoredGithubToken());
+        assertTrue(config.isConfigured());
+        String persisted = Files.readString(dir.resolve("resources/config.properties"));
+        assertFalse(persisted.contains("environment-secret"));
+        token.set("  ");
+        assertEquals("disk-secret", config.getGithubToken());
+        config.save("user", "", "", "");
+        assertFalse(config.isConfigured());
+        token.set("environment-secret");
+        assertTrue(config.isConfigured());
+    }
+
+    @Test void configIsPrivateFromCreationAndAfterSaving(@TempDir Path dir) throws Exception {
+        Configurator config = new Configurator(dir, () -> null);
+        Path file = dir.resolve("resources/config.properties");
+        if (!Files.getFileStore(file).supportsFileAttributeView("posix")) return;
+        var expected = java.nio.file.attribute.PosixFilePermissions.fromString("rw-------");
+        assertEquals(expected, Files.getPosixFilePermissions(file));
+        Files.setPosixFilePermissions(file, java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--"));
+        config.save("user", "private-token", "", "");
+        assertEquals(expected, Files.getPosixFilePermissions(file));
+        try (var paths = Files.list(file.getParent())) {
+            assertFalse(paths.anyMatch(path -> path.getFileName().toString().endsWith(".tmp")));
+        }
+    }
+
+    @Test void failedCombinedSaveRestoresRepositoryList(@TempDir Path dir) throws Exception {
+        Configurator config = new Configurator(dir, () -> null);
+        config.save("old-user", "old-token", "", "");
+        config.saveRepositories("https://github.com/course/old\n");
+        Path file = dir.resolve("resources/config.properties");
+        Files.delete(file); Files.createDirectory(file);
+        assertThrows(IllegalStateException.class, () -> config.saveSettings("new-user", "new-token", "", "", "https://github.com/course/new\n"));
+        assertEquals("https://github.com/course/old\n", config.readRepositoriesText());
+        assertEquals("old-user", config.getGithubUser());
+        Files.delete(file);
+        config.saveSettings("new-user", "new-token", "", "", "https://github.com/course/new\n");
+        assertEquals("new-user", config.getGithubUser());
+        assertEquals("https://github.com/course/new\n", config.readRepositoriesText());
+    }
+
 }
