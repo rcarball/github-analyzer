@@ -22,6 +22,7 @@ import java.util.Set;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
+import javax.swing.DropMode;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -70,6 +71,8 @@ final class AuthorshipForm extends JPanel {
     private List<AuthorSummary> visibleIdentities = List.of();
     private String detailPersonId;
     private boolean updating;
+    private Object dragRevision = new Object();
+    private List<String> dragSources = List.of();
     private AuthorshipConfig previewRules;
     private AuthorshipConfig viewRules;
     private Map<String, Person> viewPeople;
@@ -81,12 +84,14 @@ final class AuthorshipForm extends JPanel {
     final JTable people;
     final JTable identities;
     final JComboBox<String> nameField = new JComboBox<>();
+    final JButton editNameButton = new JButton("Edit name");
     final JComboBox<String> emailField = new JComboBox<>();
     final JComboBox<String> accountField = new JComboBox<>();
     final JComboBox<Role> participation = new JComboBox<>(Role.values());
     final JComboBox<PersonChoice> mergeTarget = new JComboBox<>();
     final JComboBox<Role> mergeRole = new JComboBox<>(Role.values());
     final JButton unifyButton = new JButton("Confirm combination");
+    final JButton cancelCombineButton = new JButton("Cancel combination");
     final JButton separateButton = new JButton("Separate selected identities");
     final JButton moveButton = new JButton("Move to…");
     final JButton restoreButton = new JButton("Restore original identities…");
@@ -95,9 +100,12 @@ final class AuthorshipForm extends JPanel {
     final JButton redoButton = new JButton("Redo");
     final JTextField searchField = new JTextField(18);
     private final JLabel detailTitle = literalLabel();
+    final JLabel contributionHint = literalLabel();
+    private Map<String, MainWindow.ContributionBadge> contributionBadges = Map.of();
     private final JLabel roleHint = new JLabel();
     private final JLabel identityHint = new JLabel();
     private final JLabel mergeSummary = new JLabel();
+    private final JLabel dragHint = literalLabel();
     private final CardLayout cards = new CardLayout();
     private final JPanel detailCards = new JPanel(cards);
     private final AbstractTableModel peopleModel;
@@ -165,14 +173,24 @@ final class AuthorshipForm extends JPanel {
         people.getColumnModel().getColumn(2).setMinWidth(65);
         people.getColumnModel().getColumn(3).setMinWidth(95);
         people.getColumnModel().getColumn(4).setMinWidth(110);
-        PlainTextRenderers.install(people);
-        people.setDefaultRenderer(Role.class, new DefaultTableCellRenderer() {
+        DefaultTableCellRenderer personRenderer = new DefaultTableCellRenderer() {
             private static final long serialVersionUID = 1L;
+            { putClientProperty("html.disable", Boolean.TRUE); }
             @Override public Component getTableCellRendererComponent(JTable table, Object value, boolean selected, boolean focus, int row, int col) {
-                return super.getTableCellRendererComponent(table, roleLabel((Role) value), selected, focus, row, col);
+                super.getTableCellRendererComponent(table, value instanceof Role role ? roleLabel(role) : value, selected, focus, row, col);
+                setHorizontalAlignment(value instanceof Number ? SwingConstants.RIGHT : SwingConstants.LEFT);
+                stylePersonCell(this, table, row, col, selected);
+                return this;
             }
-        });
+        };
+        people.setDefaultRenderer(Object.class, personRenderer);
+        people.setDefaultRenderer(Number.class, personRenderer);
+        people.setDefaultRenderer(Role.class, personRenderer);
         people.setDefaultRenderer(Float.class, new ShareRenderer());
+        people.setDropMode(DropMode.ON);
+        people.setTransferHandler(new PeopleTransferHandler(people, this::dragSelection, () -> dragRevision,
+                this::personAtViewRow, this::canPrepareCombination, this::prepareDraggedCombination, this::showDragFeedback));
+        if (!java.awt.GraphicsEnvironment.isHeadless()) people.setDragEnabled(true);
         people.getSelectionModel().addListSelectionListener(event -> {
             if (updating || event.getValueIsAdjusting()) return;
             List<String> selected = selectedPeople();
@@ -215,7 +233,23 @@ final class AuthorshipForm extends JPanel {
                 if (!updating) runAction(() -> { if (commitDetails()) refresh(selectedPeople()); });
             });
         }
-        nameField.setEditable(true);
+        nameField.setToolTipText("Choose a grouped name, or use Edit name to type a custom visible name.");
+        editNameButton.addActionListener(event -> runAction(() -> {
+            if (nameField.isEditable()) {
+                commitDetails();
+                refresh(selectedPeople());
+            } else {
+                updating = true;
+                try {
+                    nameField.setEditable(true);
+                    nameField.getEditor().setItem(viewPeople.get(detailPersonId).name());
+                    editNameButton.setText("Done");
+                } finally { updating = false; }
+                JTextField editor = (JTextField) nameField.getEditor().getEditorComponent();
+                editor.requestFocusInWindow();
+                editor.selectAll();
+            }
+        }));
         ((JTextField) nameField.getEditor().getEditorComponent()).getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent event) { updatePending(); }
             @Override public void removeUpdate(DocumentEvent event) { updatePending(); }
@@ -224,7 +258,8 @@ final class AuthorshipForm extends JPanel {
         });
         nameField.getEditor().getEditorComponent().addFocusListener(new FocusAdapter() {
             @Override public void focusLost(FocusEvent event) {
-                if (!updating) runAction(() -> { if (commitDetails()) refresh(selectedPeople()); });
+                if (!updating && event.getOppositeComponent() != editNameButton)
+                    runAction(() -> { if (commitDetails()) refresh(selectedPeople()); });
             }
         });
         configureRoles(participation);
@@ -249,7 +284,8 @@ final class AuthorshipForm extends JPanel {
         });
         left.add(search, BorderLayout.NORTH);
         left.add(scrollPane(people), BorderLayout.CENTER);
-        left.add(new JLabel("Select people with Ctrl/Cmd or Shift to combine them."), BorderLayout.SOUTH);
+        showDragFeedback(0, null);
+        left.add(dragHint, BorderLayout.SOUTH);
         left.setMinimumSize(new Dimension(360, 250));
         left.setBorder(BorderFactory.createTitledBorder("People"));
 
@@ -259,13 +295,19 @@ final class AuthorshipForm extends JPanel {
         title.gridwidth = 2;
         detailTitle.setFont(detailTitle.getFont().deriveFont(java.awt.Font.BOLD, 16f));
         fields.add(detailTitle, title);
-        addField(fields, 1, "Participation:", participation);
-        GridBagConstraints hint = constraints(0, 2);
+        GridBagConstraints contribution = constraints(0, 1);
+        contribution.gridwidth = 2;
+        fields.add(contributionHint, contribution);
+        addField(fields, 2, "Participation:", participation);
+        GridBagConstraints hint = constraints(0, 3);
         hint.gridwidth = 2;
         fields.add(roleHint, hint);
-        addField(fields, 3, "Visible name:", nameField);
-        addField(fields, 4, "Email:", emailField);
-        addField(fields, 5, "GitHub account:", accountField);
+        JPanel nameControls = new JPanel(new BorderLayout(6, 0));
+        nameControls.add(nameField, BorderLayout.CENTER);
+        nameControls.add(editNameButton, BorderLayout.EAST);
+        addField(fields, 4, "Visible name:", nameControls);
+        addField(fields, 5, "Email:", emailField);
+        addField(fields, 6, "GitHub account:", accountField);
         single.add(fields, BorderLayout.NORTH);
         JPanel identityPanel = new JPanel(new BorderLayout(6, 6));
         identityPanel.setBorder(BorderFactory.createTitledBorder("Original Git identities"));
@@ -289,7 +331,10 @@ final class AuthorshipForm extends JPanel {
         mergeFields.add(mergeSummary, mergeCounts);
         GridBagConstraints confirm = constraints(0, 4);
         confirm.gridwidth = 2;
-        mergeFields.add(unifyButton, confirm);
+        JPanel combinationActions = new JPanel(new FlowLayout(FlowLayout.LEADING, 0, 0));
+        combinationActions.add(unifyButton);
+        combinationActions.add(cancelCombineButton);
+        mergeFields.add(combinationActions, confirm);
         multiple.add(mergeFields, BorderLayout.NORTH);
         JLabel empty = new JLabel("Select a person to review their identities and details.", SwingConstants.CENTER);
         detailCards.add(empty, "empty");
@@ -322,21 +367,42 @@ final class AuthorshipForm extends JPanel {
                 runAction(this::restoreOriginal);
         });
         unifyButton.addActionListener(event -> runAction(this::unifySelected));
+        cancelCombineButton.addActionListener(event -> runAction(() -> {
+            List<String> sources = dragSources;
+            refresh(sources);
+        }));
         separateButton.addActionListener(event -> runAction(this::separateSelected));
         moveButton.addActionListener(event -> runAction(this::chooseMoveTarget));
         installHistoryKeys();
         refresh(List.of());
     }
 
-    private static JTable literalTable(AbstractTableModel model) {
+    private JTable literalTable(AbstractTableModel model) {
         return new JTable(model) {
             private static final long serialVersionUID = 1L;
+            @Override protected void paintComponent(Graphics graphics) {
+                super.paintComponent(graphics);
+                if (getTransferHandler() instanceof PeopleTransferHandler handler && handler.hoverRow() >= 0
+                        && handler.hoverRow() < getRowCount()) {
+                    java.awt.Rectangle cell = getCellRect(handler.hoverRow(), 0, true);
+                    Graphics outline = graphics.create();
+                    try {
+                        outline.setColor(getSelectionBackground());
+                        ((java.awt.Graphics2D) outline).setStroke(new java.awt.BasicStroke(2));
+                        outline.drawRect(1, cell.y + 1, getWidth() - 3, cell.height - 3);
+                    } finally { outline.dispose(); }
+                }
+            }
             @Override public String getToolTipText(java.awt.event.MouseEvent event) {
                 int row = rowAtPoint(event.getPoint()), column = columnAtPoint(event.getPoint());
                 if (row < 0 || column < 0) return null;
                 Object value = getValueAt(row, column);
                 // Prefix keeps untrusted metadata from activating Swing HTML tooltips.
-                return value == null ? null : "Value: " + (value instanceof Role role ? roleLabel(role) : value);
+                String text = value instanceof Role role ? roleLabel(role)
+                        : value instanceof Float number ? NumberFormats.percentage(number) : String.valueOf(value);
+                MainWindow.ContributionBadge badge = this == people
+                        ? badgeFor(activePeople.get(convertRowIndexToModel(row))) : null;
+                return value == null ? null : (badge == null ? "Value: " : badge.shortText() + " · ") + text;
             }
         };
     }
@@ -386,7 +452,10 @@ final class AuthorshipForm extends JPanel {
     private AuthorshipConfig rules() { return viewRules; }
 
     private void updateRules() {
-        viewRules = draft.snapshot();
+        AuthorshipConfig next = draft.snapshot();
+        if (viewRules != null && (!viewAssignments.equals(next.assignments()) || !viewPeople.equals(next.people())))
+            dragRevision = new Object();
+        viewRules = next;
         viewPeople = viewRules.people();
         viewAssignments = viewRules.assignments();
     }
@@ -398,6 +467,48 @@ final class AuthorshipForm extends JPanel {
             if (modelRow < activePeople.size()) ids.add(activePeople.get(modelRow));
         }
         return ids;
+    }
+
+    private String personAtViewRow(int row) {
+        if (row < 0 || row >= people.getRowCount()) return null;
+        return activePeople.get(people.convertRowIndexToModel(row));
+    }
+
+    private List<String> dragSelection() {
+        List<String> selected = selectedPeople();
+        if (commitDetails()) refresh(selected);
+        return selectedPeople();
+    }
+
+    private boolean canPrepareCombination(List<String> sources, String target) {
+        if (hasPendingName() || sources.isEmpty() || sources.contains(target) || !activePeople.contains(target)) return false;
+        for (String id : sources) {
+            int row = activePeople.indexOf(id);
+            if (row < 0 || people.convertRowIndexToView(row) < 0) return false;
+        }
+        return true;
+    }
+
+    private void prepareDraggedCombination(List<String> sources, String target) {
+        LinkedHashSet<String> selected = new LinkedHashSet<>(sources);
+        selected.add(target);
+        refresh(List.copyOf(selected));
+        for (int index = 0; index < mergeTarget.getItemCount(); index++) {
+            if (mergeTarget.getItemAt(index).id().equals(target)) {
+                mergeTarget.setSelectedIndex(index);
+                break;
+            }
+        }
+        dragSources = List.copyOf(sources);
+        // A drop only stages the existing confirmation; it never creates a history entry.
+        cancelCombineButton.requestFocusInWindow();
+    }
+
+    private void showDragFeedback(int count, String targetId) {
+        String text = targetId == null ? "Select people, or drag them onto another person."
+                : "Combine " + count + " with " + viewPeople.get(targetId).name() + " · review before confirming";
+        dragHint.setText(text);
+        dragHint.setToolTipText("Drag: " + text + " Use Ctrl/Cmd or Shift to select multiple people.");
     }
 
     private List<AuthorIdentity> groupIdentities(String id) {
@@ -426,6 +537,7 @@ final class AuthorshipForm extends JPanel {
         updating = true;
         try {
             List<String> selected = selectedPeople();
+            dragSources = List.of();
             detailPersonId = null;
             visibleIdentities = List.of();
             if (selected.size() == 1) {
@@ -434,6 +546,8 @@ final class AuthorshipForm extends JPanel {
                 List<AuthorIdentity> group = groupIdentities(id);
                 detailTitle.setText(person.name());
                 detailTitle.setToolTipText("Person: " + person.name());
+                nameField.setEditable(false);
+                editNameButton.setText("Edit name");
                 fill(nameField, options(id, 0), person.name());
                 fill(emailField, options(id, 1), person.emailFor(group));
                 fill(accountField, options(id, 2), person.loginFor(group));
@@ -444,6 +558,7 @@ final class AuthorshipForm extends JPanel {
                 identityHint.setText(visibleIdentities.size() + " identities in this analysis"
                         + (additional > 0 ? " · " + additional + " additional saved aliases" : ""));
                 detailPersonId = id;
+                updateContributionHint();
                 cards.show(detailCards, "single");
             } else if (selected.size() > 1) {
                 mergeTarget.removeAllItems();
@@ -466,7 +581,7 @@ final class AuthorshipForm extends JPanel {
     private boolean commitDetails() {
         if (updating || detailPersonId == null) return false;
         Person before = viewPeople.get(detailPersonId);
-        String name = String.valueOf(nameField.getEditor().getItem()).trim();
+        String name = String.valueOf(nameField.isEditable() ? nameField.getEditor().getItem() : nameField.getSelectedItem()).trim();
         if (name.isEmpty()) {
             nameField.getEditor().setItem(before.name());
             throw new IllegalStateException("A visible name cannot be blank.");
@@ -578,12 +693,12 @@ final class AuthorshipForm extends JPanel {
     }
 
     private boolean hasPendingName() {
-        return detailPersonId != null && !String.valueOf(nameField.getEditor().getItem()).trim()
+        return detailPersonId != null && nameField.isEditable() && !String.valueOf(nameField.getEditor().getItem()).trim()
                 .equals(viewPeople.get(detailPersonId).name());
     }
 
     private boolean discardInvalidName() {
-        if (detailPersonId == null || !String.valueOf(nameField.getEditor().getItem()).isBlank()) return false;
+        if (detailPersonId == null || !nameField.isEditable() || !String.valueOf(nameField.getEditor().getItem()).isBlank()) return false;
         showDetails();
         return true;
     }
@@ -695,9 +810,12 @@ final class AuthorshipForm extends JPanel {
         previewRules = config.copy();
         int generation = ++previewGeneration;
         if (previewWorker != null) previewWorker.cancel(true);
+        contributionBadges = Map.of();
         preview = new RepoStats();
         preview.setTeamSize(declaredTeamSize);
         previewStatus.setText("Calculating local preview…");
+        updateContributionHint();
+        people.repaint();
         previewWorker = new SwingWorker<>() {
             @Override protected List<UserStats> doInBackground() {
                 return StatisticsCalculator.personStats(source.activeCommits(), config, ContributionMetrics::defaultRole);
@@ -706,14 +824,24 @@ final class AuthorshipForm extends JPanel {
                 if (generation != previewGeneration || isCancelled()) return;
                 try {
                     preview.setUserStats(get());
+                    int teamChurn = ContributionMetrics.teamChurn(preview);
+                    int teamSize = ContributionMetrics.effectiveTeamSize(preview);
+                    Map<String, MainWindow.ContributionBadge> badges = new java.util.HashMap<>();
+                    for (UserStats user : preview.getUserStats())
+                        badges.put(user.getPersonId(), MainWindow.classifyBadge(user.getChurn(), user.getCommits(), teamChurn, teamSize));
+                    contributionBadges = Map.copyOf(badges);
                     previewStatus.setText("Local preview · Apply recalculates without connecting to GitHub.");
                     // Keep selection and pending text intact when calculated values arrive.
                     for (int row = 0; row < peopleModel.getRowCount(); row++) peopleModel.fireTableCellUpdated(row, 4);
+                    people.repaint();
+                    updateContributionHint();
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                     previewStatus.setText("Local preview interrupted. Apply can recalculate again.");
+                    updateContributionHint();
                 } catch (java.util.concurrent.ExecutionException | RuntimeException ex) {
                     previewStatus.setText("Local preview unavailable. Apply can recalculate again.");
+                    updateContributionHint();
                 }
             }
         };
@@ -726,23 +854,71 @@ final class AuthorshipForm extends JPanel {
         super.removeNotify();
     }
 
-    private static final class ShareRenderer extends DefaultTableCellRenderer {
+    private MainWindow.ContributionBadge badgeFor(String id) {
+        return switch (viewPeople.get(id).role()) {
+            case TEACHER -> MainWindow.ContributionBadge.TEACHER;
+            case EXCLUDED -> MainWindow.ContributionBadge.EXCLUDED;
+            case MEMBER -> contributionBadges.get(id);
+        };
+    }
+
+    private void stylePersonCell(JLabel label, JTable table, int row, int col, boolean selected) {
+        label.setIcon(null);
+        if (row < 0 || row >= table.getRowCount()) return;
+        MainWindow.ContributionBadge badge = badgeFor(activePeople.get(table.convertRowIndexToModel(row)));
+        if (badge != null) {
+            Color background = MainWindow.contributionBackground(table.getBackground(), badge.color, selected);
+            label.setBackground(background);
+            label.setForeground(MainWindow.contributionForeground(badge.color, background, selected));
+            if (table.convertColumnIndexToModel(col) == 0) {
+                label.setIcon(badge.icon());
+                label.setIconTextGap(6);
+            }
+            label.setToolTipText(badge.shortText() + ". Observed share uses team Java churn.");
+        } else label.setToolTipText("Contribution preview unavailable or calculating.");
+        if (col == 0) {
+            javax.swing.border.Border marker = selected ? BorderFactory.createMatteBorder(0, 3, 0, 0, table.getSelectionBackground())
+                    : BorderFactory.createEmptyBorder(0, 3, 0, 0);
+            label.setBorder(BorderFactory.createCompoundBorder(marker, label.getBorder()));
+        }
+    }
+
+    private void updateContributionHint() {
+        if (detailPersonId == null) return;
+        MainWindow.ContributionBadge badge = badgeFor(detailPersonId);
+        contributionHint.setIcon(badge == null ? null : badge.icon());
+        contributionHint.setForeground(badge == null ? getForeground()
+                : MainWindow.contributionForeground(badge.color, getBackground(), false));
+        if (badge == null) {
+            contributionHint.setText(previewStatus.getText().startsWith("Calculating")
+                    ? "Calculating contribution…" : "Contribution preview unavailable");
+        } else {
+            float share = preview.getUserStats().stream().filter(user -> detailPersonId.equals(user.getPersonId())).findFirst()
+                    .map(user -> ContributionMetrics.teamShare(preview, user)).orElse(Float.NaN);
+            contributionHint.setText(badge.shortText() + (Float.isFinite(share) ? " · " + NumberFormats.percentage(share) : ""));
+        }
+        contributionHint.setToolTipText("Observed contribution uses Java churn and the current declared or inferred team size.");
+    }
+
+    private final class ShareRenderer extends DefaultTableCellRenderer {
         private static final long serialVersionUID = 1L;
         private float share;
-        private boolean selected;
+        private Color barColor;
         ShareRenderer() { setHorizontalAlignment(SwingConstants.RIGHT); setOpaque(false); }
         @Override public Component getTableCellRendererComponent(JTable table, Object value, boolean selected, boolean focus, int row, int col) {
             super.getTableCellRendererComponent(table, NumberFormats.percentage(value == null ? Double.NaN : (Float) value), selected, focus, row, col);
             share = value instanceof Float number ? number : Float.NaN;
-            this.selected = selected;
-            setToolTipText("Observed share of team Java churn; excluded accounts have no team share.");
+            stylePersonCell(this, table, row, col, selected);
+            MainWindow.ContributionBadge badge = row >= 0 && row < table.getRowCount()
+                    ? badgeFor(activePeople.get(table.convertRowIndexToModel(row))) : null;
+            barColor = badge == null ? new Color(54, 130, 127) : badge.color;
             return this;
         }
         @Override protected void paintComponent(Graphics graphics) {
             graphics.setColor(getBackground());
             graphics.fillRect(0, 0, getWidth(), getHeight());
             if (Float.isFinite(share)) {
-                graphics.setColor(selected ? new Color(255, 255, 255, 65) : new Color(51, 150, 147, 55));
+                graphics.setColor(new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(), 65));
                 graphics.fillRoundRect(3, 5, Math.round((getWidth() - 6) * Math.max(0, Math.min(1, share))), getHeight() - 10, 5, 5);
             }
             super.paintComponent(graphics);

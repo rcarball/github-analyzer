@@ -33,6 +33,11 @@ class AuthorshipFormTest {
         return java.util.stream.IntStream.range(0, combo.getItemCount()).mapToObj(index -> combo.getItemAt(index).toString()).toList();
     }
 
+    private static void editName(AuthorshipForm form, String name) {
+        if (!form.nameField.isEditable()) form.editNameButton.doClick();
+        form.nameField.getEditor().setItem(name);
+    }
+
     private static void assertRules(AuthorshipConfig expected, AuthorshipConfig actual) {
         assertEquals(expected.assignments(), actual.assignments());
         assertEquals(expected.people(), actual.people());
@@ -78,7 +83,7 @@ class AuthorshipFormTest {
             assertTrue(options(form.nameField).containsAll(List.of("Name", "Alias", "login", "personal")));
             assertEquals(List.of(a.email(), b.email()), options(form.emailField));
             assertEquals(List.of(a.login(), b.login()), options(form.accountField));
-            form.nameField.getEditor().setItem("Custom name");
+            editName(form, "Custom name");
             form.emailField.setSelectedItem(b.email());
             form.accountField.setSelectedItem(b.login());
             form.participation.setSelectedItem(Role.TEACHER);
@@ -90,7 +95,7 @@ class AuthorshipFormTest {
             assertTrue(form.changeSummary().contains("Email:"));
             AuthorshipForm reopened = new AuthorshipForm(authors, saved, 4);
             select(reopened, first);
-            assertEquals("Custom name", reopened.nameField.getEditor().getItem());
+            assertEquals("Custom name", reopened.nameField.getSelectedItem());
             assertEquals(b.email(), reopened.emailField.getSelectedItem());
             assertEquals(b.login(), reopened.accountField.getSelectedItem());
             assertEquals(Role.TEACHER, reopened.participation.getSelectedItem());
@@ -189,12 +194,12 @@ class AuthorshipFormTest {
             AuthorshipConfig initial = form.snapshot();
             String first = initial.personFor(a).id();
             select(form, first);
-            form.nameField.getEditor().setItem("Pending name");
+            editName(form, "Pending name");
             // Use the real selection listener without snapshotting the old panel first.
             form.people.setRowSelectionInterval(1, 1);
             assertEquals("Pending name", form.snapshot().personFor(a).name());
             form.undoButton.doClick(); assertRules(initial, form.snapshot());
-            select(form, first); form.nameField.getEditor().setItem("Typed before undo");
+            select(form, first); editName(form, "Typed before undo");
             form.undo(); assertRules(initial, form.snapshot());
             form.redo(); assertEquals("Typed before undo", form.snapshot().personFor(a).name());
             form.restoreOriginal(); assertRules(initial, form.snapshot());
@@ -208,7 +213,7 @@ class AuthorshipFormTest {
             AuthorshipForm form = new AuthorshipForm(List.of(new AuthorSummary(blank, 0)), new AuthorshipConfig(), null);
             select(form, form.snapshot().personFor(blank).id());
             assertFalse(form.emailField.isEnabled()); assertFalse(form.accountField.isEnabled());
-            form.nameField.getEditor().setItem("  ");
+            editName(form, "  ");
             assertThrows(IllegalStateException.class, form::snapshot);
             assertEquals("Name only", form.snapshot().personFor(blank).name());
             assertEquals(0, form.contributorCount());
@@ -292,7 +297,7 @@ class AuthorshipFormTest {
             String first = initial.personFor(a).id();
             select(form, first, initial.personFor(b).id()); destination(form, first); form.unifyButton.doClick();
             form.undo(); form.redo();
-            form.nameField.getEditor().setItem("Still typing");
+            editName(form, "Still typing");
             form.previewStatus.addPropertyChangeListener("text", event -> {
                 if (event.getNewValue().toString().startsWith("Local preview ·")) completed.countDown();
             });
@@ -330,12 +335,12 @@ class AuthorshipFormTest {
             AuthorshipConfig initial = form.snapshot();
             select(form, initial.personFor(a).id());
             assertFalse(form.undoButton.isEnabled());
-            form.nameField.getEditor().setItem("Pending text");
+            editName(form, "Pending text");
             assertTrue(form.undoButton.isEnabled()); assertTrue(form.discardButton.isEnabled());
             form.undoButton.doClick(); assertRules(initial, form.snapshot());
-            form.nameField.getEditor().setItem(" ");
+            editName(form, " ");
             form.undo(); assertRules(initial, form.snapshot());
-            form.nameField.getEditor().setItem(" ");
+            editName(form, " ");
             form.restoreOriginal(); assertRules(initial, form.snapshot());
         });
     }
@@ -349,6 +354,30 @@ class AuthorshipFormTest {
             assertEquals("login", form.snapshot().personFor(a).name());
             assertEquals(Role.MEMBER, form.snapshot().personFor(a).role());
             assertFalse(form.undoButton.isEnabled());
+        });
+    }
+
+    @Test void nativeNameChoicesMatchContactControlsAndCustomEditingIsExplicitAndReversible() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorshipForm form = new AuthorshipForm(authors, new AuthorshipConfig(), null);
+            AuthorshipConfig initial = form.snapshot();
+            select(form, initial.personFor(a).id(), initial.personFor(b).id());
+            destination(form, initial.personFor(a).id());
+            form.unifyButton.doClick();
+            assertFalse(form.nameField.isEditable());
+            assertFalse(form.emailField.isEditable());
+            assertFalse(form.accountField.isEditable());
+            form.nameField.setSelectedItem("Alias");
+            assertEquals("Alias", form.snapshot().personFor(a).name());
+            form.editNameButton.doClick();
+            assertTrue(form.nameField.isEditable());
+            form.nameField.getEditor().setItem("Custom visible name");
+            form.editNameButton.doClick();
+            assertFalse(form.nameField.isEditable());
+            assertEquals("Custom visible name", form.nameField.getSelectedItem());
+            form.undo(); assertEquals("Alias", form.snapshot().personFor(a).name());
+            form.redo(); assertEquals("Custom visible name", form.snapshot().personFor(a).name());
+            assertFalse(form.nameField.isEditable());
         });
     }
 

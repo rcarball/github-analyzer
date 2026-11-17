@@ -70,7 +70,6 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader;
@@ -109,7 +108,9 @@ public class MainWindow extends JFrame {
 	private JTree jTreeRepos = new JTree();
 	private List<RepoStats> allRepos = new ArrayList<>();
 
-	private JButton btnRefresh = new JButton("Refresh from GitHub");
+	private JButton btnRefresh = new JButton("Refresh all from GitHub");
+    private final JButton btnRefreshPending = new JButton("Refresh pending");
+    private final java.util.Set<String> failedDownloads = new java.util.HashSet<>();
 	private JButton btnConfig = new JButton("Config");
     private JButton btnAuthorship = new JButton("Manage authorship…");
 
@@ -259,63 +260,9 @@ public class MainWindow extends JFrame {
 
 	public MainWindow(List<RepoStats> data) {
 		jTreeRepos.setRowHeight(23);
-		jTreeRepos.setCellRenderer(new DefaultTreeCellRenderer() {
-			private static final long serialVersionUID = 1L;
-            private final Map<String, ImageIcon> icons = new java.util.HashMap<>();
-            { putClientProperty("html.disable", Boolean.TRUE); }
-
-			@Override
-			public Component getTreeCellRendererComponent(JTree tree, Object value, 
-					boolean selected, boolean expanded,
-					boolean leaf, int row, boolean hasFocus) {
-				Component component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
-
-				setToolTipText(null);
-                String iconFile = "github.png";
-
-				DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
-				Object userObject = node.getUserObject();
-
-				// Check if the node represents a RepoStats object
-				if (userObject instanceof RepoStats) {
-					RepoStats repoStats = (RepoStats) userObject;
-					iconFile = !repoStats.isAnalysisComplete() ? "github.png" : repoStats.isPublic() ? "public.png" : "private.png";
-
-					setText(repoStats.getGroup() != null && !repoStats.getGroup().isEmpty() ? repoStats.getGroup() : repoStats.getName());
-
-					// If the repository is empty (no commits), change the text color to orange
-					if (!repoStats.isAnalysisComplete()) {
-                        component.setForeground(Color.GRAY);
-                        setText(getText() + " (analysis pending)");
-                    } else if (repoStats.getCommits() == 0) {
-						component.setForeground(new Color(245, 143, 41));
-						setText(getText() + " (empty repository)");
-					} else {
-						component.setForeground(new Color(54, 130, 127));
-					}
-
-                    GitHubDataLoader.UpdateStatus update = remoteUpdates.get(repoStats.getUrl());
-                    setText(getText() + pendingSuffix(update));
-                    setToolTipText(update != null && update.error() != null ? update.error()
-                            : repoStats.getName() + (update != null && update.headsChanged() ? " — remote changes pending" : ""));
-				} else {
-					component.setForeground(Color.BLACK);
-				}
-
-				if (selected) {
-				    setForeground(Color.WHITE);
-				    setBackgroundSelectionColor(new Color(0, 120, 215));
-				}
-
-				ImageIcon icon = icons.computeIfAbsent(iconFile, name -> {
-                    ImageIcon loaded = loadIcon(name);
-                    return loaded == null ? null : scaleIcon(loaded);
-                });
-                setIcon(icon);
-
-				return component;
-			}
-		});
+        jTreeRepos.setCellRenderer(new RepositoryTreeRenderer(remoteUpdates, failedDownloads));
+        btnRefresh.addPropertyChangeListener("enabled", event -> updateRefreshActions());
+        installRepositoryRefreshMenu();
 
 		jTreeRepos.addTreeSelectionListener(e -> {
             if (jTreeRepos.getSelectionPath() == null) {
@@ -475,85 +422,12 @@ public class MainWindow extends JFrame {
         btnAuthorship.setToolTipText("Unify or separate downloaded author identities locally");
         btnAuthorship.addActionListener(event -> discoverAuthorship());
 
-		// Refresh button action
-		btnRefresh.setToolTipText("Re-read the config files and fetch fresh data from GitHub");
-		btnRefresh.addActionListener(event -> {
-			// Give immediate feedback and prevent overlapping refreshes.
-			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-            checkGeneration++;
-            if (updateWorker != null) updateWorker.cancel(true);
-            remoteUpdates.clear();
-            setStatusText("Downloading new commits from GitHub…");
+        btnRefresh.setToolTipText("Check and download every configured repository from GitHub");
+        btnRefresh.addActionListener(event -> refreshRepositories(null));
+        btnRefreshPending.setToolTipText("Download only repositories with missing data, failed downloads or pending updates");
+        btnRefreshPending.addActionListener(event -> refreshRepositories(pendingRefreshTargets(allRepos, remoteUpdates, failedDownloads)));
+        updateRefreshActions();
 
-			// SwingWorker keeps network I/O off Swing's event-dispatch thread (EDT).
-			// Its done() method runs on the EDT, where it is safe to update components.
-		        RefreshWorker worker = new RefreshWorker(btnRefresh, btnConfig, btnAuthorship) {
-
-	            @Override
-	            protected List<RepoStats> doInBackground() throws Exception {
-	                // Reload settings here; loadData validates the repository list before starting a fresh analysis.
-	                Configurator.getInstance().reload();
-	                if (!Configurator.getInstance().isConfigured()) {
-	                    throw new IllegalStateException("Configure a GitHub user and token before refreshing.");
-	                }
-	                List<RepoStats> newStats = GitHubDataLoader.getInstance().loadData();
-                // Return the new data
-	                return newStats;
-	            }
-
-	            @Override
-	            protected void refreshFinished() {
-	            	try {
-	            		List<RepoStats> newStats = get();
-		    	    	updateReposJTree(newStats);
-
-		    	    	// The refreshed data replaced repoStatsMap; clear the stale selection
-		    	    	// and detail view so the table/labels/colors never show a mix of old
-		    	    	// and new data. The user reselects a repo to see fresh details.
-		    	    	jTreeRepos.clearSelection();
-		    	    	selectedRepo = null;
-		    	    	loadRepoStats(null);
-
-		    	    	int expected = GitHubDataLoader.getInstance().getConfiguredRepositoryCount();
-						int confirmed = GitHubDataLoader.getInstance().getLastConfirmedRepositoryCount();
-
-						if (confirmed < expected) {
-							JOptionPane.showMessageDialog(
-								MainWindow.this,
-								String.format(
-									"Refresh finished, but only %d of %d repositories could be refreshed.\n\n"
-									+ "For repositories that failed (private / no access, GitHub rate limits, "
-									+ "or an invalid token), the last complete original download is kept. See pending counts and the console log for details.",
-									confirmed, expected),
-		    	    			    "Refresh completed with warnings",
-		    	    			    JOptionPane.WARNING_MESSAGE
-		    	    			);
-						} else {
-							JOptionPane.showMessageDialog(
-								MainWindow.this,
-								String.format("Data refreshed successfully (%d repositories).", confirmed),
-		    	    			    "Refresh completed",
-		    	    			    JOptionPane.INFORMATION_MESSAGE
-		    	    			);
-		    	    	}
-					} catch (InterruptedException ex) {
-						Thread.currentThread().interrupt();
-						showRefreshFailedDialog();
-					} catch (ExecutionException ex) {
-						Throwable cause = ex.getCause();
-                        if (!reportCsvExportFailure(ex)) showRefreshFailedDialog(cause == null ? ex.getMessage() : cause.getMessage());
-					} finally {
-						setCursor(Cursor.getDefaultCursor());
-                        setStatusText(" ");
-                        checkForUpdates();
-                    }
-	            }
-	        };
-
-	        // Execute the worker
-	        worker.execute();
-		});
-		
 		lblStatus.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
 		lblStatus.setForeground(new Color(80, 80, 80));
 
@@ -567,6 +441,7 @@ public class MainWindow extends JFrame {
 		JPanel topButtons = new JPanel();
 		topButtons.add(btnConfig);
         topButtons.add(btnAuthorship);
+        topButtons.add(btnRefreshPending);
 		topButtons.add(btnRefresh);
 		JPanel topPanel = new JPanel(new BorderLayout());
 		topPanel.add(topButtons, BorderLayout.EAST);
@@ -600,10 +475,107 @@ public class MainWindow extends JFrame {
 		}
 	}
 
+    static List<String> pendingRefreshTargets(List<RepoStats> repositories,
+            Map<String, GitHubDataLoader.UpdateStatus> updates, java.util.Set<String> failed) {
+        return repositories.stream().filter(repo -> {
+            GitHubDataLoader.UpdateStatus update = updates.get(repo.getUrl());
+            return !repo.isAnalysisComplete() || failed.contains(repo.getUrl()) || RepositoryTreeRenderer.hasPendingChanges(update)
+                    || update != null && (update.error() != null || update.pendingCommits() < 0);
+        }).map(RepoStats::getUrl).distinct().toList();
+    }
+
+    private void updateRefreshActions() {
+        btnRefreshPending.setEnabled(btnRefresh.isEnabled() && !pendingRefreshTargets(allRepos, remoteUpdates, failedDownloads).isEmpty());
+    }
+
+    private void installRepositoryRefreshMenu() {
+        jTreeRepos.addMouseListener(new MouseAdapter() {
+            @Override public void mousePressed(MouseEvent event) { showMenu(event); }
+            @Override public void mouseReleased(MouseEvent event) { showMenu(event); }
+            private void showMenu(MouseEvent event) {
+                if (!event.isPopupTrigger()) return;
+                javax.swing.tree.TreePath path = jTreeRepos.getPathForLocation(event.getX(), event.getY());
+                if (path == null || !(((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject() instanceof RepoStats repo)) return;
+                jTreeRepos.setSelectionPath(path);
+                JMenuItem refresh = new JMenuItem("Refresh this repository from GitHub");
+                refresh.setEnabled(btnRefresh.isEnabled());
+                refresh.addActionListener(action -> refreshRepositories(List.of(repo.getUrl())));
+                JPopupMenu menu = new JPopupMenu();
+                menu.add(refresh);
+                menu.show(jTreeRepos, event.getX(), event.getY());
+            }
+        });
+    }
+
+    private void rememberRefreshOutcome() {
+        GitHubDataLoader loader = GitHubDataLoader.getInstance();
+        failedDownloads.removeAll(loader.getLastRequestedRepositoryUrls());
+        failedDownloads.addAll(loader.getLastFailedRepositoryUrls());
+        loader.getLastRequestedRepositoryUrls().forEach(remoteUpdates::remove);
+    }
+
+    private void refreshRepositories(List<String> requested) {
+        if (!btnRefresh.isEnabled()) return;
+        List<String> scope = requested == null ? null : List.copyOf(requested);
+        if (scope != null && scope.isEmpty()) {
+            setStatusText("No repositories need downloading.");
+            return;
+        }
+        String selection = selectedRepo;
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        checkGeneration++;
+        if (updateWorker != null) updateWorker.cancel(true);
+        setStatusText(scope == null ? "Updating all repositories from GitHub…" : "Updating " + scope.size() + " selected repositories from GitHub…");
+        new RefreshWorker(btnRefresh, btnConfig, btnAuthorship) {
+            @Override protected List<RepoStats> doInBackground() {
+                Configurator.getInstance().reload();
+                if (!Configurator.getInstance().isConfigured())
+                    throw new IllegalStateException("Configure a GitHub user and token before refreshing.");
+                GitHubDataLoader loader = GitHubDataLoader.getInstance();
+                return scope == null ? loader.loadData() : loader.refreshRepositories(scope);
+            }
+            @Override protected void refreshFinished() {
+                try {
+                    List<RepoStats> results = get();
+                    rememberRefreshOutcome();
+                    updateReposJTree(results);
+                    selectedRepo = null;
+                    loadRepoStats(null);
+                    if (selection != null) selectRepository(selection);
+                    GitHubDataLoader loader = GitHubDataLoader.getInstance();
+                    int expected = loader.getLastRequestedRepositoryUrls().size();
+                    int confirmed = loader.getLastConfirmedRepositoryCount();
+                    String message = confirmed + " of " + expected + " requested repositories updated.";
+                    if (confirmed < expected) message += "\nPrevious complete downloads were retained where available. Retry failed repositories individually or with Refresh pending.";
+                    JOptionPane.showMessageDialog(MainWindow.this, message,
+                            confirmed < expected ? "Refresh completed with warnings" : "Refresh completed",
+                            confirmed < expected ? JOptionPane.WARNING_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    showRefreshFailedDialog();
+                } catch (ExecutionException ex) {
+                    if (reportCsvExportFailure(ex)) rememberRefreshOutcome();
+                    else showRefreshFailedDialog(errorMessage(ex));
+                } finally {
+                    setCursor(Cursor.getDefaultCursor());
+                    checkForUpdates(scope);
+                }
+            }
+        }.execute();
+    }
+
     /** Include selectable pending repositories without presenting invented or old metrics. */
     static List<RepoStats> withConfiguredRepositories(List<RepoStats> data, List<RepositoryConfig> configs) {
-        Map<String, RepoStats> fresh = new HashMap<>();
-        if (data != null) for (RepoStats repo : data) if (repo != null && repo.isAnalysisComplete()) fresh.put(repo.getUrl(), repo);
+        return withConfiguredRepositories(data, configs, Map.of());
+    }
+
+    static List<RepoStats> withConfiguredRepositories(List<RepoStats> data, List<RepositoryConfig> configs,
+            Map<String, Boolean> previousVisibility) {
+        Map<String, RepoStats> fresh = new HashMap<>(), known = new HashMap<>();
+        if (data != null) for (RepoStats repo : data) if (repo != null) {
+            known.put(repo.getUrl(), repo);
+            if (repo.isAnalysisComplete()) fresh.put(repo.getUrl(), repo);
+        }
         List<RepoStats> result = new ArrayList<>();
         for (RepositoryConfig config : configs) {
             RepoStats repo = fresh.get(config.url());
@@ -613,6 +585,8 @@ public class MainWindow extends JFrame {
                 repo.setName(config.url().substring(config.url().lastIndexOf('/') + 1));
                 repo.setGroup(config.group());
                 repo.setTeamSize(config.teamSize());
+                if (known.containsKey(config.url())) repo.setPublic(known.get(config.url()).isPublic());
+                else if (previousVisibility.containsKey(config.url())) repo.setPublic(previousVisibility.get(config.url()));
             } else if (!java.util.Objects.equals(repo.getTeamSize(), config.teamSize())
                     || !java.util.Objects.equals(repo.getGroup(), config.group())) {
                 repo = repo.withSettings(config);
@@ -625,11 +599,20 @@ public class MainWindow extends JFrame {
     }
 
     private void updateReposJTree(List<RepoStats> data) {
+        Map<String, Boolean> visibility = new HashMap<>();
+        allRepos.forEach(repo -> visibility.put(repo.getUrl(), repo.isPublic()));
         repoStatsMap.clear();
         List<RepositoryConfig> configs = GitHubDataLoader.getInstance().getRepositoryConfigs();
-        allRepos = withConfiguredRepositories(data, configs);
-        allRepos.forEach(repo -> repoStatsMap.put(repo.getUrl(), repo));
+        allRepos = withConfiguredRepositories(data, configs, visibility);
+        allRepos.forEach(repo -> {
+            if (failedDownloads.contains(repo.getUrl()) && visibility.containsKey(repo.getUrl()))
+                repo.setPublic(visibility.get(repo.getUrl()));
+            repoStatsMap.put(repo.getUrl(), repo);
+        });
+        remoteUpdates.keySet().retainAll(repoStatsMap.keySet());
+        failedDownloads.retainAll(repoStatsMap.keySet());
         rebuildRepoTree();
+        updateRefreshActions();
     }
 
 	/** Rebuilds the repository tree with every configured repository. */
@@ -870,8 +853,8 @@ public class MainWindow extends JFrame {
         if (repoStats != null && !repoStats.isAnalysisComplete()) {
             loadRepoStats(null);
             lblTeamSize.setText(repoStats.getTeamSize() == null ? "• Team size: pending" : "• Team size: " + repoStats.getTeamSize() + " (declared)");
-            lblCommits.setText("• Analysis pending: refresh from GitHub");
-            setStatusText("Analysis pending. Stored statistics are not reused.");
+            lblCommits.setText("• Analysis pending: download this repository");
+            setStatusText("No local data. Right-click this repository to download it, or use Refresh pending.");
             return;
         }
 		// Precompute interpretations once for this repo; renderers/tooltips reuse them.
@@ -990,7 +973,7 @@ public class MainWindow extends JFrame {
 	 * the {@code resources/images/} folder (handy when running from the project dir in
 	 * the IDE). Returns {@code null} if the icon cannot be found, so callers can skip it.
 	 */
-	private static ImageIcon loadIcon(String fileName) {
+	static ImageIcon loadIcon(String fileName) {
 		URL url = MainWindow.class.getResource("/images/" + fileName);
 		if (url != null) {
 			return new ImageIcon(url);
@@ -1015,7 +998,7 @@ public class MainWindow extends JFrame {
 		return file.isFile() ? file.toURI().toString() : null;
 	}
 
-	private static ImageIcon scaleIcon(ImageIcon icon) {
+	static ImageIcon scaleIcon(ImageIcon icon) {
 		return new ImageIcon(icon.getImage().getScaledInstance(ICON_SIZE, ICON_SIZE, Image.SCALE_SMOOTH));
 	}
 
@@ -1138,24 +1121,25 @@ public class MainWindow extends JFrame {
     }
 
     static String pendingSuffix(GitHubDataLoader.UpdateStatus update) {
-        if (update == null) return "";
-        if (update.pendingCommits() < 0) return " (?)";
-        if (update.pendingCommits() == 0 && update.headsChanged()) return " (0; changes pending)";
-        return " (" + update.pendingCommits() + ")";
+        return RepositoryTreeRenderer.pendingSuffix(update);
     }
 
-    private void checkForUpdates() {
+    private void checkForUpdates() { checkForUpdates(null); }
+
+    private void checkForUpdates(List<String> scope) {
         final int generation = ++checkGeneration;
         if (updateWorker != null) updateWorker.cancel(true);
-        remoteUpdates.clear();
+        if (scope == null) remoteUpdates.clear();
+        else scope.forEach(remoteUpdates::remove);
         refreshRepositoryTreeLabels(jTreeRepos);
+        updateRefreshActions();
         if (!Configurator.getInstance().isConfigured()) {
             setStatusText("Local data ready. Configure a token to check GitHub updates.");
             return;
         }
         SwingWorker<Void, Map.Entry<String, GitHubDataLoader.UpdateStatus>> worker = new SwingWorker<>() {
             @Override protected Void doInBackground() {
-                GitHubDataLoader.getInstance().checkForUpdates((url, status) -> {
+                GitHubDataLoader.getInstance().checkForUpdates(scope, (url, status) -> {
                     if (isCancelled()) throw new java.util.concurrent.CancellationException();
                     publish(Map.entry(url, status));
                 });
@@ -1163,12 +1147,18 @@ public class MainWindow extends JFrame {
             }
             @Override protected void process(List<Map.Entry<String, GitHubDataLoader.UpdateStatus>> updates) {
                 if (generation != checkGeneration) return;
-                updates.forEach(entry -> remoteUpdates.put(entry.getKey(), entry.getValue()));
+                updates.forEach(entry -> {
+                    remoteUpdates.put(entry.getKey(), entry.getValue());
+                    RepoStats repo = repoStatsMap.get(entry.getKey());
+                    if (repo != null && entry.getValue().publicRepository() != null)
+                        repo.setPublic(entry.getValue().publicRepository());
+                });
                 refreshRepositoryTreeLabels(jTreeRepos);
+                updateRefreshActions();
             }
             @Override protected void done() {
                 if (generation != checkGeneration) return;
-                try { get(); setStatusText("Update check complete. Parentheses show commits not downloaded."); }
+                try { get(); setStatusText("Update check complete. Orange: pending updates. Red: no data or empty repository."); }
                 catch (Exception ex) { setStatusText("Could not check updates. Local data remains available."); }
             }
         };
@@ -1390,12 +1380,12 @@ public class MainWindow extends JFrame {
 	}
 
 	/** Uses a subtle tint for a row and a stronger, still restrained tint when selected. */
-	private static Color contributionBackground(Color tableBackground, Color contributionColor, boolean selected) {
+	static Color contributionBackground(Color tableBackground, Color contributionColor, boolean selected) {
 		return blend(tableBackground, contributionColor, selected ? 0.22f : 0.08f);
 	}
 
 	/** Keeps the contribution color visible and darkens it slightly on selection. */
-	private static Color contributionForeground(Color contributionColor, Color background, boolean selected) {
+	static Color contributionForeground(Color contributionColor, Color background, boolean selected) {
 		Color candidate = selected ? blend(contributionColor, Color.BLACK, 0.18f) : contributionColor;
 		return contrastRatio(candidate, background) >= 3.0f
 				? candidate

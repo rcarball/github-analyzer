@@ -79,8 +79,10 @@ public class GitHubDataLoader {
     private final Map<String, RepositorySnapshot> memorySnapshots = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile Map<String, RepositoryConfig> repositoryConfigs = Map.of();
     private volatile List<String> repos = Collections.emptyList();
-    // Successful repositories in the most recent full analysis.
+    // Successful repositories in the most recent requested synchronization.
     private volatile int lastConfirmedRepositoryCount;
+    private volatile List<String> lastRequestedRepositoryUrls = List.of();
+    private volatile java.util.Set<String> lastFailedRepositoryUrls = java.util.Set.of();
 
     // Repositories are independent, so they can be analyzed in parallel. Calls
     // that expand a commit into its changed files are much more expensive, hence
@@ -202,15 +204,40 @@ public class GitHubDataLoader {
         return lastConfirmedRepositoryCount;
     }
 
+    public List<String> getLastRequestedRepositoryUrls() { return lastRequestedRepositoryUrls; }
+    public java.util.Set<String> getLastFailedRepositoryUrls() { return lastFailedRepositoryUrls; }
+
     /** Compatibility entry points: previous results are deliberately ignored. */
     public List<RepoStats> loadData(List<RepoStats> ignored) { return loadData(); }
     public List<RepoStats> loadData(List<RepoStats> ignored, boolean forceRefresh) { return loadData(); }
 
     public synchronized List<RepoStats> loadData() {
         reloadRepositories();
+        return synchronizeRepositories(List.copyOf(repos), false);
+    }
+
+    /** Download only the requested configured repositories; keep all other local results. */
+    public synchronized List<RepoStats> refreshRepositories(java.util.Collection<String> requested) {
+        reloadRepositories();
+        List<String> targets = configuredTargets(requested);
+        return synchronizeRepositories(targets, true);
+    }
+
+    private List<String> configuredTargets(java.util.Collection<String> requested) {
+        java.util.Set<String> selected = java.util.Set.copyOf(requested);
+        if (!repositoryConfigs.keySet().containsAll(selected))
+            throw new IllegalStateException("A selected repository is no longer configured.");
+        return repos.stream().filter(selected::contains).toList();
+    }
+
+    private List<RepoStats> synchronizeRepositories(List<String> targets, boolean selective) {
         lastConfirmedRepositoryCount = 0;
-        List<RepoStats> progressiveResults = new ArrayList<>();
+        lastRequestedRepositoryUrls = List.copyOf(targets);
+        lastFailedRepositoryUrls = java.util.Set.copyOf(targets);
+        List<RepoStats> progressiveResults = selective ? new ArrayList<>(readLocalData(false)) : new ArrayList<>();
+        if (selective && targets.isEmpty()) return progressiveResults;
         Object resultLock = new Object();
+        java.util.Set<String> successfulUrls = java.util.concurrent.ConcurrentHashMap.newKeySet();
         AtomicInteger confirmedRepositories = new AtomicInteger();
         AtomicInteger completedRepositories = new AtomicInteger();
         ExecutorService executorService = null;
@@ -218,15 +245,15 @@ public class GitHubDataLoader {
 
         try {
             int threads = Math.min(MAX_THREADS, Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
-            trace("sync", "Starting GitHub synchronization: " + repos.size() + " repositories, up to " + threads + " parallel tasks.");
+            trace("sync", "Starting GitHub synchronization: " + targets.size() + " repositories, up to " + threads + " parallel tasks.");
             executorService = Executors.newFixedThreadPool(threads);
 
             traceDetail("sync", "Preparing GitHub access…");
-            RepositoryReader reader = repos.isEmpty() ? null : apiSource.get();
+            RepositoryReader reader = targets.isEmpty() ? null : apiSource.get();
 
             List<Future<?>> futures = new ArrayList<>();
 
-            for (String repoUrl : repos) {
+            for (String repoUrl : targets) {
                 futures.add(executorService.submit(() -> {
                     long repoStarted = System.nanoTime();
                     RepoStats confirmed = null;
@@ -240,6 +267,7 @@ public class GitHubDataLoader {
                             progressiveResults.clear();
                             progressiveResults.addAll(updated);
                         }
+                        successfulUrls.add(repoUrl);
                         confirmedRepositories.incrementAndGet();
                         successful = true;
                     } catch (Exception ex) {
@@ -248,7 +276,7 @@ public class GitHubDataLoader {
                         synchronized (resultLock) {
                             int completed = completedRepositories.incrementAndGet();
                             if (successful) trace("download " + repositoryName(repoUrl),
-                                    "Repository complete (" + completed + "/" + repos.size() + ") in " + elapsed(repoStarted)
+                                    "Repository complete (" + completed + "/" + targets.size() + ") in " + elapsed(repoStarted)
                                     + ": " + confirmed.getCommits() + " active commits, " + confirmed.getUserStats().size() + " people.");
                         }
                     }
@@ -272,6 +300,9 @@ public class GitHubDataLoader {
         synchronized (resultLock) {
             progressiveResults.forEach(stats -> confirmedResults.put(stats.getUrl(), stats));
         }
+        java.util.Set<String> failed = new java.util.LinkedHashSet<>(targets);
+        failed.removeAll(successfulUrls);
+        lastFailedRepositoryUrls = java.util.Set.copyOf(failed);
         List<RepoStats> result = readLocalData(false, confirmedResults);
         traceDetail("sync", "Writing derived statistics and CSV for " + result.size() + " available repositories…");
         if (!result.isEmpty() || repos.isEmpty()) {
@@ -279,8 +310,8 @@ public class GitHubDataLoader {
             csvWriter.accept(result);
         }
 
-        trace("sync", "Synchronization finished in " + elapsed(started) + ": " + lastConfirmedRepositoryCount + "/" + repos.size()
-                + " repositories confirmed, " + (repos.size() - lastConfirmedRepositoryCount) + " not confirmed; "
+        trace("sync", "Synchronization finished in " + elapsed(started) + ": " + lastConfirmedRepositoryCount + "/" + targets.size()
+                + " repositories confirmed, " + (targets.size() - lastConfirmedRepositoryCount) + " not confirmed; "
                 + result.size() + " local results available.");
         return result;
     }
@@ -595,16 +626,27 @@ public class GitHubDataLoader {
     private static void checkInterrupted() {
         if (Thread.currentThread().isInterrupted()) throw new CancellationException("Operation cancelled.");
     }
-    public record UpdateStatus(int pendingCommits, boolean headsChanged, String error) { }
+    public record UpdateStatus(int pendingCommits, boolean headsChanged, String error, Boolean publicRepository) {
+        public UpdateStatus(int pendingCommits, boolean headsChanged, String error) {
+            this(pendingCommits, headsChanged, error, null);
+        }
+    }
     private record CommitComparison(String base, String head) { }
 
     /** Metadata-only check: no changed files, source contents, snapshots or rules are written. */
     public void checkForUpdates(java.util.function.BiConsumer<String, UpdateStatus> listener) {
+        checkForUpdates(null, listener);
+    }
+
+    /** A scoped check never contacts repositories outside the requested collection. */
+    public void checkForUpdates(java.util.Collection<String> requested, java.util.function.BiConsumer<String, UpdateStatus> listener) {
         long started = System.nanoTime();
         try {
             checkInterrupted();
             reloadRepositories();
-            trace("check", "Starting remote update checks for " + repos.size() + " repositories (commit IDs and metadata only; no files downloaded).");
+            List<String> targets = requested == null ? List.copyOf(repos) : configuredTargets(requested);
+            if (targets.isEmpty()) return;
+            trace("check", "Starting remote update checks for " + targets.size() + " repositories (commit IDs and metadata only; no files downloaded).");
             RepositoryReader reader;
             try { reader = apiSource.get(); }
             catch (CancellationException ex) { throw ex; }
@@ -614,13 +656,16 @@ public class GitHubDataLoader {
                 throw ex;
             }
             int checked = 0, failed = 0;
-            for (String url : new ArrayList<>(repos)) {
+            for (String url : targets) {
                 checkInterrupted();
                 String scope = "check " + repositoryName(url);
                 long repoStarted = System.nanoTime();
-                trace(scope, "Checking repository " + (++checked) + "/" + repos.size() + ": fetching remote metadata and reading the local checkpoint…");
+                trace(scope, "Checking repository " + (++checked) + "/" + targets.size() + ": fetching remote metadata and reading the local checkpoint…");
+                Boolean publicRepository = null;
                 try {
-                    UpdateStatus status = inspectUpdates(reader.get(url), snapshotReader.apply(url), message -> traceDetail(scope, message));
+                    GHRepository remote = reader.get(url);
+                    publicRepository = !remote.isPrivate();
+                    UpdateStatus status = inspectUpdates(remote, snapshotReader.apply(url), message -> traceDetail(scope, message));
                     checkInterrupted();
                     listener.accept(url, status);
                     checkInterrupted();
@@ -632,7 +677,7 @@ public class GitHubDataLoader {
                     checkInterrupted();
                     failed++;
                     traceFailure(scope, "Update check failed after " + elapsed(repoStarted) + "; saved originals unchanged", ex);
-                    listener.accept(url, new UpdateStatus(-1, false, ex.getMessage()));
+                    listener.accept(url, new UpdateStatus(-1, false, ex.getMessage(), publicRepository));
                 }
             }
             trace("check", "Remote checks finished in " + elapsed(started) + ": " + (checked - failed) + "/" + checked + " successful, " + failed + " failed.");
@@ -700,7 +745,8 @@ public class GitHubDataLoader {
             listedHeads.add(branch.getValue());
             progress.accept("Branch " + branch.getKey() + ": history IDs checked (" + scanned + "); " + missing.size() + " distinct commits pending so far.");
         }
-        return new UpdateStatus(missing.size(), hasMetadataChanges(previous, heads, repository.getDefaultBranch(), !repository.isPrivate()), null);
+        return new UpdateStatus(missing.size(), hasMetadataChanges(previous, heads, repository.getDefaultBranch(), !repository.isPrivate()),
+                null, !repository.isPrivate());
     }
 
     /** Keep the metadata-only check and the download's reuse decision consistent. */
