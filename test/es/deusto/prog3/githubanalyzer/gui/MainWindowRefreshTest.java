@@ -147,11 +147,11 @@ public class MainWindowRefreshTest {
         assertEquals(4, stale.getTeamSize(), "Updating metadata must not mutate a prior view");
     }
     @Test public void treeSuffixDisplaysPendingCommitCountAndUnknownChecks() {
-        assertEquals(" (12)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(12, true, null)));
-        assertEquals(" (0)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, false, null)));
-        assertEquals(" (0; changes pending)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
-        assertEquals(" (?)", MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(-1, false, "Offline")));
-        assertEquals("", MainWindow.pendingSuffix(null));
+        assertEquals(" (12)", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(12, true, null)));
+        assertEquals("", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, false, null)));
+        assertEquals(" (changes pending)", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
+        assertEquals(" (?)", RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(-1, false, "Offline")));
+        assertEquals("", RepositoryTreeRenderer.pendingSuffix(null));
     }
 
     @Test public void externalGroupAndSizeUpdatesKeepMetricsAndRemoveUnconfiguredRepositories() {
@@ -195,7 +195,7 @@ public class MainWindowRefreshTest {
             int initialWidth = tree.getPathBounds(path).width;
             assertFalse(scroll.getHorizontalScrollBar().isVisible());
 
-            suffix.set(MainWindow.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
+            suffix.set(RepositoryTreeRenderer.pendingSuffix(new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null)));
             MainWindow.refreshRepositoryTreeLabels(tree);
             layoutTreeScrollPane(scroll);
             assertTrue(tree.getPathBounds(path).width > initialWidth, "Recompute node bounds when the update suffix appears");
@@ -220,4 +220,41 @@ public class MainWindowRefreshTest {
         scroll.doLayout();
         scroll.getViewport().doLayout();
     }
+    @Test public void pendingRefreshIncludesMissingFailedAndChangedButSkipsCurrentAndConfirmedEmptyRepositories() {
+        var missing = repository("missing", false, 0);
+        var current = repository("current", true, 2);
+        var commits = repository("commits", true, 2);
+        var metadata = repository("metadata", true, 2);
+        var failed = repository("failed", true, 2);
+        var empty = repository("empty", true, 0);
+        var unknown = repository("unknown", true, 2);
+        var updates = java.util.Map.of(
+                "current", new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, false, null),
+                "commits", new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(4, true, null),
+                "metadata", new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, true, null),
+                "empty", new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(0, false, null),
+                "unknown", new es.deusto.prog3.githubanalyzer.GitHubDataLoader.UpdateStatus(-1, false, "Offline"));
+        assertEquals(List.of("missing", "commits", "metadata", "failed", "unknown"), MainWindow.pendingRefreshTargets(
+                List.of(missing, current, commits, metadata, failed, empty, unknown), updates, java.util.Set.of("failed")));
+    }
+
+    @Test public void pendingProjectionKeepsKnownVisibilityWithoutReusingStaleMetrics() {
+        RepoStats pending = repository("https://github.com/course/repo", false, 20);
+        pending.setPublic(true);
+        var config = new es.deusto.prog3.githubanalyzer.domain.RepositoryConfig(pending.getUrl(), "G01", 4);
+        RepoStats displayed = MainWindow.withConfiguredRepositories(List.of(pending), List.of(config)).get(0);
+        assertTrue(displayed.isPublic());
+        assertFalse(displayed.isAnalysisComplete());
+        assertEquals(0, displayed.getCommits());
+        RepoStats rebuilt = MainWindow.withConfiguredRepositories(List.of(), List.of(config),
+                java.util.Map.of(pending.getUrl(), true)).get(0);
+        assertTrue(rebuilt.isPublic(), "A failed first download must not replace known public visibility");
+    }
+
+    private static RepoStats repository(String url, boolean complete, int commits) {
+        RepoStats result = new RepoStats();
+        result.setUrl(url); result.setName(url); result.setAnalysisComplete(complete); result.setCommits(commits);
+        return result;
+    }
+
 }

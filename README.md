@@ -60,7 +60,7 @@ teacher account and the repository list from inside the app. You can reopen it a
 time with the **Config** button.
 
 You can also edit the two files by hand (see the **Configuration** section below);
-the **Refresh from GitHub** button re-reads them, so new tokens or repositories
+the GitHub refresh actions re-read them, so new tokens or repositories
 take effect without restarting. To prepare the files up front from the templates:
 
 ```bash
@@ -313,16 +313,33 @@ analysis as pending. If Excel has locked the CSV, close it and retry the operati
 ### 3) Manage authorship
 
 The app opens with locally regenerated statistics and checks repository updates in
-the background when credentials are configured. The tree suffix `(N)` is the number
-of unique commits not downloaded yet, deduplicated across branches; `(0)` means no
-new commits and `(?)` means the check failed. The check reads metadata only. It does
-not download changed files or alter local original data. Branch changes can exist
-with zero new commits (for example after branch deletion or moving a head backwards);
-these are shown as `(0; changes pending)` so they are not mistaken for an up-to-date download.
-The repository panel provides horizontal scrolling when needed to read long names
-and update suffixes in full, including while background checks update the labels.
+the background when credentials are configured. Repository nodes always use the
+public/private icon; only the root uses the GitHub icon. Known visibility is kept
+when an analysis or download is unavailable and updated by remote metadata checks.
+The tree suffix `(N)` is the number of unique commits not downloaded yet,
+deduplicated across branches. Up-to-date repositories have no suffix; `(?)` means
+the check failed. Branch or metadata changes with no new commits appear as
+`(changes pending)`. Pending changes use orange text; missing local data and
+confirmed empty repositories use red. Selection remains readable in the system
+selection colors. The repository panel provides horizontal scrolling for long labels.
 
-**Refresh from GitHub** downloads missing commits in the background. The first
+The update check reads metadata only and does not download changed files or alter
+local originals. Downloads have two scopes:
+
+- **Refresh all from GitHub** checks and downloads every configured repository.
+- **Refresh pending** downloads only repositories with missing local data, failed
+  downloads, detected changes or failed/unknown update checks. Confirmed empty
+  repositories without remote changes are skipped. This button is disabled when
+  no repository needs updating.
+
+Right-click a repository and choose **Refresh this repository from GitHub** to
+retry or update just that repository. Selective downloads preserve every other
+repository's local results in progressive saves and the CSV. Their follow-up
+remote checks are also limited to the requested repositories. Refresh summaries
+count only the requested repositories, and the selected repository remains selected.
+All refresh actions are locked while another editing or refresh operation is active.
+
+Refreshes download missing commits in the background. The first
 download lists the default branch's complete history once, then follows the other
 branch heads only through commits not already downloaded. Shared ancestors and
 branch aliases do not cause another complete history listing. After that first
@@ -368,22 +385,50 @@ in Eclipse). Detailed progress callbacks remain available to callers.
 
 Select a repository and click **Manage authorship…** to work entirely locally:
 
-1. Select identities using Ctrl/Cmd or Shift and click **Unify selected identities**.
-   Their work is assigned to the first selected person's group.
-2. Select a person below to highlight all their identities. In the lower table,
-   **Visible name**, **Email** and **GitHub account** offer dropdowns of distinct
-   values from that person's grouped identities. Email and account choices exclude
-   empty values and are read-only when none exist. You can also type a custom visible
-   name or use **Rename person…**. Choices are saved per repository; the selected email
-   is used in derived statistics and CSV. **Separate selected identities** splits
-   aliases again; contact values fall back to an available value if the selected
-   identity leaves the group. **Change participation…** sets member/teacher/excluded roles.
-3. Review Java commits, observed shares and the expected team split in the local
-   preview. Teachers and excluded accounts stay visible but do not enter the team share.
-4. **Restore original identities** removes groupings and restores separate original
-   identities with their initial teacher/member roles. This is a draft until applied.
-5. **Apply and recalculate locally** saves assignments and regenerates statistics
-   and CSV without contacting GitHub. **Cancel** discards the draft.
+1. The sortable **People** table shows participation, identity counts, Java commits
+   and observed contribution bars. Icons, contribution colors and thresholds match
+   the main results table; selection has an additional side marker. Search by
+   name, email or GitHub account.
+2. Select one person to edit their visible name, representative email, GitHub account
+   and participation in the right-hand panel. Contact choices come from that person's
+   original identities. All three name/contact dropdowns use native selection
+   controls; **Edit name** temporarily enables inline custom-name editing, and
+   **Done** finishes the edit. Empty contact
+   fields are disabled. Teachers and other excluded accounts remain visible but do
+   not enter the team share.
+3. Select multiple people with Ctrl/Cmd-click, Shift-click or Shift+Up/Down.
+   **Combine selected…** becomes available as soon as two people are selected;
+   clicking it opens the destination chooser in the right-hand panel. Explicitly
+   choose the destination person and review participation, then click **Confirm
+   combination**. Mixed participation requires an explicit choice. A combination
+   moves entire groups, including saved aliases absent from the current analysis.
+   Alternatively, drag one or more selected people onto another person's row.
+   The destination is outlined during the drag. Dropping selects the involved
+   groups and preselects the destination in the same confirmation panel; nothing
+   is combined until **Confirm combination** is clicked. **Cancel combination**
+   discards the proposal without changing assignments or undo/redo history.
+   Existing groups can be combined again incrementally. Sorting and filtering do
+   not determine the destination. Drops onto empty areas or dragged people,
+   transfers between editors, and external transfers are rejected. A drag also
+   expires if the draft changes before the drop; hiding a source with the filter
+   rejects the drop.
+4. Select original identities in the right-hand table and use **Move to…** or
+   **Separate selected identities** to correct part of a group. Contact choices
+   fall back to available values when their original identity leaves the group.
+5. **Undo** and **Redo** restore complete operations, including groupings, names,
+   contact choices and participation. Use Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or
+   Ctrl/Cmd+Y). **Restore session start** recovers the configuration present when
+   the editor opened; this action can itself be undone.
+6. **Restore original identities…** removes all saved authorship rules for this
+   repository, including overrides and assignments for absent identities, then
+   rebuilds separate identities with default participation from the original
+   download, including commits outside the active branch. A confirmation explains
+   this scope. Restoration is undoable before applying and remains available after
+   saving and reopening the editor.
+7. **Apply and recalculate locally** reviews and saves the draft, then regenerates
+   statistics and CSV without contacting GitHub. **Cancel** discards the draft.
+   Undo/redo history belongs to the open editor and is not persisted after closing.
+   Original commits are never modified.
 
 A linked GitHub account takes precedence over a freely chosen Git name when
 initializing teacher roles. Explicit saved roles take precedence afterwards. New
@@ -696,9 +741,9 @@ GitHub enforces API **rate limits** (roughly 5,000 requests/hour with a token, a
 only ~60/hour without one). Analyzing many repositories — or repos with lots of
 commits/branches — can hit that limit. The app requires a configured token for any
 online refresh, and that token also needs access when repositories are private.
-When fewer repositories finish than configured, the app warns you. Retry later or
+When fewer repositories finish than requested, the app warns you. Retry later or
 check token access. Complete original downloads are saved progressively. Failed repositories retain
-their previous original data and pending counts; retries resume from those checkpoints.
+their previous original data; retry them with **Refresh pending** or the repository context menu. Retries resume from those checkpoints.
 
 ---
 

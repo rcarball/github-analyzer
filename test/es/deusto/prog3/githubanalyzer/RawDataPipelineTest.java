@@ -842,4 +842,135 @@ class RawDataPipelineTest {
         assertEquals(0, requests.get()); assertArrayEquals(damaged, Files.readAllBytes(store.pathFor(URL)));
         assertEquals("blocked directory", Files.readString(dir.resolve("recovery")));
     }
+    @Test void selectiveRefreshOnlyDownloadsRequestedRepositoriesAndEveryWriteRetainsOtherResults(@TempDir Path dir) throws Exception {
+        String other = URL + "-other";
+        RawDataStore store = new RawDataStore(dir);
+        Repository firstRemote = initial(), otherRemote = initial();
+        Map<String, Repository> remotes = Map.of(URL, firstRemote, other, otherRemote);
+        List<String> configured = List.of(URL + ";G01;4", other + ";G02;3");
+        new GitHubDataLoader(() -> configured, ignored -> new AuthorshipConfig(), () -> remotes::get,
+                ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate).loadData();
+        byte[] untouched = Files.readAllBytes(store.pathFor(other));
+        firstRemote.add("new", B, 20, "a"); firstRemote.heads.put("main", "new");
+        otherRemote.add("not-requested", B, 30, "a"); otherRemote.heads.put("main", "not-requested");
+        List<String> requests = Collections.synchronizedList(new ArrayList<>());
+        List<List<RepoStats>> writes = new ArrayList<>(), exports = new ArrayList<>();
+        GitHubDataLoader loader = new GitHubDataLoader(() -> configured, ignored -> new AuthorshipConfig(),
+                () -> url -> { requests.add(url); return remotes.get(url); },
+                results -> writes.add(List.copyOf(results)), results -> exports.add(List.copyOf(results)),
+                store::load, store::save, store::loadForUpdate);
+        List<RepoStats> results = loader.refreshRepositories(List.of(URL, URL));
+        assertEquals(List.of(URL), requests);
+        assertEquals(List.of(URL), loader.getLastRequestedRepositoryUrls());
+        assertEquals(1, loader.getLastConfirmedRepositoryCount());
+        assertTrue(loader.getLastFailedRepositoryUrls().isEmpty());
+        assertEquals(2, results.size());
+        assertEquals(2, results.stream().filter(repo -> URL.equals(repo.getUrl())).findFirst().orElseThrow().getCommits());
+        assertEquals(1, results.stream().filter(repo -> other.equals(repo.getUrl())).findFirst().orElseThrow().getCommits());
+        for (List<RepoStats> write : writes) assertEquals(Set.of(URL, other), write.stream().map(RepoStats::getUrl).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(List.of(results), exports);
+        assertArrayEquals(untouched, Files.readAllBytes(store.pathFor(other)));
+        assertFalse(otherRemote.fileReads.containsKey("not-requested"));
+    }
+
+    @Test void selectiveRefreshTracksFailuresEvenWhenOldResultsExistAndCanRetryJustThatRepository(@TempDir Path dir) throws Exception {
+        String other = URL + "-other", missing = URL + "-missing";
+        RawDataStore store = new RawDataStore(dir);
+        Repository archived = initial();
+        new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(), () -> url -> archived,
+                ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate).loadData();
+        byte[] original = Files.readAllBytes(store.pathFor(URL)), untouched = Files.readAllBytes(store.pathFor(other));
+        Repository fresh = initial(); fresh.add("new", B, 20, "a"); fresh.heads.put("main", "new");
+        var fail = new java.util.concurrent.atomic.AtomicBoolean(true);
+        List<String> requests = Collections.synchronizedList(new ArrayList<>());
+        GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL, other, missing), ignored -> new AuthorshipConfig(),
+                () -> url -> {
+                    requests.add(url);
+                    if (url.equals(other)) throw new AssertionError("Do not contact an untouched repository");
+                    if (url.equals(URL) && fail.get()) throw new IOException("Simulated selected download failure");
+                    return fresh;
+                }, ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate);
+        List<RepoStats> results = loader.refreshRepositories(List.of(URL, missing));
+        assertEquals(3, results.size());
+        assertEquals(Set.of(URL, missing), Set.copyOf(requests));
+        assertEquals(1, loader.getLastConfirmedRepositoryCount());
+        assertEquals(Set.of(URL), loader.getLastFailedRepositoryUrls());
+        assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
+        assertArrayEquals(untouched, Files.readAllBytes(store.pathFor(other)));
+        fail.set(false); requests.clear();
+        List<RepoStats> retried = loader.refreshRepositories(loader.getLastFailedRepositoryUrls());
+        assertEquals(List.of(URL), requests);
+        assertEquals(3, retried.size());
+        assertEquals(1, loader.getLastConfirmedRepositoryCount());
+        assertTrue(loader.getLastFailedRepositoryUrls().isEmpty());
+        assertEquals(2, retried.stream().filter(repo -> URL.equals(repo.getUrl())).findFirst().orElseThrow().getCommits());
+        assertArrayEquals(untouched, Files.readAllBytes(store.pathFor(other)));
+    }
+
+    @Test void emptyAndUnconfiguredSelectiveRequestsNeverOpenTheApiOrWriteResults(@TempDir Path dir) throws Exception {
+        RawDataStore store = new RawDataStore(dir);
+        loader(initial(), store, new AtomicInteger()).loadData();
+        byte[] original = Files.readAllBytes(store.pathFor(URL));
+        AtomicInteger clients = new AtomicInteger(), writes = new AtomicInteger();
+        GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL), ignored -> new AuthorshipConfig(),
+                () -> { clients.incrementAndGet(); return url -> initial(); },
+                ignored -> writes.incrementAndGet(), ignored -> writes.incrementAndGet(), store::load, store::save, store::loadForUpdate);
+        assertEquals(1, loader.refreshRepositories(List.of()).size());
+        assertThrows(IllegalStateException.class, () -> loader.refreshRepositories(List.of(URL + "-removed")));
+        assertEquals(0, clients.get()); assertEquals(0, writes.get());
+        assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
+    }
+
+    @Test void scopedUpdateChecksOnlyContactTheRequestedRepositoryAndExposeVisibilityBeforeAnyDownload(@TempDir Path dir) {
+        String other = URL + "-other";
+        RawDataStore store = new RawDataStore(dir);
+        Repository remote = initial(); remote.privateRepository = true;
+        List<String> requests = new ArrayList<>();
+        GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(),
+                () -> url -> { requests.add(url); return remote; }, ignored -> { }, ignored -> { }, store::load, store::save);
+        Map<String, GitHubDataLoader.UpdateStatus> updates = new HashMap<>();
+        loader.checkForUpdates(List.of(URL), updates::put);
+        assertEquals(List.of(URL), requests);
+        assertEquals(Set.of(URL), updates.keySet());
+        assertEquals(Boolean.FALSE, updates.get(URL).publicRepository());
+        assertTrue(remote.fileReads.isEmpty()); assertEquals(0, remote.sourceReads);
+        assertNull(store.load(URL));
+        requests.clear(); loader.checkForUpdates(List.of(), updates::put);
+        assertTrue(requests.isEmpty());
+    }
+
+    @Test void failedHistoryChecksStillExposeSuccessfullyReadVisibility(@TempDir Path dir) {
+        RawDataStore store = new RawDataStore(dir);
+        Repository remote = new Repository() {
+            @Override public Map<String, GHBranch> getBranches() throws IOException { throw new IOException("Branches unavailable"); }
+        };
+        remote.privateRepository = false;
+        List<GitHubDataLoader.UpdateStatus> updates = new ArrayList<>();
+        GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL), ignored -> new AuthorshipConfig(),
+                () -> url -> remote, ignored -> { }, ignored -> { }, store::load, store::save);
+        loader.checkForUpdates(List.of(URL), (url, status) -> updates.add(status));
+        assertEquals(1, updates.size());
+        assertEquals(Boolean.TRUE, updates.get(0).publicRepository());
+        assertNotNull(updates.get(0).error());
+        assertEquals(-1, updates.get(0).pendingCommits());
+    }
+
+    @Test void selectiveCsvFailureRetainsBothNewAndUntouchedStatistics(@TempDir Path dir) {
+        String other = URL + "-other";
+        RawDataStore store = new RawDataStore(dir);
+        Repository remote = initial();
+        new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(), () -> url -> remote,
+                ignored -> { }, ignored -> { }, store::load, store::save, store::loadForUpdate).loadData();
+        remote.add("new", B, 20, "a"); remote.heads.put("main", "new");
+        GitHubDataLoader loader = new GitHubDataLoader(() -> List.of(URL, other), ignored -> new AuthorshipConfig(),
+                () -> url -> remote, ignored -> { }, results -> {
+                    throw new es.deusto.prog3.githubanalyzer.persistence.CsvExportException("report.csv", results, new IOException("Locked CSV"));
+                }, store::load, store::save, store::loadForUpdate);
+        var failure = assertThrows(es.deusto.prog3.githubanalyzer.persistence.CsvExportException.class,
+                () -> loader.refreshRepositories(List.of(URL)));
+        assertEquals(2, failure.results().size());
+        assertEquals(1, loader.getLastConfirmedRepositoryCount());
+        assertTrue(loader.getLastFailedRepositoryUrls().isEmpty());
+    }
+
 }
