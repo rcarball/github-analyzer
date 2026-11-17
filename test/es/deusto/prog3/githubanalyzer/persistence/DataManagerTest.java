@@ -21,9 +21,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
@@ -34,7 +37,65 @@ import es.deusto.prog3.githubanalyzer.domain.UserStats;
  * rejected safely and falls back to an empty cache instead of executing or
  * exploding.
  */
+@ResourceLock(Resources.LOCALE)
 public class DataManagerTest {
+
+    @Test void spanishCsvFractionsRemainNumericWithAnyMachineLocale(@TempDir Path tmp) throws Exception {
+        RepoStats repo = new RepoStats(); repo.setGroup("G-Á"); repo.setTeamSize(4); repo.setAuthorCount(3);
+        long date = java.time.LocalDate.of(2026, 11, 17).atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        UserStats first = new UserStats("José", "jose@example.org", 1, 1, 1, 0, 1, date, date);
+        UserStats second = new UserStats("Nuria", "nuria@example.org", 1, 1, 2, 0, 2, date, date);
+        UserStats teacher = new UserStats("Teacher", "teacher@example.org", 1, 1, 100, 0, 100, date, date);
+        first.setPerson("first", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER);
+        second.setPerson("second", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER);
+        teacher.setPerson("teacher", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.TEACHER);
+        repo.setUserStats(List.of(first, second, teacher));
+        Locale original = Locale.getDefault(), format = Locale.getDefault(Locale.Category.FORMAT), display = Locale.getDefault(Locale.Category.DISPLAY);
+        byte[] reference = null;
+        try {
+            for (Locale locale : new Locale[] {Locale.US, Locale.forLanguageTag("es-ES"), Locale.forLanguageTag("ar-EG"), Locale.forLanguageTag("th-TH")}) {
+                Locale.setDefault(locale);
+                Path file = tmp.resolve("stats.csv"); DataManager.getInstance().storeCSV(List.of(repo), file);
+                byte[] bytes = Files.readAllBytes(file);
+                if (reference == null) reference = bytes;
+                else org.junit.jupiter.api.Assertions.assertArrayEquals(reference, bytes, "Locale must not alter the CSV bytes");
+                assertEquals(0xEF, bytes[0] & 0xFF); assertEquals(0xBB, bytes[1] & 0xFF); assertEquals(0xBF, bytes[2] & 0xFF);
+                String csv = Files.readString(file);
+                assertTrue(csv.contains("José")); assertTrue(csv.endsWith("\r\n"));
+                assertFalse(csv.replace("\r\n", "").contains("\n"), "Records use CRLF on every OS");
+                String[] rows = csv.substring(1).split("\r\n");
+                assertEquals(4, rows.length);
+                for (int i = 1; i <= 3; i++) {
+                    String[] cells = rows[i].split(";", -1); assertEquals(19, cells.length);
+                    assertEquals("2026/11/17", cells[10]); assertEquals("2026/11/17", cells[11]);
+                    assertEquals("0,250000", cells[16]);
+                    assertEquals(.25, parseSpanish(cells[16]), 0.000001);
+                    if (i < 3) {
+                        assertTrue(cells[7].matches("[0-9]+,[0-9]{6}"), "Fraction stays unquoted and has no percent sign");
+                        assertEquals(i / 3.0, parseSpanish(cells[7]), 0.000001);
+                    } else assertEquals("-", cells[7], "Teacher remains outside the observed-share model");
+                }
+            }
+        } finally {
+            Locale.setDefault(original); Locale.setDefault(Locale.Category.FORMAT, format); Locale.setDefault(Locale.Category.DISPLAY, display);
+        }
+    }
+
+    private static double parseSpanish(String text) {
+        java.text.ParsePosition position = new java.text.ParsePosition(0);
+        Number parsed = java.text.NumberFormat.getNumberInstance(Locale.forLanguageTag("es-ES")).parse(text, position);
+        org.junit.jupiter.api.Assertions.assertNotNull(parsed);
+        assertEquals(text.length(), position.getIndex(), "The entire field must parse as one Spanish number");
+        return parsed.doubleValue();
+    }
+
+    @Test void zeroActivityExportsZeroShareAndUndefinedExpectedShare(@TempDir Path tmp) throws Exception {
+        RepoStats repo = new RepoStats(); UserStats member = new UserStats("member", "member@example.org", 0, 0, 0, 0, 0, -1, -1);
+        member.setPerson("member", es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role.MEMBER); repo.addUserStats(member);
+        Path file = tmp.resolve("stats.csv"); DataManager.getInstance().storeCSV(List.of(repo), file);
+        String[] cells = Files.readAllLines(file).get(1).split(";", -1);
+        assertEquals("0,000000", cells[7]); assertEquals("", cells[12]); assertEquals("0", cells[15]); assertEquals("-", cells[16]);
+    }
 
     @Test
     public void failedAtomicSaveReportsTheErrorAndKeepsExistingData(@TempDir Path dir) throws Exception {
@@ -166,8 +227,8 @@ public class DataManagerTest {
         Path file = tmp.resolve("stats.csv"); DataManager.getInstance().storeCSV(List.of(repo), file);
         List<String> lines = Files.readAllLines(file);
         assertTrue(lines.get(0).endsWith("TEAM_SIZE_DECLARED;CONTRIBUTORS;AUTHOR_IDENTITIES;TEAM_SIZE_EFFECTIVE;EXPECTED_SHARE;PERSON_ID;PARTICIPATION"));
-        assertTrue(lines.get(1).contains(";50;0;50;1.000000;"));
-        assertTrue(lines.get(1).endsWith(";4;1;3;4;0.250000;\"student-id\";\"MEMBER\""));
+        assertTrue(lines.get(1).contains(";50;0;50;1,000000;"));
+        assertTrue(lines.get(1).endsWith(";4;1;3;4;0,250000;\"student-id\";\"MEMBER\""));
         assertTrue(lines.get(2).contains(";500;0;500;-;"));
         assertTrue(lines.get(2).endsWith(";\"EXCLUDED\""));
     }

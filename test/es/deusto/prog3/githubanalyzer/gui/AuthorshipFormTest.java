@@ -11,6 +11,19 @@ import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig;
 import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.Role;
 
 class AuthorshipFormTest {
+    @Test void observedRendererAndExpectedSummaryUseTheSamePercentageStyle() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorshipForm form = new AuthorshipForm(List.of(), new AuthorshipConfig(), 4);
+            assertTrue(form.summary.getText().contains("25,00 %"));
+            var renderer = form.people.getDefaultRenderer(Float.class);
+            var label = (javax.swing.JLabel) renderer.getTableCellRendererComponent(form.people, .25f, false, false, 0, 5);
+            assertEquals("25,00 %", label.getText());
+            label = (javax.swing.JLabel) renderer.getTableCellRendererComponent(form.people, Float.NaN, false, false, 0, 5);
+            assertEquals("—", label.getText());
+            label = (javax.swing.JLabel) renderer.getTableCellRendererComponent(form.people, Float.POSITIVE_INFINITY, false, false, 0, 5);
+            assertEquals("—", label.getText());
+        });
+    }
     private final AuthorIdentity a = new AuthorIdentity("Name", "school@example.org", "login");
     private final AuthorIdentity b = new AuthorIdentity("Alias", "home@example.org", "login");
     private final List<AuthorSummary> authors = List.of(new AuthorSummary(a, 3), new AuthorSummary(b, 2));
@@ -117,7 +130,7 @@ class AuthorshipFormTest {
             String first = form.snapshot().personFor(a).id();
             form.assign(1, first);
             assertEquals(1, form.contributorCount());
-            assertTrue(form.summary.getText().contains("100.00%"));
+            assertTrue(form.summary.getText().contains("100,00 %"));
             form.people.getModel().setValueAt("Renamed", 0, 0);
             assertEquals("Renamed", form.snapshot().personFor(a).name());
             form.people.getModel().setValueAt(Role.EXCLUDED, 0, 3);
@@ -160,7 +173,7 @@ class AuthorshipFormTest {
             form.assign(1, form.snapshot().personFor(a).id());
             assertEquals(1, form.contributorCount());
             assertTrue(form.summary.getText().contains("4 (declared)"));
-            assertTrue(form.summary.getText().contains("25.00%"));
+            assertTrue(form.summary.getText().contains("25,00 %"));
             assertTrue(form.summary.getText().contains("differs"));
             AuthorshipForm docsOnly = new AuthorshipForm(List.of(new AuthorSummary(a, 0)), new AuthorshipConfig(), null);
             assertEquals(0, docsOnly.contributorCount());

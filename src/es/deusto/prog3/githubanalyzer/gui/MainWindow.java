@@ -81,6 +81,7 @@ import es.deusto.prog3.githubanalyzer.persistence.AuthorshipStore;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
 import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 import es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics;
+import es.deusto.prog3.githubanalyzer.format.NumberFormats;
 import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
@@ -1408,8 +1409,8 @@ public class MainWindow extends JFrame {
 				boolean hasFocus, int row, int column) {
 			setFont(table.getFont());
 
-			fraction = (value instanceof Float) ? (Float) value : Float.NaN;
-			text = Float.isNaN(fraction) ? "-" : String.format("%.2f %%", fraction * 100f);
+			fraction = (value instanceof Float f && Float.isFinite(f)) ? f : Float.NaN;
+			text = NumberFormats.percentage(fraction);
 
 			Color badge = table.getForeground();
 			boolean hasContributionColor = false;
@@ -1465,8 +1466,7 @@ public class MainWindow extends JFrame {
         }
         if (v instanceof Float) {
             float f = (Float) v;
-            if (Float.isNaN(f)) return "-";   // e.g. teacher row: excluded from the share model
-            return String.format("%.2f %%", f * 100f);
+            return NumberFormats.percentage(f);
         }
         // Integer and other values
         return String.valueOf(v);
@@ -1598,7 +1598,7 @@ public class MainWindow extends JFrame {
 	    sb.append("<b>Interpretation</b><br>");
 	    sb.append(String.format("Contributors: <b>%d</b> · Team size: <b>%d (%s)</b><br>Expected share: <b>%s</b><br><br>",
                 observed, n, repo.getTeamSize() == null ? "inferred" : "declared",
-                Float.isNaN(expected) ? "—" : String.format(java.util.Locale.ROOT, "%.2f%%", expected * 100)));
+                NumberFormats.percentage(expected)));
 	    sb.append("<b>").append(it.badge.shortLabel).append("</b>");
 	    sb.append(": ").append(it.badge.longLine.replaceFirst("^[^:]*:\\s*", "")).append("<br>");
 

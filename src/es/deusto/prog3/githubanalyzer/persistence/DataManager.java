@@ -34,6 +34,7 @@ import java.util.List;
 
 import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 import es.deusto.prog3.githubanalyzer.domain.UserStats;
+import es.deusto.prog3.githubanalyzer.format.NumberFormats;
 
 public class DataManager {
 
@@ -166,7 +167,7 @@ public class DataManager {
     synchronized void storeCSV(List<RepoStats> data, Path csvPath) throws java.io.IOException {
         try (BufferedWriter out = Files.newBufferedWriter(csvPath, java.nio.charset.StandardCharsets.UTF_8)) {
 
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd");
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd", java.util.Locale.ROOT);
 
             // The BOM makes UTF-8 accents import correctly in common spreadsheet
             // applications. Text cells are quoted and formula-hardened below.
@@ -184,9 +185,7 @@ public class DataManager {
                     int churn = u.getChurn();
                     // Share of the team churn (excluding teacher); same denominator as the GUI.
                     float share = ContributionMetrics.teamShare(repo, u);
-                    String shareStr = Float.isNaN(share)
-                            ? "-"                                                       // teacher row
-                            : String.format(java.util.Locale.ROOT, "%.6f", share);      // 0..1 fraction
+                    String shareStr = NumberFormats.csvShare(share); // numeric 0..1 fraction, decimal comma
 
                     writeCsvRow(out,
                             csvTextCell(repo.getGroup()),
@@ -205,8 +204,7 @@ public class DataManager {
                             Integer.toString(ContributionMetrics.activeContributors(repo).size()),
                             Integer.toString(repo.getAuthorCount()),
                             Integer.toString(ContributionMetrics.effectiveTeamSize(repo)),
-                            Float.isNaN(ContributionMetrics.expectedShare(repo)) ? "-"
-                                    : String.format(java.util.Locale.ROOT, "%.6f", ContributionMetrics.expectedShare(repo)),
+                            NumberFormats.csvShare(ContributionMetrics.expectedShare(repo)),
                             csvTextCell(u.getPersonId()),
                             csvTextCell(u.getParticipationRole() == null ? (ContributionMetrics.isTeacher(u) ? "TEACHER" : "MEMBER") : u.getParticipationRole().name()));
                 }
@@ -235,7 +233,7 @@ public class DataManager {
 
     private static void writeCsvRow(BufferedWriter out, String... cells) throws java.io.IOException {
         out.write(String.join(String.valueOf(CSV_SEPARATOR), cells));
-        out.newLine();
+        out.write("\r\n");
     }
 
     private static String fmtDateOrDash(SimpleDateFormat sdf, long ts) {
