@@ -268,7 +268,11 @@ public class GitHubDataLoader {
             if (executorService != null) executorService.shutdown();
         }
 
-        List<RepoStats> result = readLocalData(false);
+        Map<String, RepoStats> confirmedResults = new HashMap<>();
+        synchronized (resultLock) {
+            progressiveResults.forEach(stats -> confirmedResults.put(stats.getUrl(), stats));
+        }
+        List<RepoStats> result = readLocalData(false, confirmedResults);
         traceDetail("sync", "Writing derived statistics and CSV for " + result.size() + " available repositories…");
         if (!result.isEmpty() || repos.isEmpty()) {
             resultWriter.accept(result);
@@ -332,6 +336,10 @@ public class GitHubDataLoader {
     public synchronized List<RepoStats> loadLocalData() { return readLocalData(true); }
 
     private List<RepoStats> readLocalData(boolean persist) {
+        return readLocalData(persist, Map.of());
+    }
+
+    private List<RepoStats> readLocalData(boolean persist, Map<String, RepoStats> confirmedResults) {
         reloadRepositories();
         long started = System.nanoTime();
         if (persist) trace("local", "Recalculating " + repos.size() + " repositories from saved originals; no GitHub requests.");
@@ -339,6 +347,11 @@ public class GitHubDataLoader {
         for (RepositoryConfig config : repositoryConfigs.values()) {
             String scope = "local " + repositoryName(config.url());
             try {
+                RepoStats confirmed = confirmedResults.get(config.url());
+                if (confirmed != null) {
+                    result.add(confirmed.withSettings(config));
+                    continue;
+                }
                 traceDetail(scope, "Reading original download and authorship assignments…");
                 RepositorySnapshot raw = snapshotReader.apply(config.url());
                 if (raw != null) {
@@ -583,6 +596,7 @@ public class GitHubDataLoader {
         if (Thread.currentThread().isInterrupted()) throw new CancellationException("Operation cancelled.");
     }
     public record UpdateStatus(int pendingCommits, boolean headsChanged, String error) { }
+    private record CommitComparison(String base, String head) { }
 
     /** Metadata-only check: no changed files, source contents, snapshots or rules are written. */
     public void checkForUpdates(java.util.function.BiConsumer<String, UpdateStatus> listener) {
@@ -641,12 +655,20 @@ public class GitHubDataLoader {
         if (previous != null) previous.commits().forEach(commit -> known.add(commit.sha()));
         progress.accept("Comparing " + heads.size() + " remote branches against " + known.size() + " stored original commits.");
         java.util.Set<String> missing = new java.util.HashSet<>();
+        // Reuse only completed queries within this repository check. A new check starts fresh.
+        java.util.Set<CommitComparison> compared = new java.util.HashSet<>();
+        java.util.Set<String> listedHeads = new java.util.HashSet<>();
         for (var branch : heads.entrySet()) {
             checkInterrupted();
             String old = previous == null ? null : previous.branchHeads().get(branch.getKey());
             progress.accept("Branch " + branch.getKey() + ": checkpoint " + shortSha(old) + " → remote " + shortSha(branch.getValue()) + ".");
             if (known.contains(branch.getValue())) {
                 progress.accept("Branch " + branch.getKey() + ": head already downloaded; no commit comparison needed.");
+                continue;
+            }
+            CommitComparison comparison = new CommitComparison(old, branch.getValue());
+            if (listedHeads.contains(branch.getValue()) || compared.contains(comparison)) {
+                progress.accept("Branch " + branch.getKey() + ": reusing completed commit-ID query.");
                 continue;
             }
             if (old != null) {
@@ -659,6 +681,7 @@ public class GitHubDataLoader {
                         if (!known.contains(commit.getSHA1())) missing.add(commit.getSHA1());
                         if (++scanned % 100 == 0) progress.accept("Branch " + branch.getKey() + ": " + scanned + " comparison IDs read; " + missing.size() + " distinct commits pending across checked branches.");
                     }
+                    compared.add(comparison);
                     progress.accept("Branch " + branch.getKey() + ": comparison complete (" + scanned + " IDs); " + missing.size() + " distinct commits pending so far.");
                     continue;
                 } catch (org.kohsuke.github.GHFileNotFoundException ex) {
@@ -674,6 +697,7 @@ public class GitHubDataLoader {
                 if (!known.contains(commit.getSHA1())) missing.add(commit.getSHA1());
                 if (++scanned % 100 == 0) progress.accept("Branch " + branch.getKey() + ": " + scanned + " history IDs read; " + missing.size() + " distinct commits pending so far.");
             }
+            listedHeads.add(branch.getValue());
             progress.accept("Branch " + branch.getKey() + ": history IDs checked (" + scanned + "); " + missing.size() + " distinct commits pending so far.");
         }
         return new UpdateStatus(missing.size(), hasMetadataChanges(previous, heads, repository.getDefaultBranch(), !repository.isPrivate()), null);

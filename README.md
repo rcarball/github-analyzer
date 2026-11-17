@@ -318,6 +318,16 @@ editor also synchronizes its repository metadata, including after cancellation.
 Configuration saves run in the background with editing and closing disabled until
 the operation completes.
 
+Update checks reuse completed comparisons with the same base/head SHA pair and
+full history-ID queries with the same head within each repository. Comparisons
+with different bases remain independent, and every new check reads GitHub again.
+These checks do not download file contents or modify the saved originals.
+
+After a batch download, confirmed statistics are reused for the final display
+and export, with current group/team settings. Only repositories without a
+confirmed result are rebuilt from local originals. A separate local recalculation
+still reads the current authorship rules; results are not cached across runs.
+
 The console (Eclipse Console, or the terminal used to launch the app) shows
 one start and one completion message per downloaded repository, tagged with
 `owner/repository` and a timestamp. Completion includes elapsed time, commits and
