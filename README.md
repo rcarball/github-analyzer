@@ -2,7 +2,10 @@
 
 [![GitHub Actions CI](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml/badge.svg?branch=master)](https://github.com/rcarball/github-analyzer/actions/workflows/java-ci.yml)
 
-Java (Swing) app to analyze GitHub repository activity for **team projects** (e.g., students).
+Java 17 desktop app (Swing) for reviewing contribution to GitHub **team projects**,
+especially student programming projects. Download repository history, group the
+different author identities belonging to each person, and inspect their Java
+activity alongside repository metrics and CSV exports.
 
 > 🧭 Teaching focus: these metrics aim to approximate **hands-on coding activity** (especially in Java) in a learning context.  
 > Some values may **not match** GitHub *Insights → Contributors* (see “📐 Metrics” and “❓ FAQ”).
@@ -13,10 +16,31 @@ Java (Swing) app to analyze GitHub repository activity for **team projects** (e.
 
 - 🌳 Repository tree (left panel).
 - 🧾 When you select a repo, shows **repository-level** metrics.
-- 👥 Per-author table with commits/lines metrics (focused on `.java`).
+- 👥 Per-person table with commits/lines metrics (focused on `.java`).
 - 🧩 Summary of **file types** in the default-branch snapshot.
 - 🔄 Incremental GitHub downloads, local recalculation and background update checks.
-- 🔗 Explicit per-repository authorship assignments and optional declared team size.
+- 🔗 Collaborator integration: combine a person's author identities through
+  multiple selection or drag and drop, with confirmation, undo and separation.
+- 🧑‍🏫 Per-person roles and optional declared team size for interpreting contribution.
+
+### Typical workflow
+
+1. Add repositories in **Config** and configure GitHub credentials for downloading.
+2. Use **Refresh all from GitHub** for the first download. Later, use
+   **Refresh pending** or right-click a repository to update it individually.
+3. Select a repository and open **Manage authorship…**. If one collaborator appears
+   under several names, emails or accounts, combine those identities into one
+   person, choose their role and apply the changes.
+4. Review the per-person metrics and contribution indicators; inspect `stats.csv`
+   for the exported results. Existing downloads can be reopened and authorship
+   can be adjusted offline.
+
+See [collaborator integration](#collaborator-integration-how-it-works) for the
+step-by-step grouping workflow, its effect on metrics and how to reverse it.
+
+The [1.4.0 release notes](docs/releases/1.4.0.md) summarize the recent functionality
+and reliability changes. Download the runnable JAR and verification files from
+[release v1.4.0](https://github.com/rcarball/github-analyzer/releases/tag/v1.4.0).
 
 ---
 
@@ -114,8 +138,9 @@ from Eclipse, but `<project>/dist/cache/stats.dat` from the local JAR. Use absol
 paths for custom files outside `resources/` that must be shared between both modes.
 
 For a standalone installation, keep the JAR and its own `resources/` folder together
-in the installation directory. Build and release scripts package only the JAR
-and its checksum, and never copy local credentials or statistics into it.
+in the installation directory. The build packages the application and runtime
+libraries. Release downloads also include a checksum, dependency inventory and
+SBOM; local credentials, configuration and statistics are never included.
 
 ### Option C — Compile and run from source (CLI)
 ```bash
@@ -202,7 +227,9 @@ for review evidence, coverage limits and the dependency update procedure.
 
 ### Publish a release
 The version in `CITATION.cff` controls both build scripts. Update its `version`
-and `date-released` through a pull request before creating a release tag.
+and `date-released`, add English notes at `docs/releases/<version>.md`, and
+regenerate `lib/sbom.cdx.json` with `python3 scripts/dependencies.py generate`
+through a pull request before creating a release tag.
 Examples elsewhere in this guide use the current release; substitute the version
 you are publishing.
 
@@ -210,20 +237,24 @@ After merging the version change, tag the corresponding commit on `master`:
 ```bash
 git switch master
 git pull --ff-only origin master
-git tag -a v1.3.2 -m "GitHub Analyzer v1.3.2"
-git push origin v1.3.2
+# Example for the next patch release, after updating metadata and notes to 1.4.1:
+git tag -a v1.4.1 -m "Release GitHub Analyzer 1.4.1"
+git push origin v1.4.1
 ```
 
 The **Publish release** workflow checks that the tag matches `CITATION.cff` and
 belongs to the history of `master`, runs the tests with Java 17, then publishes
-the JAR, its SHA-256 checksum and generated release notes. Only the publishing
+the JAR, its SHA-256 checksum, `dependencies.lock.json` and `sbom.cdx.json`, using
+the versioned English release notes from the repository. Only the publishing
 job has write permissions. Existing releases are never overwritten.
 
 For a rehearsal, run **Publish release → Run workflow** from the `master` branch
 and select an existing tag. This validates and packages it without publishing.
-The workflow supports both historical tags with scripts and JAR output at the
-repository root, and the current `scripts/` + `dist/` layout. Verified artifacts
-are always collected in `dist/`.
+The test/build/checksum steps support both historical tags with scripts and JAR
+output at the repository root, and the current `scripts/` + `dist/` layout. New
+releases additionally require the current dependency metadata and versioned notes.
+The release workflow collects binaries in `dist/`, dependency metadata in `lib/`
+and notes in `docs/releases/` before publishing.
 
 To check both layouts locally using the workflow's shell commands (requires
 Python 3, Bash and `sha256sum`):
@@ -315,7 +346,7 @@ at startup, after refresh, and after configuration or authorship changes.
 Calculated statistics remain visible; the error does not mark a successful
 analysis as pending. If Excel has locked the CSV, close it and retry the operation.
 
-### 3) Manage authorship
+### 3) Synchronization and saved original data
 
 The app opens with locally regenerated statistics and checks repository updates in
 the background when credentials are configured. Repository nodes always use the
@@ -354,6 +385,13 @@ records remain unchanged. Default-branch files are pinned to the checked head SH
 unchanged blob contents are reused. A failed download never advances its checkpoint
 or overwrites the previous complete original data.
 
+Cancellation propagates to queued and active download tasks and skips final
+publication of derived results. Completed saves remain available. Cancellation
+is cooperative: an in-flight I/O operation that ignores interruption can take time
+to return. Expensive API calls share a 120 ms admission interval and at most two
+changed-file expansions run concurrently; downloads can still encounter GitHub
+rate limits. There is no partial-download checkpoint within a repository.
+
 An explicit refresh also completes author dates missing from older downloads once,
 without enumerating their changed files or reading source contents again. Local
 recalculation remains offline. Group and team-size edits update the local display
@@ -388,57 +426,121 @@ For branch checkpoints, commit batches and file reuse diagnostics, enable
 in Eclipse). Detailed progress callbacks remain available to callers.
 
 
-Select a repository and click **Manage authorship…** to work entirely locally:
+## Collaborator integration: how it works
 
-1. The sortable **People** table gives names the most space and shows **Role**
-   (**Teacher**, **Teammate**, or the exceptional **Other**), identity counts, Java
-   commits and observed contribution bars. All observed authors remain visible,
-   including documentation-only and merge-only authors with zero Java commits.
-   The summary separates GitHub author identities, grouped people, Java contributors,
-   declared/inferred team size and expected share. **Contributors** counts teammates
-   with Java commits for the inferred team size; it does not filter the People table.
-   Icons, contribution colors and thresholds match the main results table; selection has an additional side marker. Search by
-   name, email or GitHub account.
-2. Select one person to edit their visible name, representative email, GitHub account
-   and role in the right-hand panel. Contact choices come from that person's
-   original identities. All three name/contact dropdowns use native selection
-   controls; **Edit name** temporarily enables inline custom-name editing, and
-   **Done** finishes the edit. Empty contact
-   fields are disabled. Teachers and other excluded accounts remain visible but do
-   not enter the team share.
-3. Select multiple people with Ctrl/Cmd-click, Shift-click or Shift+Up/Down.
-   **Combine selected…** becomes available as soon as two people are selected;
-   clicking it opens the destination chooser in the right-hand panel. Explicitly
-   choose the destination person and review participation, then click **Confirm
-   combination**. Mixed participation requires an explicit choice. A combination
-   moves entire groups, including saved aliases absent from the current analysis.
-   Alternatively, drag one or more selected people onto another person's row.
-   The destination is outlined during the drag. Dropping selects the involved
-   groups and preselects the destination in the same confirmation panel; nothing
-   is combined until **Confirm combination** is clicked. **Cancel combination**
-   discards the proposal without changing assignments or undo/redo history.
-   Existing groups can be combined again incrementally. Sorting and filtering do
-   not determine the destination. Drops onto empty areas or dragged people,
-   transfers between editors, and external transfers are rejected. A drag also
-   expires if the draft changes before the drop; hiding a source with the filter
-   rejects the drop.
-4. Select original identities in the right-hand table and use **Move to…** or
-   **Separate selected identities** to correct part of a group. Contact choices
-   fall back to available values when their original identity leaves the group.
-5. **Undo** and **Redo** restore complete operations, including groupings, names,
-   contact choices and participation. Use Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or
-   Ctrl/Cmd+Y). **Restore session start** recovers the configuration present when
-   the editor opened; this action can itself be undone.
-6. **Restore original identities…** removes all saved authorship rules for this
-   repository, including overrides and assignments for absent identities, then
-   rebuilds separate identities with default participation from the original
-   download, including commits outside the active branch. A confirmation explains
-   this scope. Restoration is undoable before applying and remains available after
-   saving and reopening the editor.
-7. **Apply and recalculate locally** reviews and saves the draft, then regenerates
-   statistics and CSV without contacting GitHub. **Cancel** discards the draft.
-   Undo/redo history belongs to the open editor and is not persisted after closing.
-   Original commits are never modified.
+One person may appear several times because they used different Git author names,
+emails or GitHub accounts. Integration lets you explicitly attribute those
+identities to the same person **within one repository**. It changes the local
+analysis; it does not merge GitHub accounts, change repository permissions or
+rewrite commits. The app discovers authors from downloaded commits, rather than
+listing everyone who has collaborator access to the repository.
+
+| Term | Meaning in the interface |
+| --- | --- |
+| **GitHub identities** | Original Git author identities: the name, email and linked GitHub login captured with commits. This is not a count of distinct GitHub accounts. |
+| **People** | Resolved people after your local assignments. Every observed person remains visible, including authors with no Java commits. |
+| **Contributors** | Distinct people with the **Teammate** role and Java commits, used to infer team size when none is declared. |
+| **Team size** | The configured size, if supplied; otherwise the inferred contributor count. |
+| **Expected share** | One divided by the declared or inferred team size. |
+
+Different identities remain separate until you combine them. Matching a name,
+login or part of an email does not automatically group distinct identities.
+Original identity matching uses the complete name/email/login combination,
+ignoring case and surrounding whitespace.
+
+### Combine a collaborator's identities
+
+Select a repository and click **Manage authorship…**. A first complete original
+download must exist; the editor loads it locally without a token or network.
+
+1. Find the collaborator in the sortable **People** table; search by name, email or
+   GitHub account. Rows show role, identity count, Java commits and observed share.
+   Documentation-only and merge-only authors remain visible with zero Java commits.
+2. Select the rows belonging to that person with Ctrl/Cmd-click, Shift-click or
+   Shift+Up/Down. With at least two selected, click **Combine selected…** to choose
+   the **Destination** person in the right-hand panel. The destination keeps its
+   person ID and visible name.
+3. Review the resulting **Role** and click **Confirm combination**. If the selected
+   people have different roles, you must choose one explicitly. The operation moves
+   whole groups, including saved aliases absent from the current analysis. You can
+   combine an existing group with more identities later.
+4. Select the resulting person to review their visible name, representative email,
+   GitHub account and role. Contact choices come from their original identities;
+   empty contact fields are disabled. **Edit name** allows a custom display name;
+   **Done** finishes that edit. Renaming two rows to the same name does not combine
+   them.
+5. Click **Apply and recalculate locally**, review the change summary and confirm.
+   The app saves your repository-local assignments and regenerates statistics and
+   CSV from the original download without contacting GitHub.
+
+**Drag-and-drop alternative:** drag one or more selected people onto another
+person's row. The outlined target becomes the proposed destination. Dropping only
+prepares the same confirmation panel: review the destination and role, then click
+**Confirm combination**. **Cancel combination** discards that proposal without
+changing assignments or undo/redo history. Sorting or filtering never chooses the
+destination for you; drop onto a visible person outside the dragged selection.
+
+**Confirm combination** changes the open draft. **Apply and recalculate locally**
+then shows a change summary for confirmation, saves the assignments and rebuilds
+the main statistics and CSV. Until you apply, **Cancel** discards the draft;
+combining in the editor alone does not save changes. Contribution previews are
+calculated in the background while you edit.
+
+### What changes in the metrics?
+
+Suppose Alice appears as `alice-campus` (100 Java churn) and `alice-home`
+(200 Java churn), while Bob has 300 Java churn. All three rows are Teammates
+with non-merge Java commits. Before integration, the analysis shows three
+identities and three people. Combine Alice's two rows into one
+**Teammate** and apply:
+
+| Result | Before | After |
+| --- | --- | --- |
+| Original identities | 3 | 3 |
+| People / Java contributors | 3 / 3 | 2 / 2 |
+| Alice's Java churn | Split across two rows: 100 and 200 | One row: 300 |
+| Alice's observed share | 16,67 % and 33,33 % | 50,00 % |
+| Bob's observed share | 50,00 % | 50,00 % |
+| Expected share, with no declared team size | 33,33 % | 50,00 % |
+
+Commits and line changes are attributed to the resulting person. A Java file
+modified under both aliases is counted once in that person's distinct-file count.
+Repository commit totals, source LOC and original author metadata do not change.
+If a team size of four is declared, expected share stays at 25,00 % before and
+after integration; integration does not change that configured size.
+
+| Role shown in the editor | Effect |
+| --- | --- |
+| **Teammate** | Eligible for observed team churn shares and, with Java activity, inferred team size. |
+| **Teacher** | Visible with their activity, but excluded from team churn shares and inferred team size. |
+| **Other** | Visible excluded account, with the same share exclusion as Teacher. |
+
+Changing the role or grouping can change the share denominator and contribution
+badges. Excluded people remain in the results, and a declared team size still
+controls expected share. Use the grouping for identities known to belong to one
+person; grouping different teammates would distort the analysis.
+
+### Correct or reverse an integration
+
+Use **Undo** for a draft operation, **Separate selected identities** for individual
+aliases, or **Move to…** to assign aliases to a different existing person. After
+saving and reopening, the grouping remains but the previous session's undo history
+does not. You can still separate identities or use **Restore original identities…**
+and apply again. That restore affects all assignments, names, contact choices and
+role overrides for this repository, including saved aliases currently absent from
+the active analysis, then rebuilds separate identities with default roles from
+the archived original commits. It preserves the downloaded original commits.
+
+**Undo** and **Redo** cover groupings, names, contact choices and roles. Use
+Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl/Cmd+Y). **Restore session start** recovers
+the configuration present when the editor opened and is itself undoable.
+**Restore original identities…** is also undoable until you apply the draft.
+
+Assignments do not automatically propagate to another repository. Configure each
+repository separately; identical names in different projects are not a global
+person directory.
+
+### Saved data and role defaults
 
 A linked GitHub account takes precedence over a freely chosen Git name when
 initializing teacher roles. Explicit saved roles take precedence afterwards. New
@@ -533,7 +635,7 @@ startup. The journal is removed on successful completion.
 
 ---
 
-### 👤 Per-author table metrics
+### 👤 Per-person table metrics
 
 > Identity: each row represents one explicitly configured person. Original Git
 > identities remain separate until assigned to the same person in Manage authorship.
@@ -747,13 +849,15 @@ No. It only flags patterns compatible with large pastes/AI/templates.
 Always confirm with code defense and understanding questions.
 
 ### Why did a refresh only analyze some repositories?
-GitHub enforces API **rate limits** (roughly 5,000 requests/hour with a token, and
-only ~60/hour without one). Analyzing many repositories — or repos with lots of
+GitHub enforces API **rate limits**. Analyzing many repositories — or repos with lots of
 commits/branches — can hit that limit. The app requires a configured token for any
 online refresh, and that token also needs access when repositories are private.
 When fewer repositories finish than requested, the app warns you. Retry later or
 check token access. Complete original downloads are saved progressively. Failed repositories retain
-their previous original data; retry them with **Refresh pending** or the repository context menu. Retries resume from those checkpoints.
+their previous original data; retry them with **Refresh pending** or the repository
+context menu. A retry reuses the last complete saved repository snapshot. Commits
+downloaded only during a failed attempt must be fetched again; partial progress
+inside that attempt is not saved.
 
 ---
 
