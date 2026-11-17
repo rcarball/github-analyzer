@@ -1,0 +1,53 @@
+name: Dependency audit
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Verify dependencies and vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Run dependency audit regression tests
+        run: python3 scripts/check-dependencies.py
+
+      - name: Verify JAR integrity, inventory and committed SBOM
+        run: python3 scripts/dependencies.py verify
+
+      - name: Check Maven Central provenance
+        run: python3 scripts/dependencies.py verify-upstream
+
+      - name: Check vulnerabilities with OSV
+        run: python3 scripts/dependencies.py scan
+
+      - name: Save SBOM and vulnerability report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-audit
+          path: |
+            dependencies.lock.json
+            sbom.cdx.json
+            build/security/osv-report.json
+          if-no-files-found: error
+          retention-days: 30

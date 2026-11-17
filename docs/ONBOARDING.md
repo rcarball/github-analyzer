@@ -232,10 +232,29 @@ Reviewed suggestions that do not justify changing behavior automatically:
 | Discovery cancellation | Already calls `SwingWorker.cancel(true)` and ignores late results; existing tests cover an uninterruptible source. Local discovery may take time to return from filesystem I/O; cancellation does not permit a late save. |
 | Manually edited group/team size | Explicit reload/refresh and reopening authorship reread settings; there is no live file watcher. |
 | Full initial history per branch | Keep the complete branch queries to ensure coverage. Commits and expensive file expansions are already deduplicated by SHA; repeated branches can still cost API pages on the first download. |
-| Vendored libraries, SBOM/CVE scanning, CI action SHA pinning | Keep the current offline Eclipse workflow and dependencies. Supply-chain automation is a separate follow-up; these changes do not claim a CVE audit. |
+| Vendored libraries, SBOM/CVE scanning, CI action SHA pinning | Dependency inventory, SBOM and OSV scanning are now implemented (see below). Migration to a build manager and SHA pinning of the pre-existing CI/release actions remain separate follow-ups. |
 | Legacy `DataManager` methods | Retain the legacy loading API and its deserialization regression tests. Removing it does not fix a current user-facing defect. |
 | `RepoStats` ordering versus equality | Retain group/name presentation sorting and URL identity; document that natural order differs from equality for changed metadata. Do not use this mutable presentation model as a sorted identity set. |
 | Serialization/compiler warnings | No serialized field layout changes or cosmetic suppressions were introduced; keep compatibility with existing local data. |
 
 Validation covers offline regression tests, release-layout checks and packaging.
 The live GitHub API and interactive GUI were not exercised.
+
+## 9. Dependency inventory and audit
+
+`dependencies.lock.json` is the reviewed inventory for the actual JARs shipped in
+`lib/`; `sbom.cdx.json` is its reproducible CycloneDX projection. Keep both in sync
+with library, Eclipse classpath and application version changes. No Maven or
+Gradle installation is required; Eclipse and the existing offline build remain
+available as before.
+
+Run `python3 scripts/check-dependencies.py` and
+`python3 scripts/dependencies.py verify` for offline validation. The separate
+**Dependency audit** workflow verifies Maven Central provenance and queries OSV
+on PRs, pushes to `master`, a daily schedule and manual dispatch. Findings and
+incomplete scans fail the workflow; the JSON report and SBOM are retained as
+workflow artifacts. New workflow actions are pinned to reviewed full commit SHAs.
+
+See [Third-party notices](THIRD_PARTY_NOTICES.md#dependency-review-and-updates) for
+the review results, embedded-library coverage and update procedure. The dependency
+lock is a verification inventory, not a dependency resolver or build-manager lock.

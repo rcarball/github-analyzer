@@ -11,6 +11,7 @@ build/
 /github-analyzer-*.jar
 /release/
 /.DS_Store
+__pycache__/
 
 # Local per-repository authorship rules
 /resources/authorship/
