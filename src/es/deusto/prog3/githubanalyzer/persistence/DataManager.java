@@ -48,15 +48,6 @@ public class DataManager {
     }
 
     /**
-     * A refresh that was expected to analyze repositories but returned no data is
-     * treated as a failure, not as an instruction to erase a valid cache. An
-     * empty result is still valid when the configured repository list is empty.
-     */
-    public static boolean shouldStoreRefresh(int configuredRepositoryCount, List<RepoStats> refreshedData) {
-        return configuredRepositoryCount <= 0 || (refreshedData != null && !refreshedData.isEmpty());
-    }
-
-    /**
      * Restricts deserialization of the local cache to the classes we actually
      * write, with resource limits, to mitigate Java deserialization risks
      * (gadget-chain code execution and decompression/allocation DoS) if the
@@ -121,11 +112,14 @@ public class DataManager {
 
         String file = Configurator.getInstance().getStatsFile();
         if (file == null || file.isBlank()) {
-            System.err.format("* No cache file configured; data not saved.\n\n");
-            return;
+            throw new IllegalStateException("No cache file configured; data not saved.");
         }
-        Path target = Paths.get(file);
-        Path tmp = Paths.get(file + ".tmp");
+        storeData(data, Paths.get(file));
+    }
+
+    /** Package-visible destination for atomic-save regression tests. */
+    synchronized void storeData(List<RepoStats> data, Path target) {
+        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
 
         try {
             // Write tmp
@@ -147,9 +141,9 @@ public class DataManager {
             }
 
         } catch (Exception ex) {
-            System.err.format("* Error saving binary file '%s': %s\n\n", file, ex.getMessage());
             // best-effort cleanup
             try { Files.deleteIfExists(tmp); } catch (Exception ignore) {}
+            throw new IllegalStateException("Could not save statistics to '" + target + "'.", ex);
         }
     }
 

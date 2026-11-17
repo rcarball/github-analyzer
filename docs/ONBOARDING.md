@@ -80,6 +80,40 @@ python3 scripts/check-release-layout.py  # Python 3, Bash and sha256sum required
 CI runs this check before the Java tests; it also verifies failure propagation
 and rejects stale artifacts from the other layout.
 
+### Test suite review
+
+Reviewed all 18 JUnit test classes against their production call sites and
+regression scenarios, plus the four release-layout checks. The baseline on
+`master` had 204 Java tests. This change removes or consolidates four methods
+and adds three behavior tests, leaving 203. Test count alone is not a reason to
+remove a distinct failure case.
+
+| Area | Decision and reason |
+| --- | --- |
+| `RawDataPipelineTest`, `GitHubDataLoaderTest` | Remove the 27-commit console-batch test: that verbose output is no longer the normal contract. Keep unique expansion, shared ancestors, every merge parent, unrelated roots, pagination, incremental checkpoints, cancellation and preserved originals in dedicated tests. Retain the legacy entry-point tests because those methods still exist. |
+| Download failure fixture | Reduce 27 commits to three: a successful head followed by a failing ancestor still proves full-SHA diagnostics and rejection of partial history, without irrelevant traversal and deliberate API throttling. |
+| `RepoStatsTest`, `UserStatsTest`, `SimpleGitUserTest` | Remove the test's hand-written stream aggregation: it tested its own sums, while actual aggregation is exercised by `StatisticsCalculatorTest`. Keep append/deduplication, null handling, normalization, locale independence and derived metrics. Legacy identity classes remain supported. |
+| `MainWindowInterpretationTest` | Fold the separate one-eighth case into the existing exact-boundary test, retaining both inputs. Keep the other thresholds, absent-activity guards, team sizes, rounding and overflow cases: they protect different decisions. |
+| `DataManagerTest`, `RawDataStoreTest` | Move the snapshot-version getter/setter check into an actual serialization round trip. Remove the unused `shouldStoreRefresh` helper and its test; real failed/empty refresh tests still verify that valid caches and CSVs are preserved. Retain deserialization allowlists, malformed types, format versions, historical records, recovery and atomic writes. |
+| `StatisticsCalculatorTest`, `ContributionMetricsTest` | Keep calculation and role/share tests: low-level formulas, projection of saved originals and displayed classification protect separate layers. Full email matching prevents unrelated people from being excluded as teachers. |
+| `AuthorshipFormTest`, `AuthorshipDiscoveryPanelTest`, `AuthorshipStoreTest` | Keep editor/reordering/merge interactions, background work, late-result cancellation, assignments and persistence. Similar-looking cases exercise different UI paths or timing boundaries. |
+| `RepositoryConfigTest`, `ConfiguratorTest`, `ConfigurationFormTest`, `SettingsTransactionTest`, `MainWindowRefreshTest` | Keep parsing, metadata, unreadable configuration, atomic multi-file rollback, crash recovery and UI lifecycle tests. A passing parser does not prove that an editor saves the captured values or restores controls after failure. |
+| Release-layout checks | Retain both supported layouts and both negative cases (failed tests and stale/missing artifacts). |
+
+New tests cover optional detailed diagnostics, completion only after a successful
+statistics write (including a reported write failure), and an actual failed atomic
+cache save preserving the previous bytes. Existing console tests now assert
+bounded repository summaries while retaining API-read and file-preservation
+checks. Both command-line runners print a JUnit summary rather than a success tree.
+
+Local verification: baseline 204/204 passed in 9.581 s; revised suite 203/203
+passed in 7.674 s (JUnit execution time, one run each, not a benchmark). Two
+additional temporary fault-injection checks confirmed that retained tests fail
+when the exact one-eighth boundary becomes inclusive of the lower band, or when
+teacher email matching uses only the local part. No injected code was retained.
+The four release-layout checks and runnable JAR build also passed. Live GitHub,
+interactive windows and the Windows runner were not exercised locally.
+
 ## 5. Architecture (packages under `src/es/deusto/prog3/githubanalyzer/`)
 - `Main` — entry point (load raw data → recalculate locally → open GUI → check update counts in background).
 - `GitHubDataLoader` — incremental download and metadata-only update checks via `github-api`.

@@ -48,15 +48,7 @@ public class RepoStatsTest {
         assertEquals(0, stats.getLinesAdded(), "addUserStats must not touch repo-level counters");
         assertEquals(0, stats.getLinesChanged(), "addUserStats must not touch repo-level counters");
 
-        // Repo-level aggregates are populated explicitly, the same way
-        // GitHubDataLoader does after all users are collected.
-        stats.setLinesAdded(stats.getUserStats().stream().mapToInt(UserStats::getAdded).sum());
-        stats.setLinesDeleted(stats.getUserStats().stream().mapToInt(UserStats::getDeleted).sum());
-        stats.setLinesChanged(stats.getUserStats().stream().mapToInt(UserStats::getChanged).sum());
 
-        assertEquals(150, stats.getLinesAdded());
-        assertEquals(30, stats.getLinesDeleted());
-        assertEquals(35, stats.getLinesChanged());
     }
 
     @Test
@@ -93,15 +85,6 @@ public class RepoStatsTest {
         // Never negative, even with inconsistent inputs.
         r.setMergeCommits(200);
         assertEquals(0, r.getNonMergeCommits());
-    }
-
-    @Test
-    public void testFileSnapshotVersionDefaultsToLegacyAndCanBeUpdated() {
-        RepoStats stats = new RepoStats();
-        assertEquals(0, stats.getFileSnapshotVersion(), "Old serialized caches use the legacy default");
-
-        stats.setFileSnapshotVersion(1);
-        assertEquals(1, stats.getFileSnapshotVersion());
     }
 
     @Test
