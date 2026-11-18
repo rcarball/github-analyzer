@@ -67,7 +67,7 @@ class DownloadLauncherTest(unittest.TestCase):
         self.project = self.directory / name
         (self.project / 'src').mkdir(parents=True)
         (self.project / 'src' / 'Example.java').write_text('class Example {}', encoding='utf-8')
-        native = self.project / 'test/desktop/es/deusto/prog3/githubanalyzer/gui/DownloadDialogDesktopCheck.java'
+        native = self.project / 'test/es/deusto/prog3/githubanalyzer/gui/DownloadDialogDesktopCheck.java'
         native.parent.mkdir(parents=True)
         native.write_text(FIXTURE_SOURCE, encoding='utf-8')
         (self.project / 'lib').mkdir()
