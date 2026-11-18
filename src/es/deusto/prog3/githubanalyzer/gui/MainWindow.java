@@ -119,6 +119,14 @@ public class MainWindow extends JFrame {
 	private final Map<String, GitHubDataLoader.UpdateStatus> remoteUpdates = new HashMap<>();
 	private int checkGeneration;
 	private SwingWorker<?, ?> updateWorker;
+	private Runnable cancelActiveDownload;
+	private JDialog activeDownloadDialog;
+	private boolean closePromptOpen;
+	private final CloseCoordinator closing = new CloseCoordinator(() -> !btnRefresh.isEnabled(), () -> {
+		setStatusText("Closing… Waiting for the current operation to finish safely.");
+		if (cancelActiveDownload != null)
+			cancelActiveDownload.run();
+	}, this::disposeForExit);
 
 	// Per-user interpretation cache for the currently loaded repo, so the table
 	// renderers/tooltips don't recompute it (with streams) on every cell repaint.
@@ -233,7 +241,7 @@ public class MainWindow extends JFrame {
 	 * Keeps configuration locked until refresh completion, including error
 	 * handling.
 	 */
-	static abstract class RefreshWorker extends SwingWorker<List<RepoStats>, String> {
+	static abstract class RefreshWorker extends SwingWorker<List<RepoStats>, GitHubDataLoader.DownloadProgress> {
 		private final JButton[] buttons;
 
 		RefreshWorker(JButton... buttons) {
@@ -255,10 +263,59 @@ public class MainWindow extends JFrame {
 		}
 	}
 
+	/** Waits for actual background cleanup before unlocking controls or reloading saved data. */
+	static abstract class DownloadWorker extends RefreshWorker {
+		private Thread runner;
+		private boolean stopping;
+
+		DownloadWorker(JButton... buttons) {
+			super(buttons);
+		}
+
+		final synchronized void requestCancellation() {
+			stopping = true;
+			if (runner != null)
+				runner.interrupt();
+		}
+
+		final synchronized boolean cancellationRequested() {
+			return stopping;
+		}
+
+		protected abstract List<RepoStats> download();
+		protected abstract List<RepoStats> readSavedData();
+
+		@Override
+		protected final List<RepoStats> doInBackground() {
+			try {
+				synchronized (this) {
+					runner = Thread.currentThread();
+					if (stopping)
+						throw new java.util.concurrent.CancellationException();
+				}
+				return download();
+			} catch (java.util.concurrent.CancellationException ex) {
+				if (!cancellationRequested())
+					throw ex;
+			} finally {
+				synchronized (this) {
+					runner = null;
+				}
+				if (cancellationRequested())
+					Thread.interrupted();
+			}
+			// This remains on the background thread, after download tasks have stopped.
+			return readSavedData();
+		}
+	}
+
 	public MainWindow(List<RepoStats> data) {
 		jTreeRepos.setRowHeight(23);
 		jTreeRepos.setCellRenderer(new RepositoryTreeRenderer(remoteUpdates, failedDownloads));
-		btnRefresh.addPropertyChangeListener("enabled", event -> updateRefreshActions());
+		btnRefresh.addPropertyChangeListener("enabled", event -> {
+			updateRefreshActions();
+			closing.operationFinished();
+		});
 		installRepositoryRefreshMenu();
 
 		jTreeRepos.addTreeSelectionListener(e -> {
@@ -463,7 +520,20 @@ public class MainWindow extends JFrame {
 		topPanel.add(topButtons, BorderLayout.EAST);
 
 		this.setTitle("GitHub Repository Analyzer");
-		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		this.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+		this.addWindowListener(new java.awt.event.WindowAdapter() {
+			@Override
+			public void windowClosing(java.awt.event.WindowEvent event) {
+				if (closing.isRequested() || closePromptOpen)
+					return;
+				if (cancelActiveDownload != null && !confirmCancelDownload(true))
+					return;
+				++checkGeneration;
+				if (updateWorker != null)
+					updateWorker.cancel(true);
+				closing.request();
+			}
+		});
 
 		this.setLayout(new BorderLayout(0, 0));
 		this.add(topPanel, BorderLayout.NORTH);
@@ -472,7 +542,15 @@ public class MainWindow extends JFrame {
 		this.add(bottomPanel, BorderLayout.SOUTH);
 
 		this.setSize(1200, 700);
-		this.setLocationRelativeTo(null);
+		DialogSizing.fitWithinScreen(this, null);
+		if (getWidth() < 1200 || getHeight() < 700) {
+			// Preserve the usual layout and make every control reachable on small displays.
+			var content = getContentPane();
+			var frameInsets = getInsets();
+			content.setPreferredSize(new Dimension(1200 - frameInsets.left - frameInsets.right,
+					700 - frameInsets.top - frameInsets.bottom));
+			setContentPane(new JScrollPane(content));
+		}
 
 		// ToolTipManager personalized settings
 		ToolTipManager.sharedInstance().setInitialDelay(300); // appear after 0.3 segundos
@@ -489,6 +567,38 @@ public class MainWindow extends JFrame {
 				showConfigDialog();
 			});
 		}
+	}
+
+	private boolean confirmCancelDownload(boolean closeApplication) {
+		if (closePromptOpen)
+			return false;
+		closePromptOpen = true;
+		try {
+			Object[] choices = { "Keep downloading", closeApplication ? "Cancel download and close" : "Cancel download" };
+			Component owner = activeDownloadDialog == null ? this : activeDownloadDialog;
+			return DialogSizing.showChoiceDialog(owner,
+					"A repository download is in progress.\n"
+							+ (closeApplication ? "Closing the application will cancel pending downloads.\n"
+									: "Closing this dialog will cancel pending downloads.\n")
+							+ "Active requests must stop before closing.\n"
+							+ "Repositories already downloaded and saved will be kept.",
+					"Download in progress", JOptionPane.WARNING_MESSAGE, choices, choices[0]) == 1;
+		} finally {
+			closePromptOpen = false;
+		}
+	}
+
+	private void disposeForExit() {
+		++checkGeneration;
+		if (updateWorker != null)
+			updateWorker.cancel(true);
+		dispose();
+		exitApplication();
+	}
+
+	/** Called only once all active operations have completed their cleanup. */
+	void exitApplication() {
+		System.exit(0);
 	}
 
 	static List<String> pendingRefreshTargets(List<RepoStats> repositories,
@@ -558,49 +668,102 @@ public class MainWindow extends JFrame {
 			updateWorker.cancel(true);
 		setStatusText(scope == null ? "Updating all repositories from GitHub…"
 				: "Updating " + scope.size() + " selected repositories from GitHub…");
-		new RefreshWorker(btnRefresh, btnConfig, btnAuthorship) {
+		DownloadProgressPanel downloadProgress = new DownloadProgressPanel();
+		JDialog progressDialog = new JDialog(this, "Downloading repositories", true);
+		activeDownloadDialog = progressDialog;
+		progressDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+		progressDialog.setContentPane(downloadProgress);
+		progressDialog.setCursor(Cursor.getDefaultCursor());
+		progressDialog.addWindowListener(new java.awt.event.WindowAdapter() {
 			@Override
-			protected List<RepoStats> doInBackground() {
+			public void windowClosing(java.awt.event.WindowEvent event) {
+				if (downloadProgress.cancel.isEnabled() && confirmCancelDownload(false))
+					downloadProgress.cancel.doClick();
+			}
+		});
+		DownloadWorker worker = new DownloadWorker(btnRefresh, btnConfig, btnAuthorship) {
+			private boolean synchronizationStarted;
+
+			@Override
+			protected List<RepoStats> download() {
 				Configurator.getInstance().reload();
 				if (!Configurator.getInstance().isConfigured())
 					throw new IllegalStateException("Configure a GitHub user and token before refreshing.");
 				GitHubDataLoader loader = GitHubDataLoader.getInstance();
-				return scope == null ? loader.loadData() : loader.refreshRepositories(scope);
+				java.util.function.Consumer<GitHubDataLoader.DownloadProgress> progress = event -> {
+					synchronizationStarted = true;
+					publish(event);
+				};
+				return scope == null ? loader.loadData(progress) : loader.refreshRepositories(scope, progress);
+			}
+
+			@Override
+			protected List<RepoStats> readSavedData() {
+				return GitHubDataLoader.getInstance().loadLocalData();
+			}
+
+			@Override
+			protected void process(List<GitHubDataLoader.DownloadProgress> events) {
+				events.forEach(downloadProgress::update);
 			}
 
 			@Override
 			protected void refreshFinished() {
+				downloadProgress.finish();
+				progressDialog.dispose();
+				cancelActiveDownload = null;
+				activeDownloadDialog = null;
+				if (closing.isRequested())
+					return;
 				try {
 					List<RepoStats> results = get();
-					rememberRefreshOutcome();
+					if (synchronizationStarted)
+						rememberRefreshOutcome();
 					updateReposJTree(results);
 					selectedRepo = null;
 					loadRepoStats(null);
 					if (selection != null)
 						selectRepository(selection);
+					if (cancellationRequested()) {
+						setStatusText("Download cancelled. Saved repositories are available; use Refresh pending to continue.");
+						return;
+					}
 					GitHubDataLoader loader = GitHubDataLoader.getInstance();
 					int expected = loader.getLastRequestedRepositoryUrls().size();
 					int confirmed = loader.getLastConfirmedRepositoryCount();
 					String message = confirmed + " of " + expected + " requested repositories updated.";
 					if (confirmed < expected)
 						message += "\nPrevious complete downloads were retained where available. Retry failed repositories individually or with Refresh pending.";
-					JOptionPane.showMessageDialog(MainWindow.this, message,
+					DialogSizing.showMessageDialog(MainWindow.this, message,
 							confirmed < expected ? "Refresh completed with warnings" : "Refresh completed",
 							confirmed < expected ? JOptionPane.WARNING_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
 				} catch (InterruptedException ex) {
 					Thread.currentThread().interrupt();
 					showRefreshFailedDialog();
 				} catch (ExecutionException ex) {
-					if (reportCsvExportFailure(ex))
-						rememberRefreshOutcome();
-					else
+					if (reportCsvExportFailure(ex)) {
+						if (synchronizationStarted)
+							rememberRefreshOutcome();
+					} else {
 						showRefreshFailedDialog(errorMessage(ex));
+					}
 				} finally {
 					setCursor(Cursor.getDefaultCursor());
-					checkForUpdates(scope);
+					if (!cancellationRequested())
+						checkForUpdates(scope);
 				}
 			}
-		}.execute();
+		};
+		downloadProgress.begin(worker::requestCancellation);
+		cancelActiveDownload = () -> downloadProgress.cancel.doClick();
+		progressDialog.setSize(820, 320);
+		DialogSizing.fitWithinScreen(progressDialog, this);
+		if (progressDialog.getWidth() < 820 || progressDialog.getHeight() < 320) {
+			downloadProgress.setPreferredSize(new Dimension(800, 280));
+			progressDialog.setContentPane(new JScrollPane(downloadProgress));
+		}
+		worker.execute();
+		progressDialog.setVisible(true);
 	}
 
 	/**
@@ -1077,7 +1240,7 @@ public class MainWindow extends JFrame {
 			problem = ex.getMessage();
 		}
 
-		JOptionPane.showMessageDialog(this,
+		DialogSizing.showMessageDialog(this,
 				"Could not open the link automatically.\n\n" + uri + (problem == null ? "" : "\n\n(" + problem + ")")
 						+ "\n\nYou can copy the address and open it manually.",
 				"Open link", JOptionPane.WARNING_MESSAGE);
@@ -1093,7 +1256,7 @@ public class MainWindow extends JFrame {
 			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
 			setStatusText("Copied: " + text);
 		} catch (Exception ex) {
-			JOptionPane.showMessageDialog(this, "Could not copy to clipboard:\n" + text, "Copy URL",
+			DialogSizing.showMessageDialog(this, "Could not copy to clipboard:\n" + text, "Copy URL",
 					JOptionPane.WARNING_MESSAGE);
 		}
 	}
@@ -1103,7 +1266,7 @@ public class MainWindow extends JFrame {
 			return;
 		String url = selectedRepo;
 		if (url == null) {
-			JOptionPane.showMessageDialog(this, "Select a repository first.", "Manage authorship",
+			DialogSizing.showMessageDialog(this, "Select a repository first.", "Manage authorship",
 					JOptionPane.INFORMATION_MESSAGE);
 			return;
 		}
@@ -1129,10 +1292,14 @@ public class MainWindow extends JFrame {
 					es.deusto.prog3.githubanalyzer.StatisticsCalculator.authors(source), rules, store,
 					repository.teamSize(), source);
 		}, result -> {
+			if (closing.isRequested()) {
+				dialog.dispose();
+				return;
+			}
 			ruleStore[0] = result.store();
 			populateAuthorshipDialog(dialog, result, accepted);
 		}, failure -> {
-			JOptionPane.showMessageDialog(dialog,
+			DialogSizing.showMessageDialog(dialog,
 					"Could not discover original authors. Configuration was not changed.\n" + failure.getMessage(),
 					"Manage authorship", JOptionPane.ERROR_MESSAGE);
 			dialog.dispose();
@@ -1146,8 +1313,7 @@ public class MainWindow extends JFrame {
 		dialog.add(loading, BorderLayout.CENTER);
 		boolean reprocessing = false;
 		try {
-			dialog.pack();
-			dialog.setLocationRelativeTo(this);
+			DialogSizing.packWithinScreen(dialog, this);
 			loading.start();
 			dialog.setVisible(true);
 			if (accepted[0] != null) {
@@ -1192,6 +1358,8 @@ public class MainWindow extends JFrame {
 	}
 
 	private void checkForUpdates(List<String> scope) {
+		if (closing.isRequested())
+			return;
 		final int generation = ++checkGeneration;
 		if (updateWorker != null)
 			updateWorker.cancel(true);
@@ -1218,7 +1386,7 @@ public class MainWindow extends JFrame {
 
 			@Override
 			protected void process(List<Map.Entry<String, GitHubDataLoader.UpdateStatus>> updates) {
-				if (generation != checkGeneration)
+				if (closing.isRequested() || generation != checkGeneration)
 					return;
 				updates.forEach(entry -> {
 					remoteUpdates.put(entry.getKey(), entry.getValue());
@@ -1232,7 +1400,7 @@ public class MainWindow extends JFrame {
 
 			@Override
 			protected void done() {
-				if (generation != checkGeneration)
+				if (closing.isRequested() || generation != checkGeneration)
 					return;
 				try {
 					get();
@@ -1265,7 +1433,9 @@ public class MainWindow extends JFrame {
 			AuthorshipConfig[] accepted) {
 		AuthorshipForm form = new AuthorshipForm(result.authors(), result.rules(), result.teamSize(), result.source());
 		dialog.getContentPane().removeAll();
-		dialog.add(form, BorderLayout.CENTER);
+		JScrollPane formScroll = new JScrollPane(form);
+		formScroll.setBorder(BorderFactory.createEmptyBorder());
+		dialog.add(formScroll, BorderLayout.CENTER);
 		JButton save = new JButton("Apply and recalculate locally");
 		JButton cancel = new JButton("Cancel");
 		JPanel actions = new JPanel();
@@ -1277,18 +1447,17 @@ public class MainWindow extends JFrame {
 			try {
 				javax.swing.JTextArea changes = new javax.swing.JTextArea(form.changeSummary(), 16, 65);
 				changes.setEditable(false);
-				if (JOptionPane.showConfirmDialog(dialog, new JScrollPane(changes), "Confirm authorship assignments",
+				if (DialogSizing.showConfirmDialog(dialog, new JScrollPane(changes), "Confirm authorship assignments",
 						JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE) != JOptionPane.OK_OPTION)
 					return;
 				accepted[0] = form.snapshot();
 				dialog.dispose();
 			} catch (IllegalStateException ex) {
-				JOptionPane.showMessageDialog(dialog, ex.getMessage(), "Could not save authorship",
+				DialogSizing.showMessageDialog(dialog, ex.getMessage(), "Could not save authorship",
 						JOptionPane.ERROR_MESSAGE);
 			}
 		});
-		dialog.pack();
-		dialog.setLocationRelativeTo(this);
+		DialogSizing.packWithinScreen(dialog, this);
 		dialog.revalidate();
 		dialog.repaint();
 	}
@@ -1313,6 +1482,8 @@ public class MainWindow extends JFrame {
 
 			@Override
 			protected void refreshFinished() {
+				if (closing.isRequested())
+					return;
 				try {
 					updateReposJTree(get());
 					selectRepository(url);
@@ -1343,7 +1514,7 @@ public class MainWindow extends JFrame {
 
 		JDialog dialog = new JDialog(this, "Configuration", true);
 		dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-		dialog.getContentPane().add(form, BorderLayout.CENTER);
+		dialog.getContentPane().add(new JScrollPane(form), BorderLayout.CENTER);
 
 		JButton save = new JButton("Save");
 		JButton cancel = new JButton("Cancel");
@@ -1358,7 +1529,7 @@ public class MainWindow extends JFrame {
 			try {
 				operation = form.prepareSave();
 			} catch (IllegalStateException ex) {
-				JOptionPane.showMessageDialog(dialog, ex.getMessage(), "Configuration", JOptionPane.ERROR_MESSAGE);
+				DialogSizing.showMessageDialog(dialog, ex.getMessage(), "Configuration", JOptionPane.ERROR_MESSAGE);
 				return;
 			}
 			String selection = selectedRepo;
@@ -1380,6 +1551,8 @@ public class MainWindow extends JFrame {
 
 				@Override
 				protected void refreshFinished() {
+					if (closing.isRequested())
+						return;
 					try {
 						List<RepoStats> updated = get();
 						if (updated != null) {
@@ -1408,15 +1581,14 @@ public class MainWindow extends JFrame {
 						return;
 					}
 					String message = settingsSaved ? "Settings were saved, but local recalculation failed.\n" : "";
-					JOptionPane.showMessageDialog(dialog, message + errorMessage(ex), "Configuration",
+					DialogSizing.showMessageDialog(dialog, message + errorMessage(ex), "Configuration",
 							JOptionPane.ERROR_MESSAGE);
 					setStatusText("Could not finish updating configuration.");
 				}
 			}.execute();
 		});
 
-		dialog.pack();
-		dialog.setLocationRelativeTo(this);
+		DialogSizing.packWithinScreen(dialog, this);
 		dialog.setVisible(true);
 	}
 
@@ -1435,19 +1607,19 @@ public class MainWindow extends JFrame {
 				selectRepository(selection);
 		}, (title, message) -> {
 			setStatusText("Statistics ready; CSV export failed.");
-			JOptionPane.showMessageDialog(owner, message, title, JOptionPane.ERROR_MESSAGE);
+			DialogSizing.showMessageDialog(owner, message, title, JOptionPane.ERROR_MESSAGE);
 		});
 	}
 
 	private void showRefreshFailedDialog() {
-		JOptionPane.showMessageDialog(this,
+		DialogSizing.showMessageDialog(this,
 				"Refresh failed.\n\nTip: GitHub may throttle requests when refreshing many repositories.\n"
 						+ "Try again later. Repositories remain pending until a successful GitHub analysis.",
 				"Refresh failed", JOptionPane.WARNING_MESSAGE);
 	}
 
 	private void showRefreshFailedDialog(String reason) {
-		JOptionPane.showMessageDialog(this,
+		DialogSizing.showMessageDialog(this,
 				reason + "\n\nTry again later. Repositories remain pending until a successful GitHub analysis.",
 				"Refresh failed", JOptionPane.WARNING_MESSAGE);
 	}

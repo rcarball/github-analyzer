@@ -22,6 +22,18 @@ import java.nio.file.Path;
 public final class ConfigurationFixtures {
     private ConfigurationFixtures() { }
 
+    public static void writeCsv(Path destination, java.util.List<es.deusto.prog3.githubanalyzer.domain.RepoStats> results) {
+        DataManager.getInstance().storeCSV(results, destination);
+    }
+
+    public static void writeStatistics(Path destination, java.util.List<es.deusto.prog3.githubanalyzer.domain.RepoStats> results) {
+        DataManager.getInstance().storeData(results, destination);
+    }
+
+    public static java.util.List<es.deusto.prog3.githubanalyzer.domain.RepoStats> readStatistics(Path source) {
+        return DataManager.getInstance().loadData(source);
+    }
+
     public static Configurator create(Path directory) {
         return new Configurator(directory);
     }

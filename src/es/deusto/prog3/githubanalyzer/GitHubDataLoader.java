@@ -245,8 +245,15 @@ public class GitHubDataLoader {
 	}
 
 	public synchronized List<RepoStats> loadData() {
+		return loadData(progress -> { });
+	}
+
+	/** Progress callbacks run on download threads; UI callers must marshal to the EDT. */
+	public record DownloadProgress(int completed, int total, String repository, String message) { }
+
+	public synchronized List<RepoStats> loadData(Consumer<DownloadProgress> progress) {
 		reloadRepositories();
-		return synchronizeRepositories(List.copyOf(repos), false);
+		return synchronizeRepositories(List.copyOf(repos), false, progress);
 	}
 
 	/**
@@ -254,9 +261,14 @@ public class GitHubDataLoader {
 	 * results.
 	 */
 	public synchronized List<RepoStats> refreshRepositories(java.util.Collection<String> requested) {
+		return refreshRepositories(requested, progress -> { });
+	}
+
+	public synchronized List<RepoStats> refreshRepositories(java.util.Collection<String> requested,
+			Consumer<DownloadProgress> progress) {
 		reloadRepositories();
 		List<String> targets = configuredTargets(requested);
-		return synchronizeRepositories(targets, true);
+		return synchronizeRepositories(targets, true, progress);
 	}
 
 	private List<String> configuredTargets(java.util.Collection<String> requested) {
@@ -266,11 +278,13 @@ public class GitHubDataLoader {
 		return repos.stream().filter(selected::contains).toList();
 	}
 
-	private List<RepoStats> synchronizeRepositories(List<String> targets, boolean selective) {
+	private List<RepoStats> synchronizeRepositories(List<String> targets, boolean selective,
+			Consumer<DownloadProgress> progress) {
 		checkInterrupted();
 		lastConfirmedRepositoryCount = 0;
 		lastRequestedRepositoryUrls = List.copyOf(targets);
 		lastFailedRepositoryUrls = java.util.Set.copyOf(targets);
+		progress.accept(new DownloadProgress(0, targets.size(), null, "Preparing GitHub synchronization…"));
 		List<RepoStats> progressiveResults = selective ? new ArrayList<>(readLocalData(false)) : new ArrayList<>();
 		if (selective && targets.isEmpty())
 			return progressiveResults;
@@ -301,7 +315,8 @@ public class GitHubDataLoader {
 					boolean successful = false;
 					try {
 						checkInterrupted();
-						confirmed = analyzeRepo(repoUrl, reader);
+						confirmed = analyzeRepo(repoUrl, reader, message -> progress.accept(new DownloadProgress(
+								completedRepositories.get(), targets.size(), repoUrl, message)));
 						if (confirmed == null)
 							return;
 						synchronized (resultLock) {
@@ -323,6 +338,8 @@ public class GitHubDataLoader {
 					} finally {
 						synchronized (resultLock) {
 							int completed = completedRepositories.incrementAndGet();
+							progress.accept(new DownloadProgress(completed, targets.size(), repoUrl,
+									successful ? "Complete — saved locally." : "Not completed — previous data retained if available."));
 							if (successful)
 								trace("download " + repositoryName(repoUrl),
 										"Repository complete (" + completed + "/" + targets.size() + ") in "
@@ -361,10 +378,29 @@ public class GitHubDataLoader {
 					cancelled.set(true);
 				}
 				futures.forEach(future -> future.cancel(true));
-				if (executorService != null)
+				if (executorService != null) {
 					executorService.shutdownNow();
+					// Keep UI controls locked until even non-interruptible I/O has unwound.
+					boolean interrupted = Thread.interrupted();
+					try {
+						while (!executorService.isTerminated()) {
+							try {
+								executorService.awaitTermination(100, java.util.concurrent.TimeUnit.MILLISECONDS);
+							} catch (InterruptedException ex) {
+								interrupted = true;
+							}
+						}
+					} finally {
+						if (interrupted)
+							Thread.currentThread().interrupt();
+					}
+				}
 			} else if (executorService != null)
 				executorService.shutdown();
+			lastConfirmedRepositoryCount = confirmedRepositories.get();
+			java.util.Set<String> pending = new java.util.LinkedHashSet<>(targets);
+			pending.removeAll(successfulUrls);
+			lastFailedRepositoryUrls = java.util.Set.copyOf(pending);
 		}
 
 		checkInterrupted();
@@ -375,12 +411,14 @@ public class GitHubDataLoader {
 		java.util.Set<String> failed = new java.util.LinkedHashSet<>(targets);
 		failed.removeAll(successfulUrls);
 		lastFailedRepositoryUrls = java.util.Set.copyOf(failed);
+		progress.accept(new DownloadProgress(completedRepositories.get(), targets.size(), null,
+				"Finalizing local statistics and CSV…"));
 		List<RepoStats> result = readLocalData(false, confirmedResults);
 		traceDetail("sync", "Writing derived statistics and CSV for " + result.size() + " available repositories…");
-		if (!result.isEmpty() || repos.isEmpty()) {
-			resultWriter.accept(result);
-			csvWriter.accept(result);
-		}
+		checkInterrupted();
+		resultWriter.accept(result);
+		checkInterrupted();
+		csvWriter.accept(result);
 
 		trace("sync",
 				"Synchronization finished in " + elapsed(started) + ": " + lastConfirmedRepositoryCount + "/"
@@ -389,9 +427,10 @@ public class GitHubDataLoader {
 		return result;
 	}
 
-	private RepoStats analyzeRepo(String repoUrl, RepositoryReader reader) {
+	private RepoStats analyzeRepo(String repoUrl, RepositoryReader reader, Consumer<String> progress) {
 		String scope = "download " + repositoryName(repoUrl);
 		long started = System.nanoTime();
+		progress.accept("Reading saved data and fetching repository metadata…");
 		trace(scope, "Starting repository download and analysis.");
 		try {
 			traceDetail(scope, "Reading the last saved original download…");
@@ -400,17 +439,22 @@ public class GitHubDataLoader {
 					: "Incremental update: " + previous.commits().size() + " original commits already stored.");
 			traceDetail(scope, "Fetching repository metadata from GitHub…");
 			RepositorySnapshot raw = downloadSnapshot(repoUrl, reader.get(repoUrl),
-					message -> traceDetail(scope, message), previous);
+					message -> {
+						traceDetail(scope, message);
+						progress.accept(message);
+					}, previous);
 			checkInterrupted();
 			raw.activeCommits();
 			if (raw != previous) {
 				checkInterrupted();
 				traceDetail(scope,
 						"Saving complete original download (" + raw.commits().size() + " archived commits)…");
+				progress.accept("Saving complete original download…");
 				snapshotWriter.accept(raw);
 				traceDetail(scope, "Original download saved; branch checkpoints updated.");
 			}
 			traceDetail(scope, "Recalculating statistics locally with saved authorship assignments…");
+			progress.accept("Calculating local statistics…");
 			RepoStats result = calculate(raw, configured(repoUrl), authorshipSource.apply(repoUrl));
 			traceDetail(scope, "Ready in " + elapsed(started) + ": " + result.getCommits() + " active commits, "
 					+ result.getUserStats().size() + " people, " + result.getCodeLines() + " Java source lines.");
@@ -493,7 +537,7 @@ public class GitHubDataLoader {
 			}
 		}
 		Collections.sort(result);
-		if (persist && (!result.isEmpty() || repos.isEmpty())) {
+		if (persist) {
 			traceDetail("local", "Writing derived statistics and CSV…");
 			resultWriter.accept(result);
 			csvWriter.accept(result);
@@ -528,7 +572,7 @@ public class GitHubDataLoader {
 		if (!repositoryConfigs.containsKey(url))
 			throw new IllegalStateException("Repository is no longer configured.");
 		long started = System.nanoTime();
-		RepoStats result = analyzeRepo(url, apiSource.get());
+		RepoStats result = analyzeRepo(url, apiSource.get(), message -> { });
 		if (result == null)
 			throw new IllegalStateException("Download failed. The previous original download has been kept.");
 		trace("download " + repositoryName(url), "Repository complete in " + elapsed(started) + ": "
