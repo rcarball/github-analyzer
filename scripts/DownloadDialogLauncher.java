@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 /** Shared source-mode launcher. All generated files belong to one private workspace. */
 public final class DownloadDialogLauncher {
     private static final String TEST_CLASS = "es.deusto.prog3.githubanalyzer.gui.DownloadDialogDesktopCheck";
-    private static final Path TEST_SOURCE = Path.of("test", "desktop", "es", "deusto", "prog3", "githubanalyzer", "gui", "DownloadDialogDesktopCheck.java");
+    private static final Path TEST_SOURCE = Path.of("test", "es", "deusto", "prog3", "githubanalyzer", "gui", "DownloadDialogDesktopCheck.java");
 
     public static void main(String[] args) {
         int result = 1;
