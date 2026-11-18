@@ -181,6 +181,42 @@ remain accessible. Dot-only path segments are rejected.
 ./scripts/run-tests.sh          # Windows: scripts\run-tests.bat  (or "Run as > JUnit Test" in Eclipse)
 ```
 
+For the optional real-window download regression check, use a JDK 17 or newer
+and a graphical desktop:
+
+- macOS/Linux: `./scripts/check-download-dialogs.sh`. An explicit `JAVA_HOME`
+  must point to a complete JDK. Otherwise macOS uses JDK discovery; the `PATH`
+  fallback resolves compiler symlinks and uses the runtime from that same folder.
+- Windows 11: double-click `scripts\check-download-dialogs.bat`, or run
+  `.\scripts\check-download-dialogs.bat` from PowerShell at the project root.
+  The console stays open to show the result; add `--no-pause` to skip that wait.
+  An explicit `JAVA_HOME` must point to a complete JDK. Otherwise the launcher
+  finds `javac.exe` on `PATH` and uses `java.exe` from that same folder; it checks
+  Java 17 or newer before running. Project and JDK paths may contain spaces.
+
+Both launchers delegate compilation, child-process control, exit codes and cleanup
+to the same Java 17+ controller, `scripts/DownloadDialogLauncher.java`. No Python
+or PowerShell installation is needed to run the graphical check. All generated
+classes, source lists, configuration and simulated repository data stay in one
+private temporary folder. The controller removes `GITHUB_TOKEN` from child
+processes and never writes to the real configuration or downloaded data.
+
+Success prints two `PASS:` lines followed by
+`All download dialog checks passed. Temporary test files were removed.` Compilation
+and test failures return nonzero exit codes; cleanup failures are also failures.
+An ordinary console interruption runs the JVM shutdown cleanup, which stops the
+active compiler or test process before deleting its own temporary folder. Cleanup
+does not follow symlinks or remove unrelated temporary data. Forcefully killing
+the JVM or closing its console can prevent cleanup and leave the private folder.
+
+Run `python3 scripts/check-download-launcher.py` for the ten offline launcher checks.
+They require a JDK 17+ and Python 3, but do not open windows. They exercise the
+shared controller with real compilation, special paths, failed compilation/tests,
+credentials, cleanup failures, symlinks and interruption, plus POSIX JDK discovery.
+POSIX-only cases are skipped on Windows; console Ctrl+C and the `.bat` wrapper still
+need native Windows validation. The shared controller and graphical checks have
+been verified on macOS.
+
 The runner prints totals and failures instead of listing every successful test.
 The [test review](docs/ONBOARDING.md#test-suite-review) records which redundant
 checks were consolidated and why the remaining regression tests are retained.
@@ -375,6 +411,24 @@ remote checks are also limited to the requested repositories. Refresh summaries
 count only the requested repositories, and the selected repository remains selected.
 All refresh actions are locked while another editing or refresh operation is active.
 
+While a refresh runs, a modal dialog shows finished repository
+attempts and the latest phase for each repository, including file and commit
+counts when available. Failed attempts are identified separately in the details.
+An activity indicator remains animated through the final statistics and CSV save.
+Use **Cancel download** to stop queued and active downloads. Closing the progress
+dialog with its close button first offers **Keep downloading** (the default) or
+**Cancel download**. Dismissing this warning also keeps the download running.
+The dialog displays “Cancelling…” until active requests have stopped; completed
+repository downloads remain saved and are reloaded locally into the main window.
+The dialog closes automatically after completion or cancellation.
+Use **Refresh pending** afterwards to retry unfinished repositories.
+If the main window receives a close request during a download, a warning offers
+**Keep downloading** (the default) or **Cancel download and close**. Dismissing the
+warning keeps the download running. Confirming requests cancellation and waits for active requests and local recovery to finish before
+closing. A settings save or local recalculation also finishes before closing.
+Progress is visible when opening the JAR directly, without a console. The bar counts
+repository attempts, not elapsed time: repositories can differ greatly in size.
+
 Refreshes download missing commits in the background. The first
 download lists the default branch's complete history once, then follows the other
 branch heads only through commits not already downloaded. Shared ancestors and
@@ -448,10 +502,22 @@ login or part of an email does not automatically group distinct identities.
 Original identity matching uses the complete name/email/login combination,
 ignoring case and surrounding whitespace.
 
+Removing a URL from `repositories.txt`, either externally before startup or through
+**Config**, removes it from the displayed repositories and subsequent statistics
+and CSV exports. The saved original download and authorship assignments are kept
+on disk; adding the same URL again reuses them without an initial download.
+External file edits while the app is open take effect on the next repository-list
+reload, such as a refresh or restart; the file is not watched continuously.
+
 ### Combine a collaborator's identities
 
 Select a repository and click **Manage authorship…**. A first complete original
 download must exist; the editor loads it locally without a token or network.
+The main window and all dialogs keep their normal sizes when they fit, and
+shrink only if either dimension exceeds 90% of the current monitor's usable area
+(excluding the taskbar and accounting for display scaling). On smaller screens,
+scrollbars keep content accessible where needed; larger monitors do not enlarge
+the default windows.
 
 1. Find the collaborator in the sortable **People** table; search by name, email or
    GitHub account. Rows show role, identity count, Java commits and observed share.

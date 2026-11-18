@@ -357,8 +357,8 @@ public class GitHubDataLoaderTest {
                 () -> url -> { throw new IOException("Offline test failure"); }, writes::add, exports::add);
         assertTrue(loader.loadData(List.of(old), false).isEmpty());
         assertEquals(0, loader.getLastConfirmedRepositoryCount());
-        assertTrue(writes.isEmpty(), "A failed analysis must not persist any old result");
-        assertTrue(exports.isEmpty(), "A failed refresh must keep the existing CSV");
+        assertEquals(List.of(List.of()), writes, "Clear derived results instead of retaining unverified cached metrics");
+        assertEquals(List.of(List.of()), exports, "Export only a header when no complete original data exists");
         assertEquals(42, old.getCodeLines());
     }
 

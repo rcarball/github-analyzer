@@ -36,6 +36,28 @@ import es.deusto.prog3.githubanalyzer.persistence.Configurator;
 
 /** Exercises the same editor and save operation used by the Config dialog. */
 public class ConfigurationFormTest {
+    @Test void removingRepositoryInEditorPreservesLocalArchives(@TempDir Path dir) throws Exception {
+        Configurator config = ConfigurationFixtures.create(dir);
+        String removed = "https://github.com/course/removed";
+        String retained = "https://github.com/course/retained";
+        Files.writeString(Path.of(config.getRepositoriesFile()), removed + "\n" + retained + "\n");
+        Path original = dir.resolve("resources/raw-data/saved.dat");
+        Path authorship = dir.resolve("resources/authorship/saved.properties");
+        Files.createDirectories(original.getParent()); Files.createDirectories(authorship.getParent());
+        Files.writeString(original, "original-download"); Files.writeString(authorship, "saved-authorship");
+        var operation = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+        SwingUtilities.invokeAndWait(() -> {
+            ConfigurationForm form = new ConfigurationForm(config);
+            form.reposArea.setText(retained + "\n");
+            operation.set(form.prepareSave());
+        });
+        operation.get().run();
+        assertEquals(List.of(retained), config.getRepositories());
+        assertEquals(List.of(retained), ConfigurationFixtures.create(dir).getRepositories());
+        assertEquals("original-download", Files.readString(original));
+        assertEquals("saved-authorship", Files.readString(authorship));
+    }
+
     @Test void backgroundSaveUsesCapturedValuesAndLocksEditors(@TempDir Path dir) throws Exception {
         Configurator config = ConfigurationFixtures.create(dir);
         java.util.concurrent.atomic.AtomicReference<Runnable> operation = new java.util.concurrent.atomic.AtomicReference<>();

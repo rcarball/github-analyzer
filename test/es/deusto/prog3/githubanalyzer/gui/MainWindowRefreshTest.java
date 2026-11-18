@@ -40,6 +40,59 @@ import es.deusto.prog3.githubanalyzer.domain.RepoStats;
 
 /** Exercises the real SwingWorker lifecycle without creating windows or using the network. */
 public class MainWindowRefreshTest {
+    @Test public void downloadCancellationKeepsControlsLockedUntilCleanupAndReloadFinishes() throws Exception {
+        var entered = new CountDownLatch(1);
+        var cleaning = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var finished = new CountDownLatch(1);
+        var worker = new AtomicReference<MainWindow.DownloadWorker>();
+        var button = new AtomicReference<JButton>();
+        var loaded = new AtomicBoolean();
+        var failure = new AtomicReference<Throwable>();
+        SwingUtilities.invokeAndWait(() -> {
+            button.set(new JButton());
+            worker.set(new MainWindow.DownloadWorker(button.get()) {
+                @Override protected List<RepoStats> download() {
+                    entered.countDown();
+                    try { new CountDownLatch(1).await(); }
+                    catch (InterruptedException ex) {
+                        cleaning.countDown();
+                        try { release.await(5, TimeUnit.SECONDS); }
+                        catch (InterruptedException nested) { throw new AssertionError(nested); }
+                        Thread.currentThread().interrupt();
+                        throw new java.util.concurrent.CancellationException();
+                    }
+                    throw new AssertionError("Expected interruption");
+                }
+                @Override protected List<RepoStats> readSavedData() {
+                    if (SwingUtilities.isEventDispatchThread() || Thread.currentThread().isInterrupted())
+                        throw new AssertionError("Recovery must run in background without interruption");
+                    loaded.set(true);
+                    return List.of();
+                }
+                @Override protected void refreshFinished() {
+                    try {
+                        assertFalse(button.get().isEnabled());
+                        assertTrue(loaded.get());
+                        assertEquals(List.of(), get());
+                    } catch (Throwable ex) { failure.set(ex); }
+                    finally { finished.countDown(); }
+                }
+            });
+            worker.get().execute();
+        });
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            SwingUtilities.invokeAndWait(worker.get()::requestCancellation);
+            assertTrue(cleaning.await(5, TimeUnit.SECONDS));
+            SwingUtilities.invokeAndWait(() -> assertFalse(button.get().isEnabled()));
+            assertFalse(loaded.get());
+        } finally { release.countDown(); }
+        assertTrue(finished.await(5, TimeUnit.SECONDS));
+        SwingUtilities.invokeAndWait(() -> assertTrue(button.get().isEnabled()));
+        assertNull(failure.get());
+    }
+
     @Test
     public void configurationStaysLockedUntilSuccessfulRefreshCompletes() throws Exception {
         checkRefreshControls(0);

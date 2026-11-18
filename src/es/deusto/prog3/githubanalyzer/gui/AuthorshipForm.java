@@ -77,7 +77,7 @@ import es.deusto.prog3.githubanalyzer.persistence.ContributionMetrics;
 /**
  * Detached editor: only an accepted snapshot can change saved rules or results.
  */
-final class AuthorshipForm extends JPanel {
+final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 	private static final long serialVersionUID = 1L;
 	private final List<AuthorSummary> authors;
 	private final List<AuthorIdentity> originals;
@@ -496,7 +496,7 @@ final class AuthorshipForm extends JPanel {
 		redoButton.addActionListener(event -> runAction(this::redo));
 		discardButton.addActionListener(event -> runAction(this::discardSession));
 		restoreButton.addActionListener(event -> {
-			if (JOptionPane.showConfirmDialog(this,
+			if (DialogSizing.showConfirmDialog(this,
 					"Remove all saved groupings, names, contact choices and participation overrides for this repository?\n"
 							+ "Original identities and default participation will be restored. You can undo this before applying.",
 					"Restore original identities", JOptionPane.OK_CANCEL_OPTION,
@@ -535,6 +535,31 @@ final class AuthorshipForm extends JPanel {
 			}
 			return component;
 		});
+	}
+
+	@Override
+	public Dimension getPreferredScrollableViewportSize() {
+		return getPreferredSize();
+	}
+
+	@Override
+	public int getScrollableUnitIncrement(java.awt.Rectangle visible, int orientation, int direction) {
+		return Math.max(16, people.getRowHeight());
+	}
+
+	@Override
+	public int getScrollableBlockIncrement(java.awt.Rectangle visible, int orientation, int direction) {
+		return Math.max(16, (orientation == SwingConstants.VERTICAL ? visible.height : visible.width) - 16);
+	}
+
+	@Override
+	public boolean getScrollableTracksViewportWidth() {
+		return getParent() != null && getParent().getWidth() >= getMinimumSize().width;
+	}
+
+	@Override
+	public boolean getScrollableTracksViewportHeight() {
+		return getParent() != null && getParent().getHeight() >= getMinimumSize().height;
 	}
 
 	private void configureSummary() {
@@ -974,7 +999,7 @@ final class AuthorshipForm extends JPanel {
 			return;
 		JComboBox<PersonChoice> choices = new JComboBox<>(targets.toArray(PersonChoice[]::new));
 		PlainTextRenderers.install(choices);
-		if (JOptionPane.showConfirmDialog(this, choices, "Move selected identities to",
+		if (DialogSizing.showConfirmDialog(this, choices, "Move selected identities to",
 				JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION)
 			moveSelectedTo(((PersonChoice) choices.getSelectedItem()).id());
 	}
@@ -1085,7 +1110,7 @@ final class AuthorshipForm extends JPanel {
 		try {
 			action.run();
 		} catch (RuntimeException ex) {
-			JOptionPane.showMessageDialog(this, ex.getMessage(), "Could not edit authorship",
+			DialogSizing.showMessageDialog(this, ex.getMessage(), "Could not edit authorship",
 					JOptionPane.ERROR_MESSAGE);
 		}
 	}

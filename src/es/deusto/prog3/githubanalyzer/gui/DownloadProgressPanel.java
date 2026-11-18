@@ -1,0 +1,94 @@
+// IAG (herramientas: Codex (OpenAI))
+package es.deusto.prog3.githubanalyzer.gui;
+
+import java.awt.BorderLayout;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import javax.swing.BorderFactory;
+import javax.swing.JLabel;
+import javax.swing.JButton;
+import javax.swing.JPanel;
+import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+
+import es.deusto.prog3.githubanalyzer.GitHubDataLoader.DownloadProgress;
+
+/** EDT-only view of repository completion and the latest phase of each download. */
+final class DownloadProgressPanel extends JPanel {
+
+	private static final long serialVersionUID = 1L;
+	final JButton cancel = new JButton("Cancel download");
+	private boolean stopping;
+	final JProgressBar repositories = new JProgressBar();
+	final JProgressBar activity = new JProgressBar();
+	final JLabel phase = new JLabel(" ");
+	final JTextArea details = new JTextArea(8, 60);
+	private final Map<String, String> latest = new LinkedHashMap<>();
+
+	DownloadProgressPanel() {
+		super(new BorderLayout(6, 6));
+		setBorder(BorderFactory.createTitledBorder("GitHub download"));
+		repositories.setStringPainted(true);
+		repositories.setToolTipText("Finished attempts, including failures; repositories differ in size.");
+		activity.setPreferredSize(new java.awt.Dimension(80, 16));
+		JPanel summary = new JPanel(new BorderLayout(6, 0));
+		summary.add(repositories, BorderLayout.CENTER);
+		JPanel actions = new JPanel(new BorderLayout(6, 0));
+		actions.add(activity, BorderLayout.CENTER);
+		actions.add(cancel, BorderLayout.EAST);
+		summary.add(actions, BorderLayout.EAST);
+		add(summary, BorderLayout.NORTH);
+		details.setEditable(false);
+		details.setLineWrap(true);
+		details.setWrapStyleWord(true);
+		add(new JScrollPane(details), BorderLayout.CENTER);
+		add(phase, BorderLayout.SOUTH);
+		setVisible(false);
+	}
+
+	void begin(Runnable cancelDownload) {
+		for (var listener : cancel.getActionListeners())
+			cancel.removeActionListener(listener);
+		stopping = false;
+		cancel.setEnabled(true);
+		cancel.addActionListener(event -> {
+			stopping = true;
+			cancel.setEnabled(false);
+			phase.setText("Cancelling… Waiting for active requests to stop. Saved repositories will be kept.");
+			cancelDownload.run();
+		});
+		latest.clear();
+		details.setText("");
+		repositories.setMaximum(1);
+		repositories.setValue(0);
+		repositories.setString("Preparing download…");
+		phase.setText("First downloads may take several minutes. Completed repositories are saved as they finish.");
+		activity.setIndeterminate(true);
+		setVisible(true);
+	}
+
+	void update(DownloadProgress event) {
+		if (!isVisible())
+			return;
+		repositories.setMaximum(Math.max(1, event.total()));
+		// Parallel workers can deliver a detail event with an older completion count.
+		repositories.setValue(Math.max(repositories.getValue(), event.completed()));
+		repositories.setString(repositories.getValue() + " / " + event.total() + " repository attempts finished");
+		if (event.repository() == null) {
+			if (!stopping)
+				phase.setText(event.message());
+		} else {
+			latest.put(event.repository(), event.message());
+			details.setText(latest.entrySet().stream().map(entry -> entry.getKey() + " — " + entry.getValue())
+					.collect(java.util.stream.Collectors.joining("\n")));
+		}
+	}
+
+	void finish() {
+		cancel.setEnabled(false);
+		activity.setIndeterminate(false);
+		setVisible(false);
+	}
+}

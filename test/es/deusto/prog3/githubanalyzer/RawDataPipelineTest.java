@@ -31,6 +31,7 @@ import org.kohsuke.github.*;
 import es.deusto.prog3.githubanalyzer.domain.*;
 import es.deusto.prog3.githubanalyzer.domain.AuthorshipConfig.*;
 import es.deusto.prog3.githubanalyzer.persistence.RawDataStore;
+import es.deusto.prog3.githubanalyzer.persistence.ConfigurationFixtures;
 
 @ResourceLock(Resources.SYSTEM_OUT)
 @ResourceLock(Resources.SYSTEM_ERR)
@@ -39,6 +40,139 @@ class RawDataPipelineTest {
     private static final String URL = "https://github.com/course/project";
     private static final AuthorIdentity A = new AuthorIdentity("Name", "school@example.org", "login");
     private static final AuthorIdentity B = new AuthorIdentity("Alias", "home@example.org", "login");
+
+    @Test void progressReportsParallelSuccessFailureAndFinalization() {
+        String failed = URL + "-failed";
+        List<GitHubDataLoader.DownloadProgress> events = new java.util.concurrent.CopyOnWriteArrayList<>();
+        var loader = new GitHubDataLoader(() -> List.of(URL, failed), ignored -> new AuthorshipConfig(),
+                () -> url -> {
+                    if (url.equals(failed)) throw new IOException("Offline fixture failure");
+                    return new Repository();
+                }, results -> { }, results -> { }, url -> null, snapshot -> { });
+        var results = loader.loadData(events::add);
+        assertEquals(1, results.size());
+        assertEquals(0, events.get(0).completed());
+        assertTrue(events.stream().allMatch(event -> event.total() == 2));
+        assertTrue(events.stream().anyMatch(event -> URL.equals(event.repository())
+                && event.message().startsWith("Reading remote branch heads")));
+        assertTrue(events.stream().anyMatch(event -> URL.equals(event.repository())
+                && event.message().startsWith("Complete")));
+        assertTrue(events.stream().anyMatch(event -> failed.equals(event.repository())
+                && event.message().startsWith("Not completed")));
+        var last = events.get(events.size() - 1);
+        assertEquals(2, last.completed());
+        assertNull(last.repository());
+        assertTrue(last.message().startsWith("Finalizing"));
+    }
+
+    @Test void cancellationKeepsCompletedSnapshotsAndMarksOnlyUnfinishedRepositoriesPending(@TempDir Path dir) throws Exception {
+        String pending = URL + "-pending";
+        var complete = new java.util.concurrent.CountDownLatch(1);
+        var blocked = new java.util.concurrent.CountDownLatch(1);
+        var store = new RawDataStore(dir);
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        var loader = new GitHubDataLoader(() -> List.of(URL, pending), ignored -> new AuthorshipConfig(),
+                () -> url -> {
+                    if (url.equals(pending)) {
+                        blocked.countDown();
+                        try { new java.util.concurrent.CountDownLatch(1).await(); }
+                        catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                            throw new IOException("Interrupted fixture", ex);
+                        }
+                    }
+                    return initial();
+                }, ignored -> { }, ignored -> { }, store::load, store::save);
+        Thread caller = new Thread(() -> {
+            try {
+                loader.loadData(event -> {
+                    if (URL.equals(event.repository()) && event.message().startsWith("Complete")) complete.countDown();
+                });
+                failure.set(new AssertionError("Expected cancellation"));
+            } catch (java.util.concurrent.CancellationException expected) {
+                // Expected: completed repository data must survive this exit.
+            } catch (Throwable ex) { failure.set(ex); }
+        });
+        caller.start();
+        try {
+            assertTrue(complete.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(blocked.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            byte[] saved = Files.readAllBytes(store.pathFor(URL));
+            caller.interrupt();
+            caller.join(5000);
+            assertFalse(caller.isAlive());
+            assertNull(failure.get());
+            assertArrayEquals(saved, Files.readAllBytes(store.pathFor(URL)));
+            assertNull(store.load(pending));
+            assertEquals(1, loader.getLastConfirmedRepositoryCount());
+            assertEquals(Set.of(pending), loader.getLastFailedRepositoryUrls());
+            assertEquals(List.of(URL), loader.loadLocalData().stream().map(RepoStats::getUrl).toList());
+        } finally {
+            caller.interrupt(); caller.join(5000);
+        }
+    }
+
+    @Test void removedRepositoriesLeaveResultsAndExportsButKeepOriginalsForReadding(@TempDir Path dir) throws Exception {
+        String pending = URL + "-pending", retained = "https://github.com/course/remaining";
+        var store = new RawDataStore(dir);
+        loader(initial(), store, new AtomicInteger()).loadData();
+        new GitHubDataLoader(() -> List.of(retained), url -> new AuthorshipConfig(), () -> url -> initial(),
+                ignored -> { }, ignored -> { }, store::load, store::save).loadData();
+        byte[] original = Files.readAllBytes(store.pathFor(URL));
+        Path repositories = dir.resolve("repositories.txt");
+        Files.write(repositories, List.of(URL, retained, pending));
+        java.util.function.Supplier<List<String>> configured = () -> {
+            try { return Files.readAllLines(repositories); }
+            catch (IOException ex) { throw new UncheckedIOException(ex); }
+        };
+        var writes = new ArrayList<List<RepoStats>>();
+        var exports = new ArrayList<List<RepoStats>>();
+        Path csv = dir.resolve("stats.csv"), statistics = dir.resolve("stats.dat");
+        java.util.function.Consumer<List<RepoStats>> writeStats = results -> {
+            writes.add(results); ConfigurationFixtures.writeStatistics(statistics, results);
+        };
+        java.util.function.Consumer<List<RepoStats>> writeCsv = results -> {
+            exports.add(results); ConfigurationFixtures.writeCsv(csv, results);
+        };
+        var loader = new GitHubDataLoader(configured, url -> new AuthorshipConfig(),
+                () -> { throw new AssertionError("No network during configuration reload"); },
+                writeStats, writeCsv, store::load, store::save);
+        assertEquals(2, loader.loadLocalData().size());
+        assertTrue(Files.readString(csv).contains("\"" + URL + "\""));
+        Files.write(repositories, List.of(retained, pending));
+        assertEquals(List.of(retained), loader.loadLocalData().stream().map(RepoStats::getUrl).toList());
+        assertFalse(Files.readString(csv).contains("\"" + URL + "\""));
+        assertTrue(Files.readString(csv).contains(retained));
+        assertEquals(List.of(retained), ConfigurationFixtures.readStatistics(statistics).stream().map(RepoStats::getUrl).toList());
+        Files.write(repositories, List.of(pending));
+        assertTrue(loader.loadLocalData().isEmpty());
+        assertTrue(writes.get(writes.size() - 1).isEmpty());
+        assertTrue(exports.get(exports.size() - 1).isEmpty());
+        assertEquals(1, Files.readAllLines(csv).size(), "Only the CSV header remains when no results exist");
+        assertTrue(ConfigurationFixtures.readStatistics(statistics).isEmpty());
+        // A fresh loader represents the next application startup with the edited file.
+        var restarted = new GitHubDataLoader(configured, url -> new AuthorshipConfig(),
+                () -> { throw new AssertionError("No network on startup"); },
+                writeStats, writeCsv, store::load, store::save);
+        assertTrue(restarted.loadLocalData().isEmpty());
+        assertEquals(List.of(pending), restarted.getRepositoryConfigs().stream().map(RepositoryConfig::url).toList());
+        Files.write(repositories, List.<String>of());
+        assertTrue(restarted.loadLocalData().isEmpty());
+        assertTrue(exports.get(exports.size() - 1).isEmpty());
+        Files.write(repositories, List.of(URL));
+        assertEquals(List.of(URL), restarted.loadLocalData().stream().map(RepoStats::getUrl).toList());
+        assertTrue(Files.readString(csv).contains("\"" + URL + "\""));
+        assertFalse(Files.readString(csv).contains(retained));
+        assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
+        Files.write(repositories, List.of(pending));
+        var offlineRefresh = new GitHubDataLoader(configured, url -> new AuthorshipConfig(),
+                () -> url -> { throw new IOException("Offline pending repository"); },
+                writeStats, writeCsv, store::load, store::save);
+        assertTrue(offlineRefresh.loadData().isEmpty());
+        assertEquals(1, Files.readAllLines(csv).size());
+        assertTrue(ConfigurationFixtures.readStatistics(statistics).isEmpty());
+        assertArrayEquals(original, Files.readAllBytes(store.pathFor(URL)));
+    }
 
     private static class Repository extends GHRepository {
         final Map<String, GHCommit> commits = new LinkedHashMap<>();
