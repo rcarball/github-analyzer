@@ -56,7 +56,8 @@ public final class RawDataStore {
 		try {
 			if (Files.size(path) > MAX_BYTES)
 				throw new IOException("Raw-data file is too large.");
-			try (ObjectInputStream input = new ObjectInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
+			try (var bytes = new BufferedInputStream(Files.newInputStream(path));
+					ObjectInputStream input = new ObjectInputStream(bytes)) {
 				input.setObjectInputFilter(FILTER);
 				Object value = input.readObject();
 				if (!(value instanceof RepositorySnapshot snapshot) || !snapshot.url().equals(url))
