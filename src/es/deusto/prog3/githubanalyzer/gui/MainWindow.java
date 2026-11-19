@@ -31,6 +31,8 @@ import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
@@ -353,9 +355,9 @@ public class MainWindow extends JFrame {
 		reposPanel.setBorder(new TitledBorder("Repositories"));
 		reposPanel.add(reposJScrollPane, BorderLayout.CENTER);
 
-		JPanel panelDetails = new JPanel();
+		GridLayout overviewLayout = new GridLayout(0, 3, 12, 4);
+		JPanel panelDetails = new JPanel(overviewLayout);
 		panelDetails.setBorder(new TitledBorder("Repository overview"));
-		panelDetails.setLayout(new GridLayout(4, 3, 12, 0));
 
 		lblCommits = new JLabel("• Total commits (unique):");
 		lblCreationDate = new JLabel("• Created:");
@@ -451,7 +453,21 @@ public class MainWindow extends JFrame {
 		panelDetails.add(lblAuthors);
 		panelDetails.add(lblExternalRefs);
 		panelDetails.add(lblURL);
-		panelDetails.add(new JLabel());
+		int overviewColumnWidth = lblExternalRefs.getPreferredSize().width
+				+ lblExternalRefs.getFontMetrics(lblExternalRefs.getFont()).stringWidth(" 00000");
+		panelDetails.addComponentListener(new ComponentAdapter() {
+			@Override
+			public void componentResized(ComponentEvent event) {
+				var insets = panelDetails.getInsets();
+				int width = panelDetails.getWidth() - insets.left - insets.right;
+				int gap = overviewLayout.getHgap();
+				int columns = Math.max(1, Math.min(3, (width + gap) / (overviewColumnWidth + gap)));
+				if (columns != overviewLayout.getColumns()) {
+					overviewLayout.setColumns(columns);
+					panelDetails.revalidate();
+				}
+			}
+		});
 
 		JScrollPane usersJScrollPane = new JScrollPane(jTableUserStats);
 		usersJScrollPane.setBorder(new TitledBorder("People (authors / contributors)"));
@@ -460,11 +476,12 @@ public class MainWindow extends JFrame {
 		JScrollPane fileTypeJScrollPane = new JScrollPane(jTreeFileType);
 		fileTypeJScrollPane.setBorder(new TitledBorder("File types (default branch)"));
 
-		JPanel centralPanel = new JPanel();
-		centralPanel.setLayout(new GridLayout(3, 1, 5, 0));
-		centralPanel.add(panelDetails);
-		centralPanel.add(usersJScrollPane);
-		centralPanel.add(fileTypeJScrollPane);
+		JPanel dataPanel = new JPanel(new GridLayout(2, 1));
+		dataPanel.add(usersJScrollPane);
+		dataPanel.add(fileTypeJScrollPane);
+		JPanel centralPanel = new JPanel(new BorderLayout());
+		centralPanel.add(panelDetails, BorderLayout.NORTH);
+		centralPanel.add(dataPanel, BorderLayout.CENTER);
 
 		JLabel lblFooter = new JLabel("<html><a href=\"\">Icons created by Pixel perfect - Flaticon</a><html>");
 		lblFooter.setForeground(Color.BLUE);
@@ -508,7 +525,7 @@ public class MainWindow extends JFrame {
 		// Reserve the same height whether an interpretation icon is visible or not.
 		bottomPanel.setPreferredSize(new Dimension(0, STATUS_BAR_HEIGHT));
 		bottomPanel.setMinimumSize(new Dimension(0, STATUS_BAR_HEIGHT));
-		bottomPanel.add(lblStatus, BorderLayout.WEST);
+		bottomPanel.add(lblStatus, BorderLayout.CENTER);
 		bottomPanel.add(lblFooter, BorderLayout.EAST);
 
 		JPanel topButtons = new JPanel();
@@ -543,14 +560,6 @@ public class MainWindow extends JFrame {
 
 		this.setSize(1200, 700);
 		DialogSizing.fitWithinScreen(this, null);
-		if (getWidth() < 1200 || getHeight() < 700) {
-			// Preserve the usual layout and make every control reachable on small displays.
-			var content = getContentPane();
-			var frameInsets = getInsets();
-			content.setPreferredSize(new Dimension(1200 - frameInsets.left - frameInsets.right,
-					700 - frameInsets.top - frameInsets.bottom));
-			setContentPane(new JScrollPane(content));
-		}
 
 		// ToolTipManager personalized settings
 		ToolTipManager.sharedInstance().setInitialDelay(300); // appear after 0.3 segundos
@@ -758,10 +767,6 @@ public class MainWindow extends JFrame {
 		cancelActiveDownload = () -> downloadProgress.cancel.doClick();
 		progressDialog.setSize(820, 320);
 		DialogSizing.fitWithinScreen(progressDialog, this);
-		if (progressDialog.getWidth() < 820 || progressDialog.getHeight() < 320) {
-			downloadProgress.setPreferredSize(new Dimension(800, 280));
-			progressDialog.setContentPane(new JScrollPane(downloadProgress));
-		}
 		worker.execute();
 		progressDialog.setVisible(true);
 	}
@@ -1924,6 +1929,7 @@ public class MainWindow extends JFrame {
 	private void setStatusText(String text) {
 		lblStatus.setIcon(null);
 		lblStatus.setText(text);
+		lblStatus.setToolTipText(text.isBlank() ? null : text);
 	}
 
 	/**
@@ -1938,6 +1944,8 @@ public class MainWindow extends JFrame {
 		Interpretation interpretation = interpretationFor(repo, user);
 		lblStatus.setIcon(interpretation.badge.icon());
 		lblStatus.setIconTextGap(6);
-		lblStatus.setText(statusTextFor(user, repo));
+		String status = statusTextFor(user, repo);
+		lblStatus.setText(status);
+		lblStatus.setToolTipText(status);
 	}
 }

@@ -6,12 +6,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import javax.swing.BorderFactory;
-import javax.swing.JLabel;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.UIManager;
 
 import es.deusto.prog3.githubanalyzer.GitHubDataLoader.DownloadProgress;
 
@@ -23,7 +23,7 @@ final class DownloadProgressPanel extends JPanel {
 	private boolean stopping;
 	final JProgressBar repositories = new JProgressBar();
 	final JProgressBar activity = new JProgressBar();
-	final JLabel phase = new JLabel(" ");
+	final JTextArea phase = new JTextArea(2, 0);
 	final JTextArea details = new JTextArea(8, 60);
 	private final Map<String, String> latest = new LinkedHashMap<>();
 
@@ -33,18 +33,24 @@ final class DownloadProgressPanel extends JPanel {
 		repositories.setStringPainted(true);
 		repositories.setToolTipText("Finished attempts, including failures; repositories differ in size.");
 		activity.setPreferredSize(new java.awt.Dimension(80, 16));
-		JPanel summary = new JPanel(new BorderLayout(6, 0));
-		summary.add(repositories, BorderLayout.CENTER);
+		add(repositories, BorderLayout.NORTH);
 		JPanel actions = new JPanel(new BorderLayout(6, 0));
 		actions.add(activity, BorderLayout.CENTER);
 		actions.add(cancel, BorderLayout.EAST);
-		summary.add(actions, BorderLayout.EAST);
-		add(summary, BorderLayout.NORTH);
 		details.setEditable(false);
 		details.setLineWrap(true);
 		details.setWrapStyleWord(true);
 		add(new JScrollPane(details), BorderLayout.CENTER);
-		add(phase, BorderLayout.SOUTH);
+		phase.setFont(UIManager.getFont("Label.font"));
+		phase.setForeground(UIManager.getColor("Label.foreground"));
+		phase.setOpaque(false);
+		phase.setEditable(false);
+		phase.setLineWrap(true);
+		phase.setWrapStyleWord(true);
+		JPanel footer = new JPanel(new BorderLayout(0, 4));
+		footer.add(phase, BorderLayout.NORTH);
+		footer.add(actions, BorderLayout.EAST);
+		add(footer, BorderLayout.SOUTH);
 		setVisible(false);
 	}
 
