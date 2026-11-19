@@ -2,12 +2,12 @@
 REM Build a SELF-CONTAINED runnable JAR (Windows).
 REM
 REM Produces dist\github-analyzer-<version>.jar with the application classes, all GUI icons AND
-REM all third-party libraries bundled inside — no lib\ folder needed at runtime.
+REM all third-party libraries bundled inside. No lib\ folder is needed at runtime.
 REM
 REM Run it (from any directory) with:
 REM     java -jar dist\github-analyzer-1.4.0.jar
 REM Keep a resources\ folder (with your config.properties and repositories.txt)
-REM next to the jar — those files stay EXTERNAL and editable (never bundled).
+REM next to the jar. Those files stay EXTERNAL and editable (never bundled).
 setlocal
 cd /d "%~dp0.."
 
