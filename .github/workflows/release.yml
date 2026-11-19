@@ -82,6 +82,14 @@ jobs:
             ./build-jar.sh
           fi
 
+      - name: Verify dependency licenses in the runnable JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f scripts/check-jar-licenses.py ]; then
+            python3 scripts/check-jar-licenses.py
+          fi
+
       - name: Generate checksum
         env:
           VERSION: ${{ steps.version.outputs.version }}
