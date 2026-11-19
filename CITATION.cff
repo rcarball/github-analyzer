@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use GitHub Analyzer in academic or teaching work, please cite it as follows."
 type: software
 title: "GitHub Analyzer"
-version: "1.4.0"
-date-released: 2026-11-17
+version: "1.4.1"
+date-released: 2026-11-19
 authors:
   - name: "Faculty of Engineering, University of Deusto"
 repository-code: "https://github.com/rcarball/github-analyzer"
