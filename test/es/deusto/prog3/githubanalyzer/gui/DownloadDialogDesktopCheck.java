@@ -101,6 +101,7 @@ public final class DownloadDialogDesktopCheck {
 		int result = 0;
 		try {
 			runChecks();
+			ApplicationExitDesktopCheck.runChecks();
 		} catch (Throwable failure) {
 			failure.printStackTrace();
 			result = 1;

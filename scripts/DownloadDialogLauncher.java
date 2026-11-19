@@ -45,6 +45,9 @@ public final class DownloadDialogLauncher {
                 sources.add(quoteSource(project.resolve(TEST_SOURCE)));
             else
                 throw new IOException("The desktop regression check is missing.");
+            Path exitCheck = project.resolve("test/es/deusto/prog3/githubanalyzer/gui/ApplicationExitDesktopCheck.java");
+            if (!unitTests && Files.isRegularFile(exitCheck))
+                sources.add(quoteSource(exitCheck));
             Path arguments = workspace.root.resolve("sources.txt");
             Files.write(arguments, sources, StandardCharsets.UTF_8);
             // The wildcard belongs to the Java classpath syntax and is not a Windows path component.
