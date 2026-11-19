@@ -21,6 +21,7 @@ import java.util.function.Supplier;
 
 import javax.swing.JDialog;
 import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
@@ -58,6 +59,29 @@ public final class DownloadDialogDesktopCheck {
 					return found;
 			}
 		return null;
+	}
+
+	private static void checkInside(Component component, Container content) {
+		check(component != null && component.getWidth() > 0 && component.getHeight() > 0,
+				"Expected a laid-out component");
+		var bounds = SwingUtilities.convertRectangle(component.getParent(), component.getBounds(), content);
+		check(component.isShowing() && new java.awt.Rectangle(content.getSize()).contains(bounds),
+				"Component must fit inside the resized content: " + component.getClass().getSimpleName());
+	}
+
+	private static void checkCompactMainWindow(MainWindow window) throws Exception {
+		Container content = window.getContentPane();
+		check(!(content instanceof JScrollPane), "The main window should not scroll as a whole");
+		Component commits = (Component) field(window, "lblCommits");
+		Component external = (Component) field(window, "lblExternalRefs");
+		check(commits.getParent().getWidth() < 600, "Expected a compact repository overview");
+		check(external.getWidth() >= external.getPreferredSize().width, "Overview labels must fit after reflow");
+		for (String name : List.of("btnConfig", "btnRefresh", "lblStatus", "lblExternalRefs"))
+			checkInside((Component) field(window, name), content);
+		for (String name : List.of("jTreeRepos", "jTableUserStats", "jTreeFileType")) {
+			Component view = (Component) field(window, name);
+			checkInside(SwingUtilities.getAncestorOfClass(JScrollPane.class, view), content);
+		}
 	}
 
 	private static GHRepository completeRepository() {
@@ -106,9 +130,18 @@ public final class DownloadDialogDesktopCheck {
 				main.set(new MainWindow(List.of(saved)) {
 					@Override void exitApplication() { exits.incrementAndGet(); }
 				});
+				MainWindow window = main.get();
+				window.setSize(Math.min(760, window.getWidth()), Math.min(430, window.getHeight()));
 			});
 			// Flush the initial credential-free update check before configuring fixture access.
 			SwingUtilities.invokeAndWait(() -> { });
+			SwingUtilities.invokeAndWait(() -> {
+				try {
+					checkCompactMainWindow(main.get());
+				} catch (Exception error) {
+					throw new AssertionError(error);
+				}
+			});
 			Files.writeString(config, "github.user=fixture\ngithub.token=offline-fixture-only\n");
 			Configurator.getInstance().reload();
 			for (boolean cancelWithButton : new boolean[] { false, true }) {
@@ -154,6 +187,14 @@ public final class DownloadDialogDesktopCheck {
 							if (progress == null || !progress.isShowing() || entered.getCount() != 0 || stage.get() >= 5)
 								return;
 							DownloadProgressPanel panel = find(progress, DownloadProgressPanel.class);
+							if (stage.get() == 0) {
+								progress.setSize(Math.min(420, progress.getWidth()), Math.min(230, progress.getHeight()));
+								progress.validate();
+								check(progress.getContentPane() == panel, "The progress dialog should not scroll as a whole");
+								checkInside(panel.cancel, panel);
+								checkInside(panel.phase, panel);
+								checkInside(SwingUtilities.getAncestorOfClass(JScrollPane.class, panel.details), panel);
+							}
 							if (!panel.details.getText().contains("Complete — saved locally."))
 								return;
 							if (savedBytes.get() == null)
