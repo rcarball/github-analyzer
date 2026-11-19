@@ -4,6 +4,16 @@ GitHub Analyzer distributes the following libraries. Their respective license
 terms apply to each component; this list does not replace the license texts or
 notices shipped by their authors.
 
+The runnable JAR preserves the original license and notice files from each
+runtime library under `META-INF/licenses/<artifact-version>/`, retaining their
+paths inside the original library. This prevents identically named files such
+as `META-INF/NOTICE` from overwriting another component's attribution.
+The Java 17+ helper used by both Windows and macOS/Linux builds also copies
+supplemental texts from `LICENSES/runtime/<artifact-version>/` to that directory.
+GitHub API 1.330 does not include its MIT license text in its upstream JAR, so
+`LICENSES/runtime/github-api-1.330/LICENSE.txt` contains the unmodified text from
+its [upstream release tag](https://github.com/hub4j/github-api/blob/github-api-1.330/LICENSE.txt).
+
 ## Runtime libraries included in the runnable JAR
 
 | Component | Version | License | Project |

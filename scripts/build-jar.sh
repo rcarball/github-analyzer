@@ -36,7 +36,7 @@ rm -rf "$OUT" "$STAGE"
 mkdir -p "$OUT" "$STAGE" dist
 
 # 1) Compile application sources (tests excluded).
-javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
+javac --release 17 -encoding UTF-8 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
 
 # 2) Unpack the runtime dependencies into the staging dir (the JUnit runner is
 #    a test-only tool and is intentionally excluded).
@@ -44,6 +44,11 @@ javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
                           "$LIB"/github-api-*.jar "$LIB"/jackson-*.jar; do
       jar xf "$j"
   done )
+
+# Keep each dependency's original legal files before merged names can obscure them.
+java scripts/PreserveDependencyNotices.java "$STAGE" LICENSES/runtime \
+    "$LIB"/commons-io-*.jar "$LIB"/commons-lang3-*.jar \
+    "$LIB"/github-api-*.jar "$LIB"/jackson-*.jar
 
 # 3) Drop artifacts that don't belong in a merged, non-modular classpath jar.
 rm -f "$STAGE/META-INF/MANIFEST.MF" "$STAGE/module-info.class"

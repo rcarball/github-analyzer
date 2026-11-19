@@ -32,13 +32,18 @@ if not exist dist mkdir dist
 
 REM 1) Compile application sources (tests excluded).
 dir /s /b src\*.java > "%TEMP%\ga-src.txt"
-javac --release 17 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-src.txt"
+javac --release 17 -encoding UTF-8 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-src.txt"
+if errorlevel 1 exit /b 1
 del "%TEMP%\ga-src.txt"
 
 REM 2) Unpack the runtime dependencies into the staging dir (JUnit excluded).
 pushd "%STAGE%"
 for %%J in ("%LIB%\commons-io-*.jar" "%LIB%\commons-lang3-*.jar" "%LIB%\github-api-*.jar" "%LIB%\jackson-*.jar") do jar xf "%%J"
 popd
+
+REM Preserve original legal files under a separate directory for each dependency.
+java scripts\PreserveDependencyNotices.java "%STAGE%" LICENSES\runtime "%LIB%\commons-io-*.jar" "%LIB%\commons-lang3-*.jar" "%LIB%\github-api-*.jar" "%LIB%\jackson-*.jar"
+if errorlevel 1 exit /b 1
 
 REM 3) Drop artifacts that don't belong in a merged, non-modular classpath jar.
 del /q "%STAGE%\META-INF\MANIFEST.MF" "%STAGE%\module-info.class" 2>nul
@@ -56,6 +61,7 @@ copy /y docs\THIRD_PARTY_NOTICES.md "%STAGE%\docs\" >nul
 
 REM 6) Package a single self-contained runnable jar (Main-Class via -e).
 jar cfe "%JAR%" "%MAIN%" -C "%STAGE%" .
+if errorlevel 1 exit /b 1
 echo Built self-contained %JAR%
 echo Run with: java -jar %JAR%   (only a resources\ folder needs to sit next to it)
 

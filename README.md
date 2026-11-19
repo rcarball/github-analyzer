@@ -117,6 +117,14 @@ resolve relative to the JAR's location). Those files stay
 **external and editable** and are never bundled, since they hold your token and
 student data.
 
+Both build scripts use the same Java 17+ helper to preserve each runtime
+dependency's licenses and notices under `META-INF/licenses/<artifact-version>/`
+inside the JAR. No extra build dependency is required. After building, run
+`python3 scripts/check-jar-licenses.py` (`python` on Windows) to verify those
+texts, runtime classes, icons and exclusions against the source libraries.
+CI is configured to run the native test/build scripts and this verification
+on Windows, macOS and Linux with JDK 17.
+
 To reuse the existing project configuration, original downloads, authorship rules and output locations when running the local JAR,
 create a directory link **once**, if `dist/resources` does not already exist:
 
