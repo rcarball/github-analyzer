@@ -24,6 +24,7 @@ import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
@@ -115,6 +116,7 @@ public class MainWindow extends JFrame {
 	private final java.util.Set<String> failedDownloads = new java.util.HashSet<>();
 	private JButton btnConfig = new JButton("Config");
 	private JButton btnAuthorship = new JButton("Manage authorship…");
+	private JButton btnUniversity;
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
 	private String selectedRepo;
@@ -356,16 +358,24 @@ public class MainWindow extends JFrame {
 		reposPanel.add(reposJScrollPane, BorderLayout.CENTER);
 
 		GridLayout overviewLayout = new GridLayout(0, 3, 12, 4);
-		JPanel panelDetails = new JPanel(overviewLayout);
+		JPanel panelDetails = new JPanel(overviewLayout) {
+			@Override
+			public Dimension getPreferredSize() {
+				Dimension preferred = super.getPreferredSize();
+				// Follow the viewport width; allow vertical scrolling on small windows.
+				preferred.width = 0;
+				return preferred;
+			}
+		};
 		panelDetails.setBorder(new TitledBorder("Repository overview"));
 
 		lblCommits = new JLabel("• Total commits (unique):");
 		lblCreationDate = new JLabel("• Created:");
 		lblFirstCommit = new JLabel("• First commit:");
 		lblLastCommit = new JLabel("• Last commit:");
-		lblCodeLines = new JLabel("• Java LOC (default branch):");
+		lblCodeLines = new JLabel("• Java LOC:");
 		lblLinesChanged = new JLabel("• Java churn (added+deleted):");
-		lblExternalRefs = new JLabel("• External references (default branch):");
+		lblExternalRefs = new JLabel("• External references:");
 		lblURL = new JLabel("• Open repository:");
 		lblTeamSize = new JLabel("• Team size:");
 		lblContributors = new JLabel("• Contributors:");
@@ -476,12 +486,10 @@ public class MainWindow extends JFrame {
 		JScrollPane fileTypeJScrollPane = new JScrollPane(jTreeFileType);
 		fileTypeJScrollPane.setBorder(new TitledBorder("File types (default branch)"));
 
-		JPanel dataPanel = new JPanel(new GridLayout(2, 1));
-		dataPanel.add(usersJScrollPane);
-		dataPanel.add(fileTypeJScrollPane);
-		JPanel centralPanel = new JPanel(new BorderLayout());
-		centralPanel.add(panelDetails, BorderLayout.NORTH);
-		centralPanel.add(dataPanel, BorderLayout.CENTER);
+		JScrollPane overviewJScrollPane = new JScrollPane(panelDetails,
+				JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+		overviewJScrollPane.setBorder(BorderFactory.createEmptyBorder());
+		JPanel centralPanel = analysisPanel(overviewJScrollPane, usersJScrollPane, fileTypeJScrollPane);
 
 		JLabel lblFooter = new JLabel("<html><a href=\"\">Icons created by Pixel perfect - Flaticon</a><html>");
 		lblFooter.setForeground(Color.BLUE);
@@ -528,12 +536,15 @@ public class MainWindow extends JFrame {
 		bottomPanel.add(lblStatus, BorderLayout.CENTER);
 		bottomPanel.add(lblFooter, BorderLayout.EAST);
 
-		JPanel topButtons = new JPanel();
-		topButtons.add(btnConfig);
-		topButtons.add(btnAuthorship);
-		topButtons.add(btnRefreshPending);
-		topButtons.add(btnRefresh);
+		JPanel topButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 5));
+		for (JButton button : List.of(btnConfig, btnAuthorship, btnRefreshPending, btnRefresh)) {
+			button.setFont(button.getFont().deriveFont(12f));
+			button.setMargin(new java.awt.Insets(2, 8, 2, 8));
+			topButtons.add(button);
+		}
 		JPanel topPanel = new JPanel(new BorderLayout());
+		btnUniversity = universityButton();
+		topPanel.add(btnUniversity, BorderLayout.WEST);
 		topPanel.add(topButtons, BorderLayout.EAST);
 
 		this.setTitle("GitHub Repository Analyzer");
@@ -1128,12 +1139,12 @@ public class MainWindow extends JFrame {
 					repoStats.getCommits(), repoStats.getMergeCommits(), repoStats.getNonMergeCommits(),
 					javaCommitsSum));
 
-			lblCodeLines.setText(String.format("• Java LOC (default branch): %d", repoStats.getCodeLines()));
+			lblCodeLines.setText(String.format("• Java LOC: %d", repoStats.getCodeLines()));
 			lblLinesChanged.setText(String.format("• Java churn (added+deleted): %d", repoStats.getLinesChanged()));
 			lblLinesChanged.setToolTipText(
 					String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
 			lblExternalRefs.setText(
-					String.format("• External references (default branch): %d", repoStats.getExternalReferences()));
+					String.format("• External references: %d", repoStats.getExternalReferences()));
 			lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repoStats.getName()));
 			lblURL.setForeground(Color.BLUE);
 			lblURL.setToolTipText(
@@ -1172,9 +1183,9 @@ public class MainWindow extends JFrame {
 			lblFirstCommit.setText("• First commit:");
 			lblLastCommit.setText("• Last commit:");
 			lblCommits.setText("• Total commits:");
-			lblCodeLines.setText("• Java LOC (default branch):");
+			lblCodeLines.setText("• Java LOC:");
 			lblLinesChanged.setText("• Java churn (added+deleted):");
-			lblExternalRefs.setText("• External references (default branch):");
+			lblExternalRefs.setText("• External references:");
 			lblURL.setText("• URL:");
 			lblURL.setForeground(lblCommits.getForeground());
 			lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
@@ -1337,6 +1348,50 @@ public class MainWindow extends JFrame {
 				btnAuthorship.setEnabled(true);
 			}
 		}
+	}
+
+	private JButton universityButton() {
+		JButton button = new JButton("<html>Universidad de Deusto<br>Deustuko Unibertsitatea</html>");
+		ImageIcon logo = loadIcon("logo-ud.jpg");
+		if (logo != null) {
+			button.setIcon(new ImageIcon(logo.getImage().getScaledInstance(28, 28, Image.SCALE_SMOOTH)));
+		}
+		button.setFont(button.getFont().deriveFont(Font.PLAIN, 11f));
+		button.setForeground(new Color(51, 65, 85));
+		button.setBackground(Color.WHITE);
+		button.setOpaque(true);
+		button.setContentAreaFilled(false);
+		button.setIconTextGap(6);
+		button.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createLineBorder(new Color(216, 225, 235), 1, true),
+				BorderFactory.createEmptyBorder(0, 5, 0, 5)));
+		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		button.setToolTipText("Universidad de Deusto · Deustuko Unibertsitatea — deusto.es");
+		button.getAccessibleContext().setAccessibleName("Universidad de Deusto — Deustuko Unibertsitatea");
+		button.getAccessibleContext().setAccessibleDescription("Abrir la web de la universidad: https://www.deusto.es");
+		button.addActionListener(event -> openInBrowser("https://www.deusto.es"));
+		return button;
+	}
+
+	static JPanel analysisPanel(JScrollPane overview, JScrollPane people, JScrollPane fileTypes) {
+		JPanel panel = new JPanel(null) {
+			@Override
+			public void doLayout() {
+				var insets = getInsets();
+				int width = Math.max(0, getWidth() - insets.left - insets.right);
+				int height = Math.max(0, getHeight() - insets.top - insets.bottom);
+				int overviewHeight = height * 3 / 10;
+				int peopleHeight = height / 2;
+				overview.setBounds(insets.left, insets.top, width, overviewHeight);
+				people.setBounds(insets.left, insets.top + overviewHeight, width, peopleHeight);
+				fileTypes.setBounds(insets.left, insets.top + overviewHeight + peopleHeight,
+						width, height - overviewHeight - peopleHeight);
+			}
+		};
+		panel.add(overview);
+		panel.add(people);
+		panel.add(fileTypes);
+		return panel;
 	}
 
 	static JScrollPane repositoryTreeScrollPane(JTree tree) {

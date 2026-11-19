@@ -57,7 +57,9 @@ def main():
                     has_license |= "license" in file.name.lower() or file.name.lower().startswith("copying")
                     legal_count += 1
             require(has_license, f"No license text for {jar.name}")
-        for file in (ROOT / "resources/images").glob("*.png"):
+        images = list((ROOT / "resources/images").glob("*.png"))
+        images.append(ROOT / "resources/images/logo-ud.jpg")
+        for file in images:
             require(output.read("images/" + file.name) == file.read_bytes(), f"Missing icon: {file.name}")
         for name in ("LICENSE", "NOTICE", "docs/THIRD_PARTY_NOTICES.md"):
             require(output.read(name) == (ROOT / name).read_bytes(), f"Missing project notice: {name}")

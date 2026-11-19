@@ -53,6 +53,7 @@ REM 4) Add our compiled classes and all GUI icons.
 xcopy /e /i /y /q "%OUT%\*" "%STAGE%\" >nul
 mkdir "%STAGE%\images" 2>nul
 copy /y resources\images\*.png "%STAGE%\images\" >nul
+copy /y resources\images\logo-ud.jpg "%STAGE%\images\" >nul
 
 REM 5) Include the license and attribution notices in the binary distribution.
 for %%F in (LICENSE NOTICE) do copy /y "%%F" "%STAGE%\" >nul
