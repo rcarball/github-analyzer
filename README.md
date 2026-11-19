@@ -209,7 +209,16 @@ classes, source lists, configuration and simulated repository data stay in one
 private temporary folder. The controller removes `GITHUB_TOKEN` from child
 processes and never writes to the real configuration or downloaded data.
 
-Success prints two `PASS:` lines followed by
+The graphical check also starts four separate JVMs with the real application
+exit handler: idle close, close during a successful or failed background operation,
+and close during a cancelled download. Each must exit by itself with code 0
+within 15 seconds. Pending operations must finish their cleanup and cancellation
+recovery before exit. A timeout, nonzero exit or missing completion marker fails
+the check; terminating a child for cleanup never counts as success. All child
+configuration and data are synthetic, and both GitHub token environment variables
+are removed from these child processes.
+
+Success prints six `PASS:` lines followed by
 `All download dialog checks passed. Temporary test files were removed.` Compilation
 and test failures return nonzero exit codes; cleanup failures are also failures.
 An ordinary console interruption runs the JVM shutdown cleanup, which stops the

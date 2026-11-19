@@ -43,6 +43,9 @@ jobs:
       - name: Run automated tests
         run: ./scripts/run-tests.sh
 
+      - name: Run desktop shutdown regression checks
+        run: xvfb-run -a ./scripts/check-download-dialogs.sh
+
       - name: Build the runnable JAR
         run: ./scripts/build-jar.sh
 
