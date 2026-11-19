@@ -539,6 +539,7 @@ public class MainWindow extends JFrame {
 		JPanel topButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 5));
 		for (JButton button : List.of(btnConfig, btnAuthorship, btnRefreshPending, btnRefresh)) {
 			button.setFont(button.getFont().deriveFont(12f));
+			button.setMargin(new java.awt.Insets(2, 8, 2, 8));
 			topButtons.add(button);
 		}
 		JPanel topPanel = new JPanel(new BorderLayout());
