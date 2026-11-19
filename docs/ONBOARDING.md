@@ -84,8 +84,9 @@ and rejects stale artifacts from the other layout.
 
 Run `./scripts/benchmark-java-files.sh 4ded5fd` to compile both that revision and
 the working source in temporary directories using the same bundled libraries.
-The probe source is `test/benchmarks/JavaSourceBenchmark.java`. It is offline and
-uses real library content objects and production download/calculation paths.
+The probe source is `test/es/deusto/prog3/githubanalyzer/JavaSourceBenchmark.java`.
+It runs offline using real library content objects and production download and
+calculation paths.
 The test runner compiles it with the other test sources, but JUnit does not run
 it as a test. Measurements are manual, and the probe is excluded from the runnable JAR.
 It requires a JDK exposing `com.sun.management.ThreadMXBean` allocation counters.
