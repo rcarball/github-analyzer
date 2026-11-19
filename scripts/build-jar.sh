@@ -36,7 +36,7 @@ rm -rf "$OUT" "$STAGE"
 mkdir -p "$OUT" "$STAGE" dist
 
 # 1) Compile application sources (tests excluded).
-javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
+javac --release 17 -encoding UTF-8 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
 
 # 2) Unpack the runtime dependencies into the staging dir (the JUnit runner is
 #    a test-only tool and is intentionally excluded).

@@ -32,7 +32,7 @@ if not exist dist mkdir dist
 
 REM 1) Compile application sources (tests excluded).
 dir /s /b src\*.java > "%TEMP%\ga-src.txt"
-javac --release 17 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-src.txt"
+javac --release 17 -encoding UTF-8 -cp "lib/*" -d "%OUT%" @"%TEMP%\ga-src.txt"
 if errorlevel 1 exit /b 1
 del "%TEMP%\ga-src.txt"
 
