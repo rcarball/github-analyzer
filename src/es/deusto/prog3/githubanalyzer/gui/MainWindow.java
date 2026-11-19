@@ -542,8 +542,25 @@ public class MainWindow extends JFrame {
 			button.setMargin(new java.awt.Insets(2, 8, 2, 8));
 			topButtons.add(button);
 		}
-		JPanel topPanel = new JPanel(new BorderLayout());
 		btnUniversity = universityButton();
+		int expandedActionsWidth = topButtons.getPreferredSize().width;
+		JPanel topPanel = new JPanel(new BorderLayout(8, 0)) {
+			private boolean compact;
+
+			@Override
+			public void doLayout() {
+				var insets = getInsets();
+				int available = getWidth() - insets.left - insets.right;
+				boolean narrow = available < btnUniversity.getPreferredSize().width
+						+ expandedActionsWidth + ((BorderLayout) getLayout()).getHgap();
+				if (narrow != compact) {
+					compact = narrow;
+					btnAuthorship.setText(compact ? "Authorship…" : "Manage authorship…");
+					btnRefresh.setText(compact ? "Refresh all" : "Refresh all from GitHub");
+				}
+				super.doLayout();
+			}
+		};
 		topPanel.add(btnUniversity, BorderLayout.WEST);
 		topPanel.add(topButtons, BorderLayout.EAST);
 

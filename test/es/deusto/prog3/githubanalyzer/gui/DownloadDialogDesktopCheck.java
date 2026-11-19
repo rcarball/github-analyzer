@@ -70,6 +70,7 @@ public final class DownloadDialogDesktopCheck {
 	}
 
 	private static void checkCompactMainWindow(MainWindow window) throws Exception {
+		window.validate();
 		Container content = window.getContentPane();
 		check(!(content instanceof JScrollPane), "The main window should not scroll as a whole");
 		Component commits = (Component) field(window, "lblCommits");
@@ -78,16 +79,7 @@ public final class DownloadDialogDesktopCheck {
 		check(external.getWidth() >= external.getPreferredSize().width, "Overview labels must fit after reflow");
 		for (String name : List.of("btnUniversity", "btnConfig", "btnRefresh", "lblStatus", "lblExternalRefs"))
 			checkInside((Component) field(window, name), content);
-		javax.swing.JButton university = (javax.swing.JButton) field(window, "btnUniversity");
-		Component actions = ((Component) field(window, "btnRefresh")).getParent();
-		check(university.getIcon() != null, "The university logo must load from local resources");
-		check(university.getText().contains("Universidad de Deusto")
-				&& university.getText().contains("Deustuko Unibertsitatea"), "Both university names must be visible");
-		check(university.getParent() == actions.getParent()
-				&& university.getX() + university.getWidth() <= actions.getX(),
-				"University branding must share the toolbar row without overlapping actions");
-		check(university.getHeight() <= actions.getPreferredSize().height,
-				"University branding must not add height above the repository tree");
+		checkHeader(window, false);
 		for (String name : List.of("jTreeRepos", "jTableUserStats", "jTreeFileType")) {
 			Component view = (Component) field(window, name);
 			checkInside(SwingUtilities.getAncestorOfClass(JScrollPane.class, view), content);
@@ -104,6 +96,32 @@ public final class DownloadDialogDesktopCheck {
 				"People table must receive 50 percent of the analysis area");
 		check(Math.abs(fileTypes.getHeight() - height * .2) < 2,
 				"File types must receive 20 percent of the analysis area");
+	}
+
+	private static void checkHeader(MainWindow window, boolean expanded) throws Exception {
+		window.validate();
+		for (String name : List.of("btnUniversity", "btnConfig", "btnAuthorship", "btnRefreshPending", "btnRefresh"))
+			checkInside((Component) field(window, name), window.getContentPane());
+		javax.swing.JButton university = (javax.swing.JButton) field(window, "btnUniversity");
+		Component actions = ((Component) field(window, "btnRefresh")).getParent();
+		check(university.getIcon() != null, "The university logo must load from local resources");
+		check(university.getText().contains("Universidad de Deusto")
+				&& university.getText().contains("Deustuko Unibertsitatea"), "Both university names must be visible");
+		check(university.getParent() == actions.getParent()
+				&& university.getX() + university.getWidth() <= actions.getX(),
+				"University branding must share the toolbar row without overlapping actions");
+		check(university.getHeight() <= actions.getPreferredSize().height,
+				"University branding must not add height above the repository tree");
+		java.awt.Rectangle actionArea = new java.awt.Rectangle(actions.getSize());
+		for (String name : List.of("btnConfig", "btnAuthorship", "btnRefreshPending", "btnRefresh"))
+			check(actionArea.contains(((Component) field(window, name)).getBounds()),
+					"Every toolbar action must fit in the same row: " + name);
+		if (expanded) {
+			check("Manage authorship…".equals(((javax.swing.JButton) field(window, "btnAuthorship")).getText()),
+					"Wide windows must restore the full authorship label");
+			check("Refresh all from GitHub".equals(((javax.swing.JButton) field(window, "btnRefresh")).getText()),
+					"Wide windows must restore the full refresh label");
+		}
 	}
 
 	private static GHRepository completeRepository() {
@@ -164,6 +182,16 @@ public final class DownloadDialogDesktopCheck {
 				} catch (Exception error) {
 					throw new AssertionError(error);
 				}
+			});
+			SwingUtilities.invokeAndWait(() -> main.get().setSize(1200, 700));
+			SwingUtilities.invokeAndWait(() -> {
+				try { checkHeader(main.get(), true); }
+				catch (Exception error) { throw new AssertionError(error); }
+			});
+			SwingUtilities.invokeAndWait(() -> main.get().setSize(760, 430));
+			SwingUtilities.invokeAndWait(() -> {
+				try { checkCompactMainWindow(main.get()); }
+				catch (Exception error) { throw new AssertionError(error); }
 			});
 			Files.writeString(config, "github.user=fixture\ngithub.token=offline-fixture-only\n");
 			Configurator.getInstance().reload();
