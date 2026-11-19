@@ -145,7 +145,10 @@ class InventoryTest(unittest.TestCase):
         self.assertEqual(run("generate").returncode, 0)
         self.assertEqual((self.root / "lib/sbom.cdx.json").read_bytes(), original)
         citation = self.root / "CITATION.cff"
-        citation.write_text(citation.read_text().replace('version: "1.4.0"', 'version: "1.4.1"'))
+        version = json.loads(original)["metadata"]["component"]["version"]
+        series, patch = version.rsplit(".", 1)
+        next_version = f"{series}.{int(patch) + 1}"
+        citation.write_text(citation.read_text().replace(f'version: "{version}"', f'version: "{next_version}"'))
         self.assertEqual(run("verify").returncode, 2)
 
     def test_upstream_mismatch_fails_without_modifying_local_artifacts(self):

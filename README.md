@@ -38,9 +38,9 @@ activity alongside repository metrics and CSV exports.
 See [collaborator integration](#collaborator-integration-how-it-works) for the
 step-by-step grouping workflow, its effect on metrics and how to reverse it.
 
-The [1.4.0 release notes](docs/releases/1.4.0.md) summarize the recent functionality
-and reliability changes. Download the runnable JAR and verification files from
-[release v1.4.0](https://github.com/rcarball/github-analyzer/releases/tag/v1.4.0).
+The [1.4.1 release notes](docs/releases/1.4.1.md) describe the Windows 11 validation
+and layout improvements for small displays. Download the runnable JAR and
+verification files from [release v1.4.1](https://github.com/rcarball/github-analyzer/releases/tag/v1.4.1).
 
 ---
 
@@ -105,9 +105,9 @@ Eclipse and the application while compiling for Java 17.
 ### Option B — Runnable JAR (any OS)
 ```bash
 ./scripts/build-jar.sh          # Windows: scripts\build-jar.bat
-java -jar dist/github-analyzer-1.4.0.jar
+java -jar dist/github-analyzer-1.4.1.jar
 ```
-This builds a **self-contained** versioned JAR under `dist/` (currently `dist/github-analyzer-1.4.0.jar`): the application, the icons
+This builds a **self-contained** versioned JAR under `dist/` (currently `dist/github-analyzer-1.4.1.jar`): the application, the icons
 **and all third-party libraries are bundled inside** — no `lib/` folder is needed
 to run it. On first run, the app creates a `resources/` folder next to the JAR
 (`dist/resources/` when running the local build).
@@ -273,9 +273,9 @@ After merging the version change, tag the corresponding commit on `master`:
 ```bash
 git switch master
 git pull --ff-only origin master
-# Example for the next patch release, after updating metadata and notes to 1.4.1:
-git tag -a v1.4.1 -m "Release GitHub Analyzer 1.4.1"
-git push origin v1.4.1
+# Example for the next patch release, after updating metadata and notes to 1.4.2:
+git tag -a v1.4.2 -m "Release GitHub Analyzer 1.4.2"
+git push origin v1.4.2
 ```
 
 The **Publish release** workflow checks that the tag matches `CITATION.cff` and
