@@ -45,3 +45,40 @@ jobs:
 
       - name: Build the runnable JAR
         run: ./scripts/build-jar.sh
+
+      - name: Verify packaged licenses and runtime contents
+        run: python3 scripts/check-jar-licenses.py
+
+  package-platforms:
+    name: Package on ${{ matrix.os }} with Java 17
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run tests and build on macOS/Linux
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ./scripts/run-tests.sh
+          ./scripts/build-jar.sh
+      - name: Run tests and build on Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call scripts\run-tests.bat
+          if errorlevel 1 exit /b 1
+          call scripts\build-jar.bat
+          if errorlevel 1 exit /b 1
+      - name: Verify packaged licenses and runtime contents
+        run: python scripts/check-jar-licenses.py

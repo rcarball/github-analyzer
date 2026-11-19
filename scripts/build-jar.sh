@@ -45,6 +45,11 @@ javac --release 17 -cp "lib/*" -d "$OUT" $(find src -name '*.java')
       jar xf "$j"
   done )
 
+# Keep each dependency's original legal files before merged names can obscure them.
+java scripts/PreserveDependencyNotices.java "$STAGE" LICENSES/runtime \
+    "$LIB"/commons-io-*.jar "$LIB"/commons-lang3-*.jar \
+    "$LIB"/github-api-*.jar "$LIB"/jackson-*.jar
+
 # 3) Drop artifacts that don't belong in a merged, non-modular classpath jar.
 rm -f "$STAGE/META-INF/MANIFEST.MF" "$STAGE/module-info.class"
 rm -f "$STAGE/META-INF/"*.SF "$STAGE/META-INF/"*.DSA "$STAGE/META-INF/"*.RSA "$STAGE/META-INF/"*.EC 2>/dev/null || true
