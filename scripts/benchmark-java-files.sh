@@ -11,14 +11,11 @@ BASELINE=${1:-4ded5fd}
 BENCH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/java-source-bench.XXXXXX")
 trap 'rm -rf "$BENCH_DIR"' EXIT HUP INT TERM
 mkdir -p "$BENCH_DIR/baseline" "$BENCH_DIR/current"
-# Older revisions expose the download probe only within the application package.
-# Compile a temporary adapter there without changing the checked-in benchmark.
-sed 's/^package benchmarks;$/package es.deusto.prog3.githubanalyzer;/' \
-    test/benchmarks/JavaSourceBenchmark.java > "$BENCH_DIR/JavaSourceBenchmark.java"
+BENCHMARK_SOURCE=test/es/deusto/prog3/githubanalyzer/JavaSourceBenchmark.java
 git archive "$BASELINE" src | tar -x -C "$BENCH_DIR/baseline"
 for variant in baseline current; do
     if [ "$variant" = baseline ]; then SOURCE="$BENCH_DIR/baseline/src"; else SOURCE=src; fi
-    javac --release 17 -cp 'lib/*' -d "$BENCH_DIR/$variant/classes" $(find "$SOURCE" -name '*.java') "$BENCH_DIR/JavaSourceBenchmark.java"
+    javac --release 17 -cp 'lib/*' -d "$BENCH_DIR/$variant/classes" $(find "$SOURCE" -name '*.java') "$BENCHMARK_SOURCE"
     echo "$variant (baseline revision: $BASELINE)"
     java -Xbatch -Xms512m -Xmx512m -Djava.awt.headless=true -cp "$BENCH_DIR/$variant/classes:lib/*" es.deusto.prog3.githubanalyzer.JavaSourceBenchmark
 done
