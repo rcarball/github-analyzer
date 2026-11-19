@@ -117,7 +117,15 @@ To update a dependency:
 
 ## Icons
 
-The PNG icons under `resources/images` are by
+The metric and repository PNG icons under `resources/images` are by
 [Pixel perfect](https://www.flaticon.com/authors/pixel-perfect) on Flaticon.
 They are distributed under the applicable Flaticon terms and are excluded from
 the Apache-2.0 license granted for this project.
+
+`resources/images/logo-ud.jpg` is the institutional 140th-anniversary logo of
+Universidad de Deusto / Deustuko Unibertsitatea, provided for this project.
+The header displays the complete square image beside the university name in
+Spanish and Basque, without cropping or changing its proportions.
+The university logo and marks retain their own terms and are excluded from the
+project's Apache-2.0 and CC-BY-4.0 grants. The image is bundled for offline display;
+the application does not fetch branding images from external services at startup.

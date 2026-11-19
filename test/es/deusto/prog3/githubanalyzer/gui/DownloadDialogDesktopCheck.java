@@ -76,12 +76,34 @@ public final class DownloadDialogDesktopCheck {
 		Component external = (Component) field(window, "lblExternalRefs");
 		check(commits.getParent().getWidth() < 600, "Expected a compact repository overview");
 		check(external.getWidth() >= external.getPreferredSize().width, "Overview labels must fit after reflow");
-		for (String name : List.of("btnConfig", "btnRefresh", "lblStatus", "lblExternalRefs"))
+		for (String name : List.of("btnUniversity", "btnConfig", "btnRefresh", "lblStatus", "lblExternalRefs"))
 			checkInside((Component) field(window, name), content);
+		javax.swing.JButton university = (javax.swing.JButton) field(window, "btnUniversity");
+		Component actions = ((Component) field(window, "btnRefresh")).getParent();
+		check(university.getIcon() != null, "The university logo must load from local resources");
+		check(university.getText().contains("Universidad de Deusto")
+				&& university.getText().contains("Deustuko Unibertsitatea"), "Both university names must be visible");
+		check(university.getParent() == actions.getParent()
+				&& university.getX() + university.getWidth() <= actions.getX(),
+				"University branding must share the toolbar row without overlapping actions");
+		check(university.getHeight() <= actions.getPreferredSize().height,
+				"University branding must not add height above the repository tree");
 		for (String name : List.of("jTreeRepos", "jTableUserStats", "jTreeFileType")) {
 			Component view = (Component) field(window, name);
 			checkInside(SwingUtilities.getAncestorOfClass(JScrollPane.class, view), content);
 		}
+		Component people = SwingUtilities.getAncestorOfClass(JScrollPane.class,
+				(Component) field(window, "jTableUserStats"));
+		Component fileTypes = SwingUtilities.getAncestorOfClass(JScrollPane.class,
+				(Component) field(window, "jTreeFileType"));
+		Component overview = SwingUtilities.getAncestorOfClass(JScrollPane.class, commits);
+		int height = people.getParent().getHeight();
+		check(Math.abs(overview.getHeight() - height * .3) < 2,
+				"Repository overview must receive 30 percent of the analysis area");
+		check(Math.abs(people.getHeight() - height * .5) < 2,
+				"People table must receive 50 percent of the analysis area");
+		check(Math.abs(fileTypes.getHeight() - height * .2) < 2,
+				"File types must receive 20 percent of the analysis area");
 	}
 
 	private static GHRepository completeRepository() {

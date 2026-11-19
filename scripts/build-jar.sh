@@ -58,6 +58,7 @@ rm -f "$STAGE/META-INF/"*.SF "$STAGE/META-INF/"*.DSA "$STAGE/META-INF/"*.RSA "$S
 cp -R "$OUT/." "$STAGE/"
 mkdir -p "$STAGE/images"
 cp resources/images/*.png "$STAGE/images/"
+cp resources/images/logo-ud.jpg "$STAGE/images/"
 
 # 5) Include the license and attribution notices in the binary distribution.
 cp LICENSE NOTICE "$STAGE/"

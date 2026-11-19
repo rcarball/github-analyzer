@@ -143,6 +143,10 @@ jobs:
         run: |
           set -euo pipefail
           (cd dist && sha256sum -c "github-analyzer-$VERSION.jar.sha256")
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; preserving its published assets."
+            exit 0
+          fi
           gh release create "$RELEASE_TAG" \
             "dist/github-analyzer-$VERSION.jar" \
             "dist/github-analyzer-$VERSION.jar.sha256" \
