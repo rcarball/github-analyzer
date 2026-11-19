@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Offline checks for the shared Java controller and POSIX wrapper. Requires JDK 17+, no GUI."""
+"""Offline checks for the shared Java controller and platform wrappers. Requires JDK 17+, no GUI."""
+import ctypes
 import os
 from pathlib import Path
 import shutil
@@ -42,8 +43,6 @@ public class DownloadDialogDesktopCheck {
 class DownloadLauncherTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.shared = Path(tempfile.mkdtemp(prefix='launcher-controller-')).resolve()
-        cls.addClassCleanup(shutil.rmtree, cls.shared)
         home = os.environ.get('JAVA_HOME')
         if not home and os.name != 'nt' and Path('/usr/libexec/java_home').exists():
             home = subprocess.check_output(['/usr/libexec/java_home'], text=True).strip()
@@ -52,11 +51,15 @@ class DownloadLauncherTest(unittest.TestCase):
             if not compiler:
                 raise RuntimeError('A JDK 17 or newer is required for these launcher tests')
             home = str(Path(compiler).resolve().parent.parent)
+        cls.jdk = home
         suffix = '.exe' if os.name == 'nt' else ''
         cls.java = str(Path(home) / 'bin' / ('java' + suffix))
-        javac = str(Path(home) / 'bin' / ('javac' + suffix))
-        subprocess.run([javac, '--release', '17', '-d', str(cls.shared),
-                        str(SCRIPTS / 'DownloadDialogLauncher.java')], check=True)
+        if os.name != 'nt':
+            cls.shared = Path(tempfile.mkdtemp(prefix='launcher-controller-')).resolve()
+            cls.addClassCleanup(shutil.rmtree, cls.shared)
+            javac = str(Path(home) / 'bin' / 'javac')
+            subprocess.run([javac, '--release', '17', '-d', str(cls.shared),
+                            str(SCRIPTS / 'DownloadDialogLauncher.java')], check=True)
 
     def setUp(self):
         self.directory = Path(tempfile.mkdtemp(prefix='launcher revisión ! (checks) ')).resolve()
@@ -72,6 +75,11 @@ class DownloadLauncherTest(unittest.TestCase):
         native.write_text(FIXTURE_SOURCE, encoding='utf-8')
         (self.project / 'lib').mkdir()
         (self.project / 'resources').mkdir()
+        if os.name == 'nt':
+            scripts = self.project / 'scripts'
+            scripts.mkdir()
+            for name in ('DownloadDialogLauncher.java', 'check-download-dialogs.bat', 'run-java-checks.bat'):
+                shutil.copyfile(SCRIPTS / name, scripts / name)
         self.config = self.project / 'resources/config.properties'
         self.config.write_text('preserve real fixture settings', encoding='utf-8')
         (self.project / 'resources/raw-data').mkdir()
@@ -98,14 +106,19 @@ class DownloadLauncherTest(unittest.TestCase):
         shutil.rmtree(self.directory)
 
     def command(self):
+        if os.name == 'nt':
+            return r'cmd.exe /d /v:off /c scripts\check-download-dialogs.bat --no-pause'
         return [self.java, '-cp', str(self.shared), 'DownloadDialogLauncher', str(self.project)]
 
     def run_launcher(self):
-        return subprocess.run(self.command(), cwd=self.directory, env=self.environment,
-                              text=True, capture_output=True, timeout=25)
+        working_directory = self.project if os.name == 'nt' else self.directory
+        return subprocess.run(self.command(), cwd=working_directory, env=self.environment,
+                              stdin=subprocess.DEVNULL, text=True, capture_output=True, timeout=25)
 
     def assert_clean(self):
         self.assertEqual([], list(self.temporary.glob('github-analyzer-dialogs-*')))
+        if os.name == 'nt':
+            self.assertEqual([self.unrelated], list(self.temporary.iterdir()))
         self.assertEqual('preserve real fixture settings', self.config.read_text(encoding='utf-8'))
         self.assertEqual(b'preserve real downloaded data', self.original.read_bytes())
         self.assertFalse((self.project / 'build').exists())
@@ -146,6 +159,80 @@ class DownloadLauncherTest(unittest.TestCase):
         result = self.run_launcher()
         self.assertNotEqual(0, result.returncode)
         self.assert_clean()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows wrapper selection check')
+    def test_windows_explicit_java_home_works_without_a_jdk_on_path(self):
+        self.environment.update(JAVA_HOME=self.jdk, PATH=str(Path(os.environ['SystemRoot']) / 'System32'))
+        result = self.run_launcher()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assert_clean()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows wrapper selection check')
+    def test_windows_incomplete_java_home_does_not_fall_back_to_path(self):
+        jdk = self.directory / 'Incomplete JDK with spaces'
+        (jdk / 'bin').mkdir(parents=True)
+        self.environment.update(JAVA_HOME=str(jdk), PATH=str(Path(self.java).parent) + os.pathsep + self.environment['PATH'])
+        result = self.run_launcher()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(r'JAVA_HOME does not contain bin\javac.exe', result.stdout)
+        self.assert_clean()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows wrapper selection check')
+    def test_windows_path_uses_the_runtime_next_to_the_compiler(self):
+        fake = self.directory / 'Unrelated runtime'
+        fake.mkdir()
+        shutil.copyfile(Path(os.environ['SystemRoot']) / 'System32/where.exe', fake / 'java.exe')
+        self.environment.pop('JAVA_HOME', None)
+        self.environment['PATH'] = os.pathsep.join((str(fake), str(Path(self.java).parent), self.environment['PATH']))
+        result = self.run_launcher()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assert_clean()
+
+    @unittest.skipUnless(os.name == 'nt', 'Requires a private Windows console')
+    def test_windows_ctrl_c_stops_the_child_and_cleans_up(self):
+        from ctypes import wintypes
+
+        self.environment['TEST_MODE'] = 'wait'
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        console = ctypes.WinDLL('kernel32', use_last_error=True)
+        console.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        console.OpenProcess.restype = wintypes.HANDLE
+        console.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        console.CloseHandle.argtypes = (wintypes.HANDLE,)
+        with subprocess.Popen(self.command(), cwd=self.project, env=self.environment, text=True,
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              startupinfo=startup, creationflags=subprocess.CREATE_NEW_CONSOLE) as process:
+            try:
+                deadline = time.monotonic() + 20
+                while not self.marker.exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertTrue(self.marker.exists(), 'Interrupted fixture never started')
+                child = console.OpenProcess(0x00100000, False, int(self.marker.read_text()))  # SYNCHRONIZE
+                self.assertTrue(child, ctypes.get_last_error())
+                try:
+                    # Only processes in the newly created console receive Ctrl+C.
+                    console_processes = (wintypes.DWORD * 1)()
+                    had_console = console.GetConsoleProcessList(console_processes, 1) > 0
+                    console.FreeConsole()
+                    try:
+                        self.assertTrue(console.AttachConsole(process.pid), ctypes.get_last_error())
+                        self.assertTrue(console.SetConsoleCtrlHandler(None, True), ctypes.get_last_error())
+                        self.assertTrue(console.GenerateConsoleCtrlEvent(0, 0), ctypes.get_last_error())  # CTRL_C_EVENT
+                        stdout, stderr = process.communicate(timeout=15)
+                    finally:
+                        console.FreeConsole()
+                        if had_console:
+                            console.AttachConsole(wintypes.DWORD(-1))  # ATTACH_PARENT_PROCESS
+                    self.assertNotEqual(0, process.returncode, stdout + stderr)
+                    self.assertEqual(0, console.WaitForSingleObject(child, 5000), 'Child survived Ctrl+C')
+                    self.assert_clean()
+                finally:
+                    console.CloseHandle(child)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=5)
 
     @unittest.skipIf(os.name == 'nt', 'Creating test symlinks on Windows may require extra permissions')
     def test_cleanup_does_not_follow_links_to_real_data(self):
