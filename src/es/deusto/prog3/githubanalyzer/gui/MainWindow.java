@@ -88,8 +88,7 @@ import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
 	private static final long serialVersionUID = 1L;
-	private static final int ICON_SIZE = 24;
-	private static final int STATUS_BAR_HEIGHT = ICON_SIZE + 4;
+	private static final int ICON_SIZE = 28;
 
 	private JLabel lblCreationDate;
 	private JLabel lblFirstCommit;
@@ -530,9 +529,8 @@ public class MainWindow extends JFrame {
 		lblStatus.setForeground(new Color(80, 80, 80));
 
 		JPanel bottomPanel = new JPanel(new BorderLayout());
-		// Reserve the same height whether an interpretation icon is visible or not.
-		bottomPanel.setPreferredSize(new Dimension(0, STATUS_BAR_HEIGHT));
-		bottomPanel.setMinimumSize(new Dimension(0, STATUS_BAR_HEIGHT));
+		bottomPanel.setPreferredSize(new Dimension(0, ICON_SIZE));
+		bottomPanel.setMinimumSize(new Dimension(0, ICON_SIZE));
 		bottomPanel.add(lblStatus, BorderLayout.CENTER);
 		bottomPanel.add(lblFooter, BorderLayout.EAST);
 
