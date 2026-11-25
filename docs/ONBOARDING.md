@@ -71,6 +71,24 @@ JUnit 6, run via `lib/junit-platform-console-standalone-*.jar`. The runner repor
 When you touch domain/loader/metrics logic, add or update tests; the CLI runner is
 headless and fast.
 
+### Dependency inventory and audit
+
+The vendored JARs, their reviewed metadata and the generated SBOM must stay in
+sync. These checks use Python 3.9+ and only its standard library:
+
+```bash
+python3 scripts/check-dependencies.py            # Offline audit regression tests
+python3 scripts/dependencies.py verify           # Offline JAR, inventory and SBOM verification
+python3 scripts/dependencies.py verify-upstream  # Online: compare JAR bytes with Maven Central
+python3 scripts/dependencies.py scan             # Online OSV scan; writes build/security/osv-report.json
+```
+
+The OSV scan exits `1` for active findings and `2` for an invalid inventory or
+incomplete scan; neither is a clean result. When changing a dependency or release
+version, regenerate `lib/sbom.cdx.json` with
+`python3 scripts/dependencies.py generate` and follow the review/update procedure
+in [Third-party notices](THIRD_PARTY_NOTICES.md#dependency-review-and-updates).
+
 Release-workflow compatibility is checked separately with temporary fixtures for
 the legacy root layout and the current `scripts/` + `dist/` layout:
 
