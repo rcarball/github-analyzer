@@ -23,14 +23,37 @@ activity alongside repository metrics and CSV exports.
   multiple selection or drag and drop, with confirmation, undo and separation.
 - 🧑‍🏫 Per-person roles and optional declared team size for interpreting contribution.
 
+### Main window controls
+
+The upper-right toolbar uses icons without visible text. From left to right:
+
+| Icon | Tooltip | Action |
+|------|---------|--------|
+| <img src="resources/images/refresh.png" width="32" height="32" alt="Refresh pending"> | Refresh pending | Download repositories that need updating. |
+| <img src="resources/images/download.png" width="32" height="32" alt="Refresh all from GitHub"> | Refresh all from GitHub | Check and download every configured repository. |
+| <img src="resources/images/user-settings.png" width="32" height="32" alt="Manage authorship"> | Manage authorship | Combine or separate downloaded author identities locally. |
+| <img src="resources/images/config.png" width="32" height="32" alt="Configuration"> | Configuration | Edit settings and the repository list. |
+
+These four icons and the university logo in the upper-left header are displayed
+at **32×32 px**. Hover over a control to see its tooltip. The university logo's
+tooltip is **Visit deusto.es**; clicking the bilingual university block opens its website.
+
+The repository overview shows **Branches**, the number of branches in the saved
+original download. In the three-column layout, the last row contains external
+references, branches and the repository link. The link displays **owner/repository**,
+using the owning GitHub profile or organization; click it to open the repository
+or right-click to copy its URL. Repositories awaiting their first download show
+**Branches: pending**.
+
 ### Typical workflow
 
-1. Add repositories in **Config** and configure GitHub credentials for downloading.
+1. Click the **Configuration** icon to add repositories and configure GitHub
+   credentials for downloading.
 2. Use **Refresh all from GitHub** for the first download. Later, use
    **Refresh pending** or right-click a repository to update it individually.
-3. Select a repository and open **Manage authorship…**. If one collaborator appears
-   under several names, emails or accounts, combine those identities into one
-   person, choose their role and apply the changes.
+3. Select a repository and click the **Manage authorship** icon. If one
+   collaborator appears under several names, emails or accounts, combine those
+   identities into one person, choose their role and apply the changes.
 4. Review the per-person metrics and contribution indicators; inspect `stats.csv`
    for the exported results. Existing downloads can be reopened and authorship
    can be adjusted offline.
@@ -89,7 +112,7 @@ On the **first run** the app creates a `resources/` folder with default
 missing **and no complete local analysis is available**, it opens a **Config**
 dialog for your GitHub user, token, teacher account and repository list. Complete
 saved downloads can be opened and analyzed offline without credentials or this
-automatic prompt. You can open the dialog any time with the **Config** button.
+automatic prompt. You can open the dialog any time with the **Configuration** icon.
 
 You can also edit the two files by hand (see the **Configuration** section below);
 the GitHub refresh actions re-read them, so new tokens or repositories
@@ -450,11 +473,11 @@ selection colors. The repository panel provides horizontal scrolling for long la
 The update check reads metadata only and does not download changed files or alter
 local originals. Downloads have two scopes:
 
-- **Refresh all from GitHub** checks and downloads every configured repository.
 - **Refresh pending** downloads only repositories with missing local data, failed
   downloads, detected changes or failed/unknown update checks. Confirmed empty
-  repositories without remote changes are skipped. This button is disabled when
+  repositories without remote changes are skipped. This action is disabled when
   no repository needs updating.
+- **Refresh all from GitHub** checks and downloads every configured repository.
 
 Right-click a repository and choose **Refresh this repository from GitHub** to
 retry or update just that repository. Selective downloads preserve every other
@@ -563,8 +586,8 @@ reload, such as a refresh or restart; the file is not watched continuously.
 
 ### Combine a collaborator's identities
 
-Select a repository and click **Manage authorship…**. A first complete original
-download must exist; the editor loads it locally without a token or network.
+Select a repository and click the **Manage authorship** icon. A first complete
+original download must exist; the editor loads it locally without a token or network.
 The main window and all dialogs keep their normal sizes when they fit, and
 shrink only if either dimension exceeds 90% of the current monitor's usable area
 (excluding the taskbar and accounting for display scaling). On smaller screens,
@@ -818,10 +841,12 @@ Badges are the **main** interpretation result. They appear:
 - in the **long tooltip**,
 - and in the **status bar**.
 
-The GUI displays each icon at 24×24 px. The PNG source images are packaged
+The GUI displays contribution badges and alert icons at **28×28 px**, while the
+toolbar icons and university logo use **32×32 px**. The PNG source images are packaged
 with the application and scaled consistently by the GUI, so their appearance
 does not depend on emoji support or on a font installed by the operating
-system.
+system. In the status bar, contribution badges and additional alerts share a
+vertically centered row.
 
 ### How the badge is computed (rules)
 
@@ -851,11 +876,11 @@ Badge boundaries use exact ratios; rounding the displayed percentage does not ch
 
 | Badge | Label | Meaning |
 |------:|------|---------|
-| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/TEACHER.png?raw=true" width="24" height="24" alt="Teacher account"> | Teacher account | Instructor account; excluded from expected-share calculations |
-| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/VERY_LOW.png?raw=true" width="24" height="24" alt="Very low contribution"> | Very low / no contribution | Bar chart at a very low level: very low or null Java contribution; check additional evidence |
-| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> | Below expected contribution | Downward chart: some Java work, but under the expected share |
-| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BALANCED.png?raw=true" width="24" height="24" alt="Balanced contribution"> | Balanced contribution | Balance scale: close to expected share for the team size |
-| <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/HIGH.png?raw=true" width="24" height="24" alt="High contribution"> | High contribution | Upward chart: above expected share; may indicate a strong role or imbalance |
+| <img src="resources/images/teacher.png" width="28" height="28" alt="Teacher account"> | Teacher account | Instructor account; excluded from expected-share calculations |
+| <img src="resources/images/very_low.png" width="28" height="28" alt="Very low contribution"> | Very low / no contribution | Warning indicator: very low or no Java contribution; check additional evidence |
+| <img src="resources/images/below.png" width="28" height="28" alt="Below expected contribution"> | Below expected contribution | Declining bars: some Java work, but under the expected share |
+| <img src="resources/images/balanced.png" width="28" height="28" alt="Balanced contribution"> | Balanced contribution | Check mark: close to expected share for the team size |
+| <img src="resources/images/high.png" width="28" height="28" alt="High contribution"> | High contribution | Rising bars: above expected share; may indicate a strong role or imbalance |
 
 ---
 
@@ -863,7 +888,7 @@ Badge boundaries use exact ratios; rounding the displayed percentage does not ch
 
 Flags do not change the badge: they are **extra alerts** to inspect patterns.
 
-### <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/AI.png?raw=true" width="24" height="24" alt="AI/paste-like alert"> AI_PASTE — “AI/paste-like pattern”
+### <img src="resources/images/ai.png" width="28" height="28" alt="AI/paste-like alert"> AI_PASTE — “AI/paste-like pattern”
 - **Triggers when**:
   - `churnPerCommit >= repoAvgChurnPerCommit * 2.5`
   - (with `javaCommits > 0` and `repoAvgChurnPerCommit > 0`)
@@ -876,8 +901,8 @@ Flags do not change the badge: they are **extra alerts** to inspect patterns.
 ### Example 1 — Balanced team members
 You hover a row and see:
 
-- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BALANCED.png?raw=true" width="24" height="24" alt="Balanced contribution"> `alice`
-- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BALANCED.png?raw=true" width="24" height="24" alt="Balanced contribution"> Balanced contribution
+- Username cell: <img src="resources/images/balanced.png" width="28" height="28" alt="Balanced contribution"> `alice`
+- Status bar: <img src="resources/images/balanced.png" width="28" height="28" alt="Balanced contribution"> Balanced contribution
 - Tooltip (long): shows expected share and no flags
 
 Interpretation:
@@ -889,8 +914,8 @@ Interpretation:
 ### Example 2 — Below expected but still contributing
 Row shows:
 
-- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> `bob`
-- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> Below expected contribution
+- Username cell: <img src="resources/images/below.png" width="28" height="28" alt="Below expected contribution"> `bob`
+- Status bar: <img src="resources/images/below.png" width="28" height="28" alt="Below expected contribution"> Below expected contribution
 
 Interpretation:
 - Bob contributes, but the Java churn share is below the expected range.
@@ -901,8 +926,8 @@ Interpretation:
 ### Example 3 — Very low / no Java contribution
 Row shows:
 
-- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/VERY_LOW.png?raw=true" width="24" height="24" alt="Very low contribution"> `carol`
-- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/VERY_LOW.png?raw=true" width="24" height="24" alt="Very low contribution"> Very low / no contribution
+- Username cell: <img src="resources/images/very_low.png" width="28" height="28" alt="Very low contribution"> `carol`
+- Status bar: <img src="resources/images/very_low.png" width="28" height="28" alt="Very low contribution"> Very low / no contribution
 
 Interpretation:
 - Carol has no Java churn or no Java commits, or a share well below half the expected one.
@@ -913,8 +938,8 @@ Interpretation:
 ### Example 4 — High contribution
 Row shows:
 
-- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/HIGH.png?raw=true" width="24" height="24" alt="High contribution"> `dave`
-- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/HIGH.png?raw=true" width="24" height="24" alt="High contribution"> High contribution
+- Username cell: <img src="resources/images/high.png" width="28" height="28" alt="High contribution"> `dave`
+- Status bar: <img src="resources/images/high.png" width="28" height="28" alt="High contribution"> High contribution
 
 Interpretation:
 - Dave’s Java churn share is clearly above the expected share for the team size.
@@ -925,8 +950,8 @@ Interpretation:
 ### Example 5 — AI/paste-like burst pattern
 Row shows:
 
-- Username cell: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> `eva`
-- Status bar: <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/BELOW.png?raw=true" width="24" height="24" alt="Below expected contribution"> Below expected contribution | <img src="https://github.com/rcarball/github-analyzer/blob/master/resources/images/AI.png?raw=true" width="24" height="24" alt="AI/paste-like alert"> AI/paste-like pattern
+- Username cell: <img src="resources/images/below.png" width="28" height="28" alt="Below expected contribution"> `eva`
+- Status bar: <img src="resources/images/below.png" width="28" height="28" alt="Below expected contribution"> Below expected contribution | <img src="resources/images/ai.png" width="28" height="28" alt="AI/paste-like alert"> AI/paste-like pattern
 
 Interpretation:
 - Eva’s total share might be modest, but her commits have unusually high churn per commit.

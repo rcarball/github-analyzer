@@ -88,8 +88,8 @@ import es.deusto.prog3.githubanalyzer.persistence.DataManager;
 
 public class MainWindow extends JFrame {
 	private static final long serialVersionUID = 1L;
-	private static final int ICON_SIZE = 24;
-	private static final int STATUS_BAR_HEIGHT = ICON_SIZE + 4;
+	private static final int ICON_SIZE = 28;
+	private static final int TOOLBAR_ICON_SIZE = 32;
 
 	private JLabel lblCreationDate;
 	private JLabel lblFirstCommit;
@@ -98,6 +98,7 @@ public class MainWindow extends JFrame {
 	private JLabel lblCodeLines;
 	private JLabel lblLinesChanged;
 	private JLabel lblExternalRefs;
+	private JLabel lblBranches;
 	private JLabel lblURL;
 	private JLabel lblTeamSize;
 	private JLabel lblContributors;
@@ -111,11 +112,11 @@ public class MainWindow extends JFrame {
 	private JTree jTreeRepos = new JTree();
 	private List<RepoStats> allRepos = new ArrayList<>();
 
-	private JButton btnRefresh = new JButton("Refresh all from GitHub");
-	private final JButton btnRefreshPending = new JButton("Refresh pending");
+	private JButton btnRefresh = toolbarButton("download.png", "Refresh all from GitHub");
+	private final JButton btnRefreshPending = toolbarButton("refresh.png", "Refresh pending");
 	private final java.util.Set<String> failedDownloads = new java.util.HashSet<>();
-	private JButton btnConfig = new JButton("Config");
-	private JButton btnAuthorship = new JButton("Manage authorship…");
+	private JButton btnConfig = toolbarButton("config.png", "Config");
+	private JButton btnAuthorship = toolbarButton("user-settings.png", "Manage authorship");
 	private JButton btnUniversity;
 
 	private Map<String, RepoStats> repoStatsMap = new HashMap<>();
@@ -141,22 +142,22 @@ public class MainWindow extends JFrame {
 	private static final double AI_PASTE_MULTIPLIER = 2.50; // churn/commit vs. media del equipo
 
 	enum ContributionBadge {
-		TEACHER("TEACHER.png", Color.DARK_GRAY, "Teacher account",
+		TEACHER("teacher.png", Color.DARK_GRAY, "Teacher account",
 				"Teacher account: excluded from expected-share calculations."),
 
-		EXCLUDED("TEACHER.png", Color.DARK_GRAY, "Excluded account",
+		EXCLUDED("teacher.png", Color.DARK_GRAY, "Excluded account",
 				"Excluded account: visible activity, excluded from team calculations."),
 
-		VERY_LOW("VERY_LOW.png", new Color(234, 23, 68), "Very low / no contribution",
+		VERY_LOW("very_low.png", new Color(234, 23, 68), "Very low / no contribution",
 				"Very low / no contribution: below expected or near zero."),
 
-		BELOW("BELOW.png", new Color(245, 143, 41), "Below expected contribution",
+		BELOW("below.png", new Color(245, 143, 41), "Below expected contribution",
 				"Below expected contribution: noticeable but under the expected share."),
 
-		BALANCED("BALANCED.png", new Color(54, 130, 127), "Balanced contribution",
+		BALANCED("balanced.png", new Color(54, 130, 127), "Balanced contribution",
 				"Balanced contribution: close to expected for the team size."),
 
-		HIGH("HIGH.png", new Color(54, 130, 127), "High contribution",
+		HIGH("high.png", new Color(54, 130, 127), "High contribution",
 				"High contribution: above expected for the team size.");
 
 		final String imageFile;
@@ -190,7 +191,7 @@ public class MainWindow extends JFrame {
 	}
 
 	enum AlertFlag {
-		AI_PASTE("AI.png", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
+		AI_PASTE("ai.png", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
 
 		final String imageFile;
 		final String title;
@@ -219,11 +220,6 @@ public class MainWindow extends JFrame {
 			String source = MainWindow.iconHtmlSource(imageFile);
 			return source == null ? ""
 					: "<img src=\"" + source + "\" width=\"" + ICON_SIZE + "\" height=\"" + ICON_SIZE + "\">";
-		}
-
-		public String htmlShortText() {
-			String image = htmlIcon();
-			return image.isEmpty() ? shortText() : image + " " + shortText();
 		}
 
 		public String htmlLine() {
@@ -376,6 +372,7 @@ public class MainWindow extends JFrame {
 		lblCodeLines = new JLabel("• Java LOC:");
 		lblLinesChanged = new JLabel("• Java churn (added+deleted):");
 		lblExternalRefs = new JLabel("• External references:");
+		lblBranches = new JLabel("• Branches:");
 		lblURL = new JLabel("• Open repository:");
 		lblTeamSize = new JLabel("• Team size:");
 		lblContributors = new JLabel("• Contributors:");
@@ -398,6 +395,7 @@ public class MainWindow extends JFrame {
 				"<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
 		lblExternalRefs.setToolTipText(
 				"<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files on the default branch (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
+		lblBranches.setToolTipText("Number of branches in the saved original download.");
 		lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
 
 		// Right-click menu: open or copy the full repository URL.
@@ -462,6 +460,7 @@ public class MainWindow extends JFrame {
 		panelDetails.add(lblLastCommit);
 		panelDetails.add(lblAuthors);
 		panelDetails.add(lblExternalRefs);
+		panelDetails.add(lblBranches);
 		panelDetails.add(lblURL);
 		int overviewColumnWidth = lblExternalRefs.getPreferredSize().width
 				+ lblExternalRefs.getFontMetrics(lblExternalRefs.getFont()).stringWidth(" 00000");
@@ -513,15 +512,14 @@ public class MainWindow extends JFrame {
 		});
 
 		// Config button action
-		btnConfig.setToolTipText("Edit configuration and repositories");
+		btnConfig.setToolTipText("Configuration");
 		btnConfig.addActionListener(event -> showConfigDialog());
-		btnAuthorship.setToolTipText("Unify or separate downloaded author identities locally");
+		btnAuthorship.setToolTipText("Manage authorship");
 		btnAuthorship.addActionListener(event -> discoverAuthorship());
 
-		btnRefresh.setToolTipText("Check and download every configured repository from GitHub");
+		btnRefresh.setToolTipText("Refresh all from GitHub");
 		btnRefresh.addActionListener(event -> refreshRepositories(null));
-		btnRefreshPending
-				.setToolTipText("Download only repositories with missing data, failed downloads or pending updates");
+		btnRefreshPending.setToolTipText("Refresh pending");
 		btnRefreshPending.addActionListener(
 				event -> refreshRepositories(pendingRefreshTargets(allRepos, remoteUpdates, failedDownloads)));
 		updateRefreshActions();
@@ -530,37 +528,19 @@ public class MainWindow extends JFrame {
 		lblStatus.setForeground(new Color(80, 80, 80));
 
 		JPanel bottomPanel = new JPanel(new BorderLayout());
-		// Reserve the same height whether an interpretation icon is visible or not.
-		bottomPanel.setPreferredSize(new Dimension(0, STATUS_BAR_HEIGHT));
-		bottomPanel.setMinimumSize(new Dimension(0, STATUS_BAR_HEIGHT));
+		// Reserve space for the icons and the status label's vertical padding.
+		int statusHeight = ICON_SIZE + lblStatus.getInsets().top + lblStatus.getInsets().bottom;
+		bottomPanel.setPreferredSize(new Dimension(0, statusHeight));
+		bottomPanel.setMinimumSize(new Dimension(0, statusHeight));
 		bottomPanel.add(lblStatus, BorderLayout.CENTER);
 		bottomPanel.add(lblFooter, BorderLayout.EAST);
 
-		JPanel topButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 5));
-		for (JButton button : List.of(btnConfig, btnAuthorship, btnRefreshPending, btnRefresh)) {
-			button.setFont(button.getFont().deriveFont(12f));
-			button.setMargin(new java.awt.Insets(2, 8, 2, 8));
+		JPanel topButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 5));
+		for (JButton button : List.of(btnRefreshPending, btnRefresh, btnAuthorship, btnConfig)) {
 			topButtons.add(button);
 		}
 		btnUniversity = universityButton();
-		int expandedActionsWidth = topButtons.getPreferredSize().width;
-		JPanel topPanel = new JPanel(new BorderLayout(8, 0)) {
-			private boolean compact;
-
-			@Override
-			public void doLayout() {
-				var insets = getInsets();
-				int available = getWidth() - insets.left - insets.right;
-				boolean narrow = available < btnUniversity.getPreferredSize().width
-						+ expandedActionsWidth + ((BorderLayout) getLayout()).getHgap();
-				if (narrow != compact) {
-					compact = narrow;
-					btnAuthorship.setText(compact ? "Authorship…" : "Manage authorship…");
-					btnRefresh.setText(compact ? "Refresh all" : "Refresh all from GitHub");
-				}
-				super.doLayout();
-			}
-		};
+		JPanel topPanel = new JPanel(new BorderLayout(8, 0));
 		topPanel.add(btnUniversity, BorderLayout.WEST);
 		topPanel.add(topButtons, BorderLayout.EAST);
 
@@ -1103,6 +1083,8 @@ public class MainWindow extends JFrame {
 			lblTeamSize.setText(repoStats.getTeamSize() == null ? "• Team size: pending"
 					: "• Team size: " + repoStats.getTeamSize() + " (declared)");
 			lblCommits.setText("• Analysis pending: download this repository");
+			lblBranches.setText("• Branches: pending");
+			updateRepositoryLink(repoStats);
 			setStatusText("No local data. Right-click this repository to download it, or use Refresh pending.");
 			return;
 		}
@@ -1162,11 +1144,8 @@ public class MainWindow extends JFrame {
 					String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
 			lblExternalRefs.setText(
 					String.format("• External references: %d", repoStats.getExternalReferences()));
-			lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repoStats.getName()));
-			lblURL.setForeground(Color.BLUE);
-			lblURL.setToolTipText(
-					repoStats.getUrl() == null ? "Left-click to open in your browser; right-click to copy the URL."
-							: repoStats.getUrl() + "  (left-click to open · right-click to copy)");
+			lblBranches.setText("• Branches: " + repoStats.getBranches());
+			updateRepositoryLink(repoStats);
 
 			// Clear and populate the user stats table
 			tableModelUserStats.setRowCount(0);
@@ -1203,6 +1182,7 @@ public class MainWindow extends JFrame {
 			lblCodeLines.setText("• Java LOC:");
 			lblLinesChanged.setText("• Java churn (added+deleted):");
 			lblExternalRefs.setText("• External references:");
+			lblBranches.setText("• Branches:");
 			lblURL.setText("• URL:");
 			lblURL.setForeground(lblCommits.getForeground());
 			lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
@@ -1215,6 +1195,28 @@ public class MainWindow extends JFrame {
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
 		}
+	}
+
+	private void updateRepositoryLink(RepoStats repo) {
+		lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repositoryDisplayName(repo)));
+		lblURL.setForeground(Color.BLUE);
+		lblURL.setToolTipText(repo.getUrl() == null
+				? "Left-click to open in your browser; right-click to copy the URL."
+				: repo.getUrl() + "  (left-click to open · right-click to copy)");
+	}
+
+	private static String repositoryDisplayName(RepoStats repo) {
+		if (repo.getUrl() != null) {
+			try {
+				String path = URI.create(repo.getUrl()).getPath();
+				if (path != null && path.matches("/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?")) {
+					return path.substring(1).replaceAll("/+$", "").replaceAll("(?i)\\.git$", "");
+				}
+			} catch (IllegalArgumentException ex) {
+				// Older local records may not contain a valid repository URL.
+			}
+		}
+		return repo.getName() == null ? "" : repo.getName();
 	}
 
 	/**
@@ -1250,7 +1252,11 @@ public class MainWindow extends JFrame {
 	}
 
 	static ImageIcon scaleIcon(ImageIcon icon) {
-		return new ImageIcon(icon.getImage().getScaledInstance(ICON_SIZE, ICON_SIZE, Image.SCALE_SMOOTH));
+		return scaleIcon(icon, ICON_SIZE);
+	}
+
+	private static ImageIcon scaleIcon(ImageIcon icon, int size) {
+		return new ImageIcon(icon.getImage().getScaledInstance(size, size, Image.SCALE_SMOOTH));
 	}
 
 	/**
@@ -1367,11 +1373,24 @@ public class MainWindow extends JFrame {
 		}
 	}
 
+	private static JButton toolbarButton(String imageFile, String accessibleName) {
+		JButton button = new JButton();
+		ImageIcon icon = loadIcon(imageFile);
+		if (icon != null) {
+			button.setIcon(scaleIcon(icon, TOOLBAR_ICON_SIZE));
+		}
+		button.setContentAreaFilled(false);
+		button.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		button.getAccessibleContext().setAccessibleName(accessibleName);
+		return button;
+	}
+
 	private JButton universityButton() {
 		JButton button = new JButton("<html>Universidad de Deusto<br>Deustuko Unibertsitatea</html>");
 		ImageIcon logo = loadIcon("logo-ud.jpg");
 		if (logo != null) {
-			button.setIcon(new ImageIcon(logo.getImage().getScaledInstance(28, 28, Image.SCALE_SMOOTH)));
+			button.setIcon(scaleIcon(logo, TOOLBAR_ICON_SIZE));
 		}
 		button.setFont(button.getFont().deriveFont(Font.PLAIN, 11f));
 		button.setForeground(new Color(51, 65, 85));
@@ -1383,7 +1402,7 @@ public class MainWindow extends JFrame {
 				BorderFactory.createLineBorder(new Color(216, 225, 235), 1, true),
 				BorderFactory.createEmptyBorder(0, 5, 0, 5)));
 		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		button.setToolTipText("Universidad de Deusto · Deustuko Unibertsitatea — deusto.es");
+		button.setToolTipText("Visit deusto.es");
 		button.getAccessibleContext().setAccessibleName("Universidad de Deusto — Deustuko Unibertsitatea");
 		button.getAccessibleContext().setAccessibleDescription("Abrir la web de la universidad: https://www.deusto.es");
 		button.addActionListener(event -> openInBrowser("https://www.deusto.es"));
@@ -1981,20 +2000,19 @@ public class MainWindow extends JFrame {
 		return sb.toString();
 	}
 
-	private String statusTextFor(UserStats u, RepoStats repo) {
-		if (repo == null || u == null)
-			return " ";
-		Interpretation it = interpretationFor(repo, u);
-
+	private static String statusTextFor(Interpretation it) {
 		if (it.flags.isEmpty()) {
 			return it.badge.shortLabel;
 		}
 
-		List<String> parts = new ArrayList<>();
-		parts.add(it.badge.shortLabel);
-		for (AlertFlag f : it.flags)
-			parts.add(f.htmlShortText());
-		return "<html>" + String.join("&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;", parts) + "</html>";
+		StringBuilder text = new StringBuilder("<html><table cellspacing=\"0\" cellpadding=\"0\"><tr>");
+		text.append("<td valign=\"middle\">").append(it.badge.shortLabel).append("</td>");
+		for (AlertFlag flag : it.flags) {
+			text.append("<td valign=\"middle\">&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;</td>");
+			text.append("<td valign=\"middle\">").append(flag.htmlIcon()).append("</td>");
+			text.append("<td valign=\"middle\">&nbsp;").append(flag.shortText()).append("</td>");
+		}
+		return text.append("</tr></table></html>").toString();
 	}
 
 	/** Shows a regular status message and clears any contribution badge icon. */
@@ -2016,7 +2034,7 @@ public class MainWindow extends JFrame {
 		Interpretation interpretation = interpretationFor(repo, user);
 		lblStatus.setIcon(interpretation.badge.icon());
 		lblStatus.setIconTextGap(6);
-		String status = statusTextFor(user, repo);
+		String status = statusTextFor(interpretation);
 		lblStatus.setText(status);
 		lblStatus.setToolTipText(status);
 	}

@@ -41,12 +41,12 @@ public class MainWindowInterpretationTest {
     public void badgeIconsLoadFromProjectResources() {
         for (ContributionBadge badge : ContributionBadge.values()) {
             assertNotNull(badge.icon(), "Missing icon for " + badge.name());
-            assertEquals(24, badge.icon().getIconWidth(), "Unexpected icon width for " + badge.name());
-            assertEquals(24, badge.icon().getIconHeight(), "Unexpected icon height for " + badge.name());
+            assertEquals(28, badge.icon().getIconWidth(), "Unexpected icon width for " + badge.name());
+            assertEquals(28, badge.icon().getIconHeight(), "Unexpected icon height for " + badge.name());
         }
         assertNotNull(AlertFlag.AI_PASTE.icon());
-        assertEquals(24, AlertFlag.AI_PASTE.icon().getIconWidth());
-        assertEquals(24, AlertFlag.AI_PASTE.icon().getIconHeight());
+        assertEquals(28, AlertFlag.AI_PASTE.icon().getIconWidth());
+        assertEquals(28, AlertFlag.AI_PASTE.icon().getIconHeight());
     }
 
     // ---------------- classifyBadge: guardrails ----------------
