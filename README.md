@@ -61,9 +61,9 @@ or right-click to copy its URL. Repositories awaiting their first download show
 See [collaborator integration](#collaborator-integration-how-it-works) for the
 step-by-step grouping workflow, its effect on metrics and how to reverse it.
 
-The [1.4.2 release notes](docs/releases/1.4.2.md) describe how the runnable JAR
-preserves dependency licenses and notices. Download the JAR and verification
-files from [release v1.4.2](https://github.com/rcarball/github-analyzer/releases/tag/v1.4.2).
+The [1.4.3 release notes](docs/releases/1.4.3.md) describe the updated toolbar icons,
+repository overview and status bar. Download the JAR and verification files from
+[release v1.4.3](https://github.com/rcarball/github-analyzer/releases/tag/v1.4.3).
 
 ---
 
@@ -141,9 +141,9 @@ reports an unresolved type after refreshing, clean and rebuild only this project
 ### Option B — Runnable JAR (any OS)
 ```bash
 ./scripts/build-jar.sh          # Windows: scripts\build-jar.bat
-java -jar dist/github-analyzer-1.4.2.jar
+java -jar dist/github-analyzer-1.4.3.jar
 ```
-This builds a **self-contained** versioned JAR under `dist/` (currently `dist/github-analyzer-1.4.2.jar`): the application, the icons
+This builds a **self-contained** versioned JAR under `dist/` (currently `dist/github-analyzer-1.4.3.jar`): the application, the icons
 **and all third-party libraries are bundled inside** — no `lib/` folder is needed
 to run it. On first run, the app creates a `resources/` folder next to the JAR
 (`dist/resources/` when running the local build).
@@ -348,9 +348,9 @@ After merging the version change, tag the corresponding commit on `master`:
 ```bash
 git switch master
 git pull --ff-only origin master
-# Example for the next patch release, after updating metadata and notes to 1.4.3:
-git tag -a v1.4.3 -m "Release GitHub Analyzer 1.4.3"
-git push origin v1.4.3
+# Example for the next patch release, after updating metadata and notes to 1.4.4:
+git tag -a v1.4.4 -m "Release GitHub Analyzer 1.4.4"
+git push origin v1.4.4
 ```
 
 The **Publish release** workflow checks that the tag matches `CITATION.cff` and
