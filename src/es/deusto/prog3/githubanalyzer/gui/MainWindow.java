@@ -142,22 +142,22 @@ public class MainWindow extends JFrame {
 	private static final double AI_PASTE_MULTIPLIER = 2.50; // churn/commit vs. media del equipo
 
 	enum ContributionBadge {
-		TEACHER("TEACHER.png", Color.DARK_GRAY, "Teacher account",
+		TEACHER("teacher.png", Color.DARK_GRAY, "Teacher account",
 				"Teacher account: excluded from expected-share calculations."),
 
-		EXCLUDED("TEACHER.png", Color.DARK_GRAY, "Excluded account",
+		EXCLUDED("teacher.png", Color.DARK_GRAY, "Excluded account",
 				"Excluded account: visible activity, excluded from team calculations."),
 
-		VERY_LOW("VERY_LOW.png", new Color(234, 23, 68), "Very low / no contribution",
+		VERY_LOW("very_low.png", new Color(234, 23, 68), "Very low / no contribution",
 				"Very low / no contribution: below expected or near zero."),
 
-		BELOW("BELOW.png", new Color(245, 143, 41), "Below expected contribution",
+		BELOW("below.png", new Color(245, 143, 41), "Below expected contribution",
 				"Below expected contribution: noticeable but under the expected share."),
 
-		BALANCED("BALANCED.png", new Color(54, 130, 127), "Balanced contribution",
+		BALANCED("balanced.png", new Color(54, 130, 127), "Balanced contribution",
 				"Balanced contribution: close to expected for the team size."),
 
-		HIGH("HIGH.png", new Color(54, 130, 127), "High contribution",
+		HIGH("high.png", new Color(54, 130, 127), "High contribution",
 				"High contribution: above expected for the team size.");
 
 		final String imageFile;
@@ -191,7 +191,7 @@ public class MainWindow extends JFrame {
 	}
 
 	enum AlertFlag {
-		AI_PASTE("AI.png", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
+		AI_PASTE("ai.png", "AI/paste-like pattern", "Very high churn per commit vs repo average.");
 
 		final String imageFile;
 		final String title;
