@@ -489,7 +489,11 @@ All refresh actions are locked while another editing or refresh operation is act
 While a refresh runs, a modal dialog shows finished repository
 attempts and the latest phase for each repository, including file and commit
 counts when available. Failed attempts are identified separately in the details.
-An activity indicator remains animated through the final statistics and CSV save.
+The upper progress bar counts finished repository attempts, including failures;
+it does not estimate elapsed time or bytes downloaded. The slim blue activity bar
+at the bottom keeps moving while work continues, including the final statistics
+and CSV save, on macOS, Windows and Linux. It is an activity signal rather than a
+second completion percentage.
 Use **Cancel download** to stop queued and active downloads. Closing the progress
 dialog with its close button first offers **Keep downloading** (the default) or
 **Cancel download**. Dismissing this warning also keeps the download running.
@@ -572,6 +576,9 @@ listing everyone who has collaborator access to the repository.
 | **Team size** | The configured size, if supplied; otherwise the inferred contributor count. |
 | **Expected share** | One divided by the declared or inferred team size. |
 
+These five summary blocks appear at the top of the editor, with their titles,
+values and supporting text aligned to the right.
+
 Different identities remain separate until you combine them. Matching a name,
 login or part of an email does not automatically group distinct identities.
 Original identity matching uses the complete name/email/login combination,
@@ -606,13 +613,34 @@ the default windows.
    whole groups, including saved aliases absent from the current analysis. You can
    combine an existing group with more identities later.
 4. Select the resulting person to review their visible name, representative email,
-   GitHub account and role. Contact choices come from their original identities;
-   empty contact fields are disabled. **Edit name** allows a custom display name;
+   GitHub account and role. **Visible name**, **Email** and **GitHub account** offer
+   values from their grouped original identities. A missing email disables its
+   selector; a missing GitHub login shows **No linked GitHub account**. Git commits
+   can retain a name and email even when no GitHub account is linked.
+   **Edit name** allows a custom display name;
    **Done** finishes that edit. Renaming two rows to the same name does not combine
    them.
 5. Click **Apply and recalculate locally**, review the change summary and confirm.
    The app saves your repository-local assignments and regenerates statistics and
    CSV from the original download without contacting GitHub.
+
+The selection details use a compact **Original identity** dropdown instead of a
+wide identity table. Each option identifies the original name, email and GitHub
+login when available; choosing it selects the identity for moving or separating,
+without changing the person's representative contact choices. The bold person
+heading shows the assigned identity count in parentheses, including saved aliases
+absent from the current analysis; its tooltip distinguishes those aliases from
+identities present in the analysis. Java commits for the whole person appear next
+to the contribution description and observed share, separated by **·**. On narrow
+panels, commits move to the next line and the controls scroll vertically as needed.
+
+To work with one identity, choose it under **Original identity** and use **Move to…**
+or **Separate selected identities**. To work with several, click **Select multiple…**,
+select identities with Ctrl/Cmd or Shift, and confirm the selection before using
+the same actions. **Move to…** assigns the selection to another existing person;
+**Separate selected identities** creates separate people from the chosen identities
+and is available when the current person has multiple identities. These operations
+remain local draft changes until you apply them.
 
 **Drag-and-drop alternative:** drag one or more selected people onto another
 person's row. The outlined target becomes the proposed destination. Dropping only
@@ -874,13 +902,21 @@ Badge boundaries use exact ratios; rounding the displayed percentage does not ch
 
 ### Badge table
 
-| Badge | Label | Meaning |
-|------:|------|---------|
-| <img src="resources/images/teacher.png" width="28" height="28" alt="Teacher account"> | Teacher account | Instructor account; excluded from expected-share calculations |
-| <img src="resources/images/very_low.png" width="28" height="28" alt="Very low contribution"> | Very low / no contribution | Warning indicator: very low or no Java contribution; check additional evidence |
-| <img src="resources/images/below.png" width="28" height="28" alt="Below expected contribution"> | Below expected contribution | Declining bars: some Java work, but under the expected share |
-| <img src="resources/images/balanced.png" width="28" height="28" alt="Balanced contribution"> | Balanced contribution | Check mark: close to expected share for the team size |
-| <img src="resources/images/high.png" width="28" height="28" alt="High contribution"> | High contribution | Rising bars: above expected share; may indicate a strong role or imbalance |
+| Badge | Label | Row colors | Meaning |
+|------:|------|------------|---------|
+| <img src="resources/images/teacher.png" width="28" height="28" alt="Teacher account"> | Teacher account | Soft gray tint and gray text | Instructor account; excluded from expected-share calculations |
+| <img src="resources/images/teacher.png" width="28" height="28" alt="Excluded account"> | Excluded account | Soft gray tint and gray text | Other excluded account; activity remains visible outside team calculations |
+| <img src="resources/images/very-low.png" width="28" height="28" alt="Very low contribution"> | Very low / no contribution | Pale red tint and red text | Exclamation mark: very low or no Java contribution; check additional evidence |
+| <img src="resources/images/below.png" width="28" height="28" alt="Below expected contribution"> | Below expected contribution | Pale orange tint and orange-brown text | Sad face: some Java work, but under the expected share |
+| <img src="resources/images/balanced.png" width="28" height="28" alt="Balanced contribution"> | Balanced contribution | Pale green tint and green text | Check mark: close to expected share for the team size |
+| <img src="resources/images/high.png" width="28" height="28" alt="High contribution"> | High contribution | Pale green tint and green text | Rocket: above expected share; may indicate a strong role or imbalance |
+
+The main per-person table and the authorship editor's **People** table use the
+same palette across each row. Selection strengthens the tint while retaining its
+contribution color. Text shades adjust to the background, with a minimum contrast
+ratio of **4.5:1**; percentage-bar opacity is reduced when needed to preserve that
+contrast over the fill. The palette also adapts to dark table backgrounds. Icons
+and labels remain available alongside color.
 
 ---
 
@@ -926,8 +962,8 @@ Interpretation:
 ### Example 3 — Very low / no Java contribution
 Row shows:
 
-- Username cell: <img src="resources/images/very_low.png" width="28" height="28" alt="Very low contribution"> `carol`
-- Status bar: <img src="resources/images/very_low.png" width="28" height="28" alt="Very low contribution"> Very low / no contribution
+- Username cell: <img src="resources/images/very-low.png" width="28" height="28" alt="Very low contribution"> `carol`
+- Status bar: <img src="resources/images/very-low.png" width="28" height="28" alt="Very low contribution"> Very low / no contribution
 
 Interpretation:
 - Carol has no Java churn or no Java commits, or a share well below half the expected one.

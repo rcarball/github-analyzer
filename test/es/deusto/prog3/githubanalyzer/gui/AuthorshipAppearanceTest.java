@@ -83,6 +83,9 @@ class AuthorshipAppearanceTest {
                 int nameColumn = form.people.convertColumnIndexToView(0);
                 JLabel label = (JLabel) form.people.prepareRenderer(form.people.getCellRenderer(row, nameColumn), row, nameColumn);
                 ContributionBadge badge = badges[modelRow];
+                assertNotNull(badge.icon(), "Missing contribution icon: " + badge.imageFile);
+                assertEquals(28, badge.icon().getIconWidth());
+                assertEquals(28, badge.icon().getIconHeight());
                 assertSame(badge.icon(), label.getIcon());
                 assertEquals(MainWindow.contributionBackground(form.people.getBackground(), badge.color,
                         form.people.isRowSelected(row)), label.getBackground());

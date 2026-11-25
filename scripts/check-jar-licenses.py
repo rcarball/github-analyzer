@@ -61,6 +61,16 @@ def main():
         images.append(ROOT / "resources/images/logo-ud.jpg")
         for file in images:
             require(output.read("images/" + file.name) == file.read_bytes(), f"Missing icon: {file.name}")
+        # Compare literal GUI and README references with exact ZIP names: a renamed
+        # file can be packaged successfully while its old runtime name stops loading.
+        referenced_icons = set()
+        for source in (ROOT / "src").rglob("*.java"):
+            referenced_icons.update(re.findall(r'"([A-Za-z0-9_.-]+\.(?:png|jpg))"',
+                                               source.read_text(encoding="utf-8")))
+        referenced_icons.update(re.findall(r'src="resources/images/([^"\s]+)"',
+                                          (ROOT / "README.md").read_text(encoding="utf-8")))
+        for icon in sorted(referenced_icons):
+            require("images/" + icon in names, f"Referenced icon missing from JAR (check exact case): {icon}")
         for name in ("LICENSE", "NOTICE", "docs/THIRD_PARTY_NOTICES.md"):
             require(output.read(name) == (ROOT / name).read_bytes(), f"Missing project notice: {name}")
         forbidden = [n for n in names if n.startswith(("org/junit/", "junit/", "org/opentest4j/", "org/apiguardian/", "resources/"))
