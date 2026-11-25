@@ -44,6 +44,7 @@ import javax.swing.DropMode;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.JList;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -109,7 +110,10 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 	final JLabel summaryWarning = literalLabel();
 	final JLabel historyStatus = new JLabel("No pending changes");
 	final JTable people;
-	final JTable identities;
+	final JList<String> identities = new JList<>();
+	final JComboBox<String> identityField = new JComboBox<>();
+	final JButton multipleIdentitiesButton = new JButton("Select multiple…");
+	private boolean selectingIdentity;
 	final JComboBox<String> nameField = new JComboBox<>();
 	final JButton editNameButton = new JButton("Edit name");
 	final JComboBox<String> emailField = new JComboBox<>();
@@ -127,17 +131,16 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 	final JButton undoButton = new JButton("Undo");
 	final JButton redoButton = new JButton("Redo");
 	final JTextField searchField = new JTextField(18);
-	private final JLabel detailTitle = literalLabel();
+	final JLabel detailTitle = literalLabel();
 	final JLabel contributionHint = literalLabel();
+	final JLabel commitHint = literalLabel();
 	private Map<String, MainWindow.ContributionBadge> contributionBadges = Map.of();
 	private final JLabel roleHint = new JLabel();
-	private final JLabel identityHint = new JLabel();
 	private final JLabel mergeSummary = new JLabel();
 	private final JLabel dragHint = literalLabel();
 	private final CardLayout cards = new CardLayout();
 	private final JPanel detailCards = new JPanel(cards);
 	private final AbstractTableModel peopleModel;
-	private final AbstractTableModel identityModel;
 
 	record PersonChoice(String id, String label) {
 		@Override
@@ -271,52 +274,56 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 			});
 		});
 
-		identityModel = new AbstractTableModel() {
+		identityField.setRenderer(new javax.swing.DefaultListCellRenderer() {
 			private static final long serialVersionUID = 1L;
-			private final String[] columns = { "Original Git name", "Email", "GitHub account", "Java commits" };
-
 			@Override
-			public int getRowCount() {
-				return visibleIdentities.size();
+			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+					boolean selected, boolean focus) {
+				putClientProperty("html.disable", Boolean.TRUE);
+				return super.getListCellRendererComponent(list, value == null
+						? identities.getSelectedIndices().length + " identities selected" : value, index, selected, focus);
 			}
-
-			@Override
-			public int getColumnCount() {
-				return columns.length;
-			}
-
-			@Override
-			public String getColumnName(int col) {
-				return columns[col];
-			}
-
-			@Override
-			public Class<?> getColumnClass(int col) {
-				return col == 3 ? Integer.class : String.class;
-			}
-
-			@Override
-			public Object getValueAt(int row, int col) {
-				AuthorSummary author = visibleIdentities.get(row);
-				return switch (col) {
-				case 0 -> author.identity().name();
-				case 1 -> author.identity().email();
-				case 2 -> author.identity().login();
-				default -> author.javaCommits();
-				};
-			}
-		};
-		identities = literalTable(identityModel);
-		PlainTextRenderers.install(identities);
-		identities.setAutoCreateRowSorter(true);
-		identities.setRowHeight(28);
-		identities.setFillsViewportHeight(true);
+		});
 		identities.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-		identities.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
-		int[] identityWidths = { 160, 200, 125, 95 };
-		for (int col = 0; col < identityWidths.length; col++)
-			identities.getColumnModel().getColumn(col).setPreferredWidth(identityWidths[col]);
-		identities.getSelectionModel().addListSelectionListener(event -> updateActions());
+		identities.setCellRenderer(new javax.swing.DefaultListCellRenderer() {
+			private static final long serialVersionUID = 1L;
+			{
+				putClientProperty("html.disable", Boolean.TRUE);
+			}
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+					boolean selected, boolean focus) {
+				JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, selected, focus);
+				label.putClientProperty("html.disable", Boolean.TRUE);
+				label.setText(String.valueOf(value));
+				return label;
+			}
+		});
+		identityField.addActionListener(event -> {
+			if (!updating && !selectingIdentity && identityField.getSelectedIndex() >= 0)
+				identities.setSelectedIndex(identityField.getSelectedIndex());
+		});
+		identities.addListSelectionListener(event -> {
+			if (!updating && !event.getValueIsAdjusting()) {
+				updateIdentityDetails();
+				updateActions();
+			}
+		});
+		multipleIdentitiesButton.addActionListener(event -> {
+			JList<String> choices = new JList<>(visibleIdentities.stream()
+					.map(AuthorshipForm::identityLabel).toArray(String[]::new));
+			choices.setCellRenderer(identities.getCellRenderer());
+			choices.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+			choices.setSelectedIndices(identities.getSelectedIndices());
+			JPanel selection = new JPanel(new BorderLayout(6, 6));
+			selection.add(new JLabel("Use Ctrl/Cmd or Shift to select multiple identities."), BorderLayout.NORTH);
+			JScrollPane scroll = new JScrollPane(choices);
+			scroll.setPreferredSize(new Dimension(360, 180));
+			selection.add(scroll, BorderLayout.CENTER);
+			if (DialogSizing.showConfirmDialog(this, selection, "Select original identities",
+					JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION)
+				identities.setSelectedIndices(choices.getSelectedIndices());
+		});
 
 		for (JComboBox<String> field : List.of(nameField, emailField, accountField)) {
 			PlainTextRenderers.install(field);
@@ -429,7 +436,25 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 		fields.add(detailTitle, title);
 		GridBagConstraints contribution = constraints(0, 1);
 		contribution.gridwidth = 2;
-		fields.add(contributionHint, contribution);
+		JPanel contributionRow = new JPanel(new GridBagLayout());
+		contributionRow.add(contributionHint, constraints(0, 0));
+		contributionRow.add(commitHint, constraints(1, 0));
+		Runnable arrangeContribution = () -> {
+			boolean narrow = contributionRow.getWidth() < contributionHint.getPreferredSize().width
+					+ commitHint.getPreferredSize().width + 16;
+			GridBagConstraints position = constraints(narrow ? 0 : 1, narrow ? 1 : 0);
+			position.weightx = 1;
+			((GridBagLayout) contributionRow.getLayout()).setConstraints(commitHint, position);
+			contributionRow.revalidate();
+		};
+		contributionRow.addComponentListener(new java.awt.event.ComponentAdapter() {
+			@Override public void componentResized(java.awt.event.ComponentEvent event) {
+				arrangeContribution.run();
+			}
+		});
+		contributionHint.addPropertyChangeListener("text", event -> arrangeContribution.run());
+		commitHint.addPropertyChangeListener("text", event -> arrangeContribution.run());
+		fields.add(contributionRow, contribution);
 		addField(fields, 2, "Role:", participation);
 		GridBagConstraints hint = constraints(0, 3);
 		hint.gridwidth = 2;
@@ -437,19 +462,42 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 		JPanel nameControls = new JPanel(new BorderLayout(6, 0));
 		nameControls.add(nameField, BorderLayout.CENTER);
 		nameControls.add(editNameButton, BorderLayout.EAST);
+		nameControls.setMinimumSize(new Dimension(0, nameControls.getPreferredSize().height));
+		for (JComboBox<String> field : List.of(nameField, emailField, accountField, identityField)) {
+			field.setMinimumSize(new Dimension(0, field.getPreferredSize().height));
+			field.setPreferredSize(new Dimension(180, field.getPreferredSize().height));
+		}
 		addField(fields, 4, "Visible name:", nameControls);
 		addField(fields, 5, "Email:", emailField);
 		addField(fields, 6, "GitHub account:", accountField);
-		single.add(fields, BorderLayout.NORTH);
+		accountField.setToolTipText("Preferred GitHub account for this person, chosen from their original identities.");
+		accountField.setRenderer(new javax.swing.DefaultListCellRenderer() {
+			private static final long serialVersionUID = 1L;
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+					boolean selected, boolean focus) {
+				putClientProperty("html.disable", Boolean.TRUE);
+				return super.getListCellRendererComponent(list,
+						value == null ? "No linked GitHub account" : value, index, selected, focus);
+			}
+		});
+		addField(fields, 7, "Original identity:", identityField);
 		JPanel identityPanel = new JPanel(new BorderLayout(6, 6));
-		identityPanel.setBorder(BorderFactory.createTitledBorder("Original Git identities"));
-		identityPanel.add(identityHint, BorderLayout.NORTH);
-		identityPanel.add(scrollPane(identities), BorderLayout.CENTER);
-		JPanel identityActions = new JPanel(new FlowLayout(FlowLayout.LEADING));
+		identityPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+		JPanel identityActions = new JPanel(new GridLayout(0, 1, 0, 6));
+		identityActions.add(multipleIdentitiesButton);
 		identityActions.add(moveButton);
 		identityActions.add(separateButton);
 		identityPanel.add(identityActions, BorderLayout.SOUTH);
-		single.add(identityPanel, BorderLayout.CENTER);
+		JPanel compactDetails = new IdentityDetailsPanel();
+		compactDetails.add(fields, BorderLayout.NORTH);
+		compactDetails.add(identityPanel, BorderLayout.CENTER);
+		JScrollPane detailScroll = new JScrollPane(compactDetails,
+				JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+		detailScroll.setBorder(null);
+		detailScroll.getViewport().setBackground(compactDetails.getBackground());
+		detailScroll.getVerticalScrollBar().setUnitIncrement(16);
+		single.add(detailScroll, BorderLayout.CENTER);
 
 		JPanel multiple = new JPanel(new BorderLayout(8, 12));
 		JPanel mergeFields = new JPanel(new GridBagLayout());
@@ -472,7 +520,7 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 		detailCards.add(empty, "empty");
 		detailCards.add(single, "single");
 		detailCards.add(multiple, "multiple");
-		detailCards.setMinimumSize(new Dimension(400, 250));
+		detailCards.setMinimumSize(new Dimension(280, 180));
 		detailCards.setBorder(BorderFactory.createTitledBorder("Selection details"));
 		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, detailCards);
 		split.setResizeWeight(.52);
@@ -598,8 +646,11 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 				caption.setIcon(MainWindow.scaleIcon(icon));
 		}
 		value.setFont(value.getFont().deriveFont(Font.BOLD, value.getFont().getSize2D() + 6));
+		value.setHorizontalAlignment(SwingConstants.RIGHT);
 		value.getAccessibleContext().setAccessibleName(title);
 		detail.setFont(detail.getFont().deriveFont(Math.max(10f, detail.getFont().getSize2D() - 1)));
+		caption.setHorizontalAlignment(SwingConstants.RIGHT);
+		detail.setHorizontalAlignment(SwingConstants.RIGHT);
 		for (JLabel label : List.of(caption, value, detail))
 			label.setToolTipText(tooltip);
 		metric.add(caption, BorderLayout.NORTH);
@@ -804,8 +855,6 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 				String id = selected.get(0);
 				Person person = viewPeople.get(id);
 				List<AuthorIdentity> group = groupIdentities(id);
-				detailTitle.setText(person.name());
-				detailTitle.setToolTipText("Person: " + person.name());
 				nameField.setEditable(false);
 				editNameButton.setText("Edit name");
 				fill(nameField, options(id, 0), person.name());
@@ -816,9 +865,12 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 						: "Visible in results; excluded from the team share.");
 				visibleIdentities = authors.stream()
 						.filter(author -> id.equals(viewAssignments.get(author.identity().key()))).toList();
-				long additional = viewAssignments.values().stream().filter(id::equals).count()
-						- visibleIdentities.size();
-				identityHint.setText(visibleIdentities.size() + " identities in this analysis"
+				long identityCount = viewAssignments.values().stream().filter(id::equals).count();
+				detailTitle.setText(person.name() + " (" + identityCount
+						+ (identityCount == 1 ? " identity)" : " identities)"));
+				long additional = identityCount - visibleIdentities.size();
+				detailTitle.setToolTipText("Person: " + person.name() + " · " + visibleIdentities.size()
+						+ " identities in this analysis"
 						+ (additional > 0 ? " · " + additional + " additional saved aliases" : ""));
 				detailPersonId = id;
 				updateContributionHint();
@@ -838,7 +890,12 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 				cards.show(detailCards, "multiple");
 			} else
 				cards.show(detailCards, "empty");
-			identityModel.fireTableDataChanged();
+			identityField.removeAllItems();
+			visibleIdentities.stream().map(AuthorshipForm::identityLabel).forEach(identityField::addItem);
+			identities.setListData(visibleIdentities.stream().map(AuthorshipForm::identityLabel).toArray(String[]::new));
+			if (!visibleIdentities.isEmpty())
+				identities.setSelectedIndex(0);
+			updateIdentityDetails();
 		} finally {
 			updating = false;
 		}
@@ -937,10 +994,10 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 						: "Review the resulting person before combining.";
 		mergeInstructions.setText(instructions);
 		unifyButton.setToolTipText(multiple ? instructions : "Select at least two people to combine them.");
-		moveButton.setEnabled(identities.getSelectedRowCount() > 0);
+		moveButton.setEnabled(!identities.isSelectionEmpty());
 		boolean grouped = detailPersonId != null
 				&& viewAssignments.values().stream().filter(detailPersonId::equals).count() > 1;
-		separateButton.setEnabled(grouped && identities.getSelectedRowCount() > 0);
+		separateButton.setEnabled(grouped && !identities.isSelectionEmpty());
 	}
 
 	private PersonChoice choice(String id) {
@@ -977,10 +1034,50 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 		refresh(List.of(target.id()));
 	}
 
+	/** Keep identity controls within the viewport, with vertical scrolling on short screens. */
+	private static final class IdentityDetailsPanel extends JPanel implements javax.swing.Scrollable {
+		private static final long serialVersionUID = 1L;
+
+		IdentityDetailsPanel() {
+			super(new BorderLayout(6, 6));
+		}
+
+		@Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+		@Override public boolean getScrollableTracksViewportWidth() { return true; }
+		@Override public boolean getScrollableTracksViewportHeight() { return false; }
+		@Override public int getScrollableUnitIncrement(java.awt.Rectangle visible, int orientation, int direction) {
+			return 16;
+		}
+		@Override public int getScrollableBlockIncrement(java.awt.Rectangle visible, int orientation, int direction) {
+			return Math.max(16, visible.height - 16);
+		}
+	}
+
+	private static String identityLabel(AuthorSummary author) {
+		AuthorIdentity identity = author.identity();
+		String name = identity.name().isEmpty() ? identity.displayName() : identity.name();
+		return name + (identity.email().isEmpty() ? "" : " · " + identity.email())
+				+ (identity.login().isEmpty() || identity.login().equals(name) ? "" : " · @" + identity.login());
+	}
+
+	private void updateIdentityDetails() {
+		selectingIdentity = true;
+		try {
+			int[] selected = identities.getSelectedIndices();
+			identityField.setSelectedIndex(selected.length == 1 ? selected[0] : -1);
+			identityField.setToolTipText(selected.length == 1 ? identityLabel(visibleIdentities.get(selected[0]))
+					: selected.length + " identities selected");
+			multipleIdentitiesButton.setEnabled(visibleIdentities.size() > 1);
+			multipleIdentitiesButton.setText(selected.length > 1 ? selected.length + " selected · Change…" : "Select multiple…");
+		} finally {
+			selectingIdentity = false;
+		}
+	}
+
 	private List<String> selectedIdentityKeys() {
 		List<String> keys = new ArrayList<>();
-		for (int row : identities.getSelectedRows())
-			keys.add(visibleIdentities.get(identities.convertRowIndexToModel(row)).identity().key());
+		for (int row : identities.getSelectedIndices())
+			keys.add(visibleIdentities.get(row).identity().key());
 		return keys;
 	}
 
@@ -1273,6 +1370,8 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 			contributionHint.setText(
 					badge.shortText() + (Float.isFinite(share) ? " · " + NumberFormats.percentage(share) : ""));
 		}
+		int commits = visibleIdentities.stream().mapToInt(AuthorSummary::javaCommits).sum();
+		commitHint.setText("· " + commits + (commits == 1 ? " Java commit" : " Java commits"));
 		contributionHint.setToolTipText(
 				"Observed contribution uses Java churn and the current declared or inferred team size.");
 	}
@@ -1306,7 +1405,7 @@ final class AuthorshipForm extends JPanel implements javax.swing.Scrollable {
 			graphics.setColor(getBackground());
 			graphics.fillRect(0, 0, getWidth(), getHeight());
 			if (Float.isFinite(share)) {
-				graphics.setColor(new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(), 65));
+				graphics.setColor(MainWindow.contributionBarColor(barColor, getBackground(), getForeground(), false));
 				graphics.fillRoundRect(3, 5, Math.round((getWidth() - 6) * Math.max(0, Math.min(1, share))),
 						getHeight() - 10, 5, 5);
 			}

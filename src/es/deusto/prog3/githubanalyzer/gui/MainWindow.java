@@ -142,22 +142,22 @@ public class MainWindow extends JFrame {
 	private static final double AI_PASTE_MULTIPLIER = 2.50; // churn/commit vs. media del equipo
 
 	enum ContributionBadge {
-		TEACHER("teacher.png", Color.DARK_GRAY, "Teacher account",
+		TEACHER("teacher.png", new Color(120, 125, 132), "Teacher account",
 				"Teacher account: excluded from expected-share calculations."),
 
-		EXCLUDED("teacher.png", Color.DARK_GRAY, "Excluded account",
+		EXCLUDED("teacher.png", new Color(120, 125, 132), "Excluded account",
 				"Excluded account: visible activity, excluded from team calculations."),
 
-		VERY_LOW("very_low.png", new Color(234, 23, 68), "Very low / no contribution",
+		VERY_LOW("very-low.png", new Color(234, 23, 68), "Very low / no contribution",
 				"Very low / no contribution: below expected or near zero."),
 
 		BELOW("below.png", new Color(245, 143, 41), "Below expected contribution",
 				"Below expected contribution: noticeable but under the expected share."),
 
-		BALANCED("balanced.png", new Color(54, 130, 127), "Balanced contribution",
+		BALANCED("balanced.png", new Color(40, 140, 78), "Balanced contribution",
 				"Balanced contribution: close to expected for the team size."),
 
-		HIGH("high.png", new Color(54, 130, 127), "High contribution",
+		HIGH("high.png", new Color(25, 120, 65), "High contribution",
 				"High contribution: above expected for the team size.");
 
 		final String imageFile;
@@ -1736,16 +1736,30 @@ public class MainWindow extends JFrame {
 	 * selected.
 	 */
 	static Color contributionBackground(Color tableBackground, Color contributionColor, boolean selected) {
-		return blend(tableBackground, contributionColor, selected ? 0.22f : 0.08f);
+		boolean neutral = contributionColor.equals(ContributionBadge.TEACHER.color);
+		return blend(tableBackground, contributionColor,
+				neutral ? (selected ? 0.14f : 0.05f) : (selected ? 0.24f : 0.12f));
 	}
 
-	/**
-	 * Keeps the contribution color visible and darkens it slightly on selection.
-	 */
+	/** Keeps the accent hue while ensuring readable normal-sized text, including over share bars. */
 	static Color contributionForeground(Color contributionColor, Color background, boolean selected) {
-		Color candidate = selected ? blend(contributionColor, Color.BLACK, 0.18f) : contributionColor;
-		return contrastRatio(candidate, background) >= 3.0f ? candidate
-				: (relativeLuminance(background) > 0.5f ? Color.BLACK : Color.WHITE);
+		Color target = contrastRatio(Color.BLACK, background) >= contrastRatio(Color.WHITE, background)
+				? Color.BLACK : Color.WHITE;
+		for (int step = 0; step <= 100; step++) {
+			Color candidate = blend(contributionColor, target, step / 100f);
+			if (contrastRatio(candidate, background) >= 4.6f)
+				return candidate;
+		}
+		return target;
+	}
+
+	/** Reduce bar opacity when necessary so the percentage remains readable over its fill. */
+	static Color contributionBarColor(Color accent, Color background, Color foreground, boolean selected) {
+		for (int alpha = selected ? 95 : 65; alpha >= 0; alpha--) {
+			if (contrastRatio(foreground, blend(background, accent, alpha / 255f)) >= 4.6f)
+				return new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), alpha);
+		}
+		return new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 0);
 	}
 
 	private static float contrastRatio(Color first, Color second) {
@@ -1756,7 +1770,13 @@ public class MainWindow extends JFrame {
 	}
 
 	private static float relativeLuminance(Color color) {
-		return (0.2126f * color.getRed() + 0.7152f * color.getGreen() + 0.0722f * color.getBlue()) / 255f;
+		return (float) (0.2126 * linearChannel(color.getRed()) + 0.7152 * linearChannel(color.getGreen())
+				+ 0.0722 * linearChannel(color.getBlue()));
+	}
+
+	private static double linearChannel(int channel) {
+		double value = channel / 255.0;
+		return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
 	}
 
 	/**
@@ -1795,7 +1815,7 @@ public class MainWindow extends JFrame {
 			if (hasContributionColor) {
 				background = contributionBackground(table.getBackground(), badge, isSelected);
 				textColor = contributionForeground(badge, background, isSelected);
-				barColor = new Color(badge.getRed(), badge.getGreen(), badge.getBlue(), isSelected ? 95 : 55);
+				barColor = contributionBarColor(badge, background, textColor, isSelected);
 			} else {
 				background = isSelected ? table.getSelectionBackground() : table.getBackground();
 				textColor = isSelected ? table.getSelectionForeground() : table.getForeground();

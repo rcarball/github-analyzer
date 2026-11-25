@@ -22,7 +22,16 @@ final class DownloadProgressPanel extends JPanel {
 	final JButton cancel = new JButton("Cancel download");
 	private boolean stopping;
 	final JProgressBar repositories = new JProgressBar();
-	final JProgressBar activity = new JProgressBar();
+	// Aqua's native indeterminate bar can appear static. Use Swing's moving
+	// segment for this activity indicator on every platform, including UI reloads.
+	final JProgressBar activity = new JProgressBar() {
+		private static final long serialVersionUID = 1L;
+		@Override public void updateUI() {
+			setUI(new javax.swing.plaf.basic.BasicProgressBarUI());
+			setForeground(new java.awt.Color(0, 122, 255));
+			setBorder(BorderFactory.createEmptyBorder());
+		}
+	};
 	final JTextArea phase = new JTextArea(2, 0);
 	final JTextArea details = new JTextArea(8, 60);
 	private final Map<String, String> latest = new LinkedHashMap<>();
@@ -32,10 +41,15 @@ final class DownloadProgressPanel extends JPanel {
 		setBorder(BorderFactory.createTitledBorder("GitHub download"));
 		repositories.setStringPainted(true);
 		repositories.setToolTipText("Finished attempts, including failures; repositories differ in size.");
-		activity.setPreferredSize(new java.awt.Dimension(80, 16));
+		activity.setPreferredSize(new java.awt.Dimension(80, 6));
 		add(repositories, BorderLayout.NORTH);
 		JPanel actions = new JPanel(new BorderLayout(6, 0));
-		actions.add(activity, BorderLayout.CENTER);
+		JPanel activityTrack = new JPanel(new java.awt.GridBagLayout());
+		var trackConstraints = new java.awt.GridBagConstraints();
+		trackConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+		trackConstraints.weightx = 1;
+		activityTrack.add(activity, trackConstraints);
+		actions.add(activityTrack, BorderLayout.CENTER);
 		actions.add(cancel, BorderLayout.EAST);
 		details.setEditable(false);
 		details.setLineWrap(true);
@@ -49,7 +63,7 @@ final class DownloadProgressPanel extends JPanel {
 		phase.setWrapStyleWord(true);
 		JPanel footer = new JPanel(new BorderLayout(0, 4));
 		footer.add(phase, BorderLayout.NORTH);
-		footer.add(actions, BorderLayout.EAST);
+		footer.add(actions, BorderLayout.SOUTH);
 		add(footer, BorderLayout.SOUTH);
 		setVisible(false);
 	}
