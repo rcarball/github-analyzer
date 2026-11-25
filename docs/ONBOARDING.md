@@ -49,7 +49,7 @@ And list the repositories to analyze in `resources/repositories.txt`
 - **Runnable JAR (any OS):**
   ```bash
   ./scripts/build-jar.sh            # Windows: scripts\build-jar.bat
-  java -jar dist/github-analyzer-1.4.2.jar
+  java -jar dist/github-analyzer-1.4.4.jar
   ```
   The JAR already bundles all runtime library dependencies and the icons. On first run it creates `resources/`
   next to itself (`dist/resources` for a local build); keep that external folder
@@ -59,7 +59,7 @@ And list the repositories to analyze in `resources/repositories.txt`
   to the JAR.
 - **From source (CLI):**
   ```bash
-  javac --release 17 -cp "lib/*" -d build/eclipse $(find src -name "*.java")   # Windows: classpath sep is ';'
+  javac --release 17 -encoding UTF-8 -cp "lib/*" -d build/eclipse $(find src -name "*.java")   # Windows: classpath sep is ';'
   java  -cp "build/eclipse:lib/*" es.deusto.prog3.githubanalyzer.Main
   ```
 
@@ -70,6 +70,33 @@ And list the repositories to analyze in `resources/repositories.txt`
 JUnit 6, run via `lib/junit-platform-console-standalone-*.jar`. The runner reports the current test count after each execution.
 When you touch domain/loader/metrics logic, add or update tests; the CLI runner is
 headless and fast.
+
+### GUI and download-dialog checks
+
+The headless suite includes `AuthorshipFormTest` for identity selection, batch
+move/separation and undo, `AuthorshipAppearanceTest` for shared row colors and
+text contrast, and `DownloadProgressPanelTest` for activity animation without new
+download events. The activity test compares rendered frames and checks that the
+portable renderer survives a look-and-feel reload. Compilation explicitly uses
+UTF-8 so symbols such as **·**, **…** and **—** remain consistent on Java 17 across
+platforms. Icon checks must verify that loading succeeds, not just compare two
+possibly missing icons.
+
+For actual window layout, cancellation and process shutdown, run
+`./scripts/check-download-dialogs.sh` on macOS/Linux or
+`scripts\check-download-dialogs.bat` on Windows. The Windows unit runner and both
+desktop launchers use `DownloadDialogLauncher.java`, which selects one complete
+JDK and isolates generated files and synthetic data in a temporary workspace.
+The desktop check also verifies that the blue activity bar stays thin, visible
+and inside the dialog after shrinking it. See the
+[README test instructions](../README.md#run-the-tests) for prerequisites and cleanup
+behavior. Headless animation tests do not replace inspection under the native
+look and feel; check the real dialog when changing its rendering.
+
+Build with `./scripts/build-jar.sh` (`scripts\build-jar.bat` on Windows), then run
+`python3 scripts/check-jar-licenses.py` to check icon bytes and names in the actual
+JAR alongside runtime classes and license texts. This also catches source or
+README icon references that do not match a bundled file, including letter case.
 
 ### Dependency inventory and audit
 
@@ -145,10 +172,12 @@ UTF-8, persistence and CSV tests continue to exercise the unchanged surrounding 
 
 ### Test suite review
 
-Reviewed all 18 JUnit test classes against their production call sites and
-regression scenarios, plus the four release-layout checks. The baseline on
-`master` had 204 Java tests. This change removes or consolidates four methods
-and adds three behavior tests, leaving 203. Test count alone is not a reason to
+The historical consolidation reviewed all 18 JUnit test classes present at that
+baseline against their production call sites and regression scenarios, plus the
+four release-layout checks. The baseline on `master` had 204 Java tests; that
+revision removed or consolidated four methods and added three behavior tests,
+leaving 203. These are historical counts, not the size of the current suite; use
+the runner's summary for current totals. Test count alone is not a reason to
 remove a distinct failure case.
 
 | Area | Decision and reason |
@@ -237,9 +266,14 @@ interactive windows and the Windows runner were not exercised locally.
   separate defaults; teacher settings initialize roles but explicit roles win.
   Compute statistics from the assigned original commits, not sums of old UserStats:
   distinct Java paths must be unioned across aliases. Never key people by display name/email.
-- **Detached author editor.** The form edits a copy, commits pending table edits before
-  confirmation, and preserves rules for absent authors. Commit the other table's
-  editor before changing assignments or row order. Discovery opens an immediate
+- **Detached author editor.** The form edits a copy and commits a pending custom
+  visible name before selection, history, assignment changes or confirmation.
+  Preserve rules for absent authors. The compact **Original identity** selector
+  chooses the identity to move or separate; **Select multiple…** supports batch
+  operations. This selection must not change representative email/account choices.
+  The heading counts assigned identities, including absent saved aliases; the
+  contribution row shows the person's Java commits next to the observed share.
+  Discovery opens an immediate
   loading view with progress and cancellation; ignore late results after cancellation.
   Configuration reads, discovery and reprocessing run outside the EDT. Refresh/config/authorship controls stay locked through completion.
   Recalculate locally before saving rules; retain the old view on failure. Discovery
@@ -282,7 +316,22 @@ interactive windows and the Windows runner were not exercised locally.
   with `Locale.ROOT` as well, keeping ASCII digits and Gregorian years even on a
   computer configured with another calendar or numeral system.
 - **Resources** (icons) load from the **classpath** first (`/images/…`), filesystem
-  fallback for the IDE — required for the JAR to work.
+  fallback for the IDE — required for the JAR to work. Contribution resources are
+  `teacher.png` (also used for excluded accounts), `very-low.png`, `below.png`,
+  `balanced.png` and `high.png`; additional alerts use `ai.png`. Keep exact case
+  and punctuation in code, documentation and packaged paths. Toolbar/logo images
+  render at 32×32 px, contribution/alert images at 28×28 px.
+- **Contribution presentation is shared.** Use `MainWindow.contributionBackground`,
+  `contributionForeground` and `contributionBarColor` in both person tables.
+  Very-low activity uses red, below-expected uses orange, balanced/high uses green,
+  and teacher/excluded activity uses a softer gray. Text contrast uses linearized
+  sRGB luminance with at least 4.5:1 contrast, including over percentage-bar fills;
+  do not replace it with a weighted average of uncorrected RGB channels.
+- **Download activity is distinct from completion.** The upper bar counts finished
+  repository attempts. The lower, six-pixel blue bar uses `BasicProgressBarUI` for
+  moving indeterminate activity independently of Aqua's native drawing. Keep its
+  height constrained by the surrounding layout; stop animation on finish and
+  retain its renderer/color after a look-and-feel reload.
 - **GUI errors** are surfaced to the user (dialogs), not swallowed with `printStackTrace`.
 
 ## 7. Recent improvements
@@ -314,7 +363,7 @@ The current version improves correctness, robustness, portability and usability:
 - `github-api` calls count against GitHub rate limits; large repo sets can be throttled.
 
 
-## 8. Audit follow-up (2026-11-17)
+## 10. Audit follow-up (2026-11-17)
 
 The Antigravity and Claude audits were checked against the source. Version 1.4.0
 prepares these changes; setting the version does not publish a release.

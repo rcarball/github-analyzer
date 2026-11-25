@@ -96,7 +96,7 @@ class AuthorshipFormTest {
             assertEquals("Combine selected…", form.unifyButton.getText());
             destination(form, first); assertTrue(form.unifyButton.isEnabled());
             form.unifyButton.doClick();
-            assertEquals(2, form.identities.getRowCount());
+            assertEquals(2, form.identities.getModel().getSize());
             assertTrue(options(form.nameField).containsAll(List.of("Name", "Alias", "login", "personal")));
             assertEquals(List.of(a.email(), b.email()), options(form.emailField));
             assertEquals(List.of(a.login(), b.login()), options(form.accountField));
@@ -130,7 +130,7 @@ class AuthorshipFormTest {
             assertEquals(2, form.contributorCount());
             select(form, second, third); destination(form, second); form.unifyButton.doClick();
             AuthorshipConfig all = form.snapshot();
-            assertEquals(1, form.contributorCount()); assertEquals(3, form.identities.getRowCount());
+            assertEquals(1, form.contributorCount()); assertEquals(3, form.identities.getModel().getSize());
             form.undoButton.doClick(); assertRules(pair, form.snapshot());
             form.undoButton.doClick(); assertRules(initial, form.snapshot());
             form.redoButton.doClick(); assertRules(pair, form.snapshot());
@@ -180,7 +180,7 @@ class AuthorshipFormTest {
         });
     }
 
-    @Test void splitAndMoveUseSelectedIdentityAfterSortingAndKeepMetadataValid() throws Exception {
+    @Test void splitAndMoveUseDropdownIdentityAndKeepMetadataValid() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             AuthorshipForm form = new AuthorshipForm(authors, new AuthorshipConfig(), null);
             AuthorshipConfig initial = form.snapshot();
@@ -189,9 +189,8 @@ class AuthorshipFormTest {
             form.emailField.setSelectedItem(b.email());
             form.accountField.setSelectedItem(b.login());
             AuthorshipConfig combined = form.snapshot();
-            form.identities.getRowSorter().toggleSortOrder(0);
-            for (int row = 0; row < form.identities.getRowCount(); row++)
-                if (b.email().equals(form.identities.getValueAt(row, 1))) form.identities.setRowSelectionInterval(row, row);
+            for (int row = 0; row < form.identities.getModel().getSize(); row++)
+                if (form.identities.getModel().getElementAt(row).contains(b.email())) form.identityField.setSelectedIndex(row);
             form.separateButton.doClick();
             AuthorshipConfig split = form.snapshot();
             assertNotEquals(first, split.personFor(b).id());
@@ -199,12 +198,72 @@ class AuthorshipFormTest {
             assertEquals(a.login(), form.accountField.getSelectedItem());
             form.undoButton.doClick(); assertRules(combined, form.snapshot());
             select(form, first);
-            for (int row = 0; row < form.identities.getRowCount(); row++)
-                if (b.email().equals(form.identities.getValueAt(row, 1))) form.identities.setRowSelectionInterval(row, row);
+            for (int row = 0; row < form.identities.getModel().getSize(); row++)
+                if (form.identities.getModel().getElementAt(row).contains(b.email())) form.identityField.setSelectedIndex(row);
             form.moveSelectedTo(initial.personFor(c).id());
             assertEquals(initial.personFor(c).id(), form.snapshot().personFor(b).id());
             form.undoButton.doClick(); assertRules(combined, form.snapshot());
         });
+    }
+
+    @Test void compactIdentitySelectorSupportsBatchMoveAndUndo() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorshipForm form = new AuthorshipForm(authors, new AuthorshipConfig(), null);
+            AuthorshipConfig initial = form.snapshot();
+            String first = initial.personFor(a).id();
+            String third = initial.personFor(c).id();
+            select(form, first, initial.personFor(b).id());
+            destination(form, first); form.unifyButton.doClick();
+            AuthorshipConfig combined = form.snapshot();
+            assertEquals(0, form.identityField.getSelectedIndex());
+            assertTrue(form.moveButton.isEnabled());
+            assertTrue(form.multipleIdentitiesButton.isEnabled());
+            form.identities.setSelectionInterval(0, 1);
+            assertEquals(-1, form.identityField.getSelectedIndex());
+            assertEquals("2 selected · Change…", form.multipleIdentitiesButton.getText());
+            assertTrue(form.detailTitle.getText().endsWith("(2 identities)"));
+            assertEquals("· 5 Java commits", form.commitHint.getText());
+            assertTrue(form.separateButton.isEnabled());
+            form.moveSelectedTo(third);
+            assertEquals(third, form.snapshot().personFor(a).id());
+            assertEquals(third, form.snapshot().personFor(b).id());
+            form.undo(); assertRules(combined, form.snapshot());
+            select(form, first);
+            form.identities.setSelectionInterval(0, 1);
+            form.separateButton.doClick();
+            assertNotEquals(form.snapshot().personFor(a).id(), form.snapshot().personFor(b).id());
+            form.undo(); assertRules(combined, form.snapshot());
+        });
+    }
+
+    @Test void missingAccountHasExplicitMessageAndControlsFitNarrowWidths() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            AuthorIdentity identity = new AuthorIdentity("Long original name", "long-address@example.org", "");
+            AuthorshipForm form = new AuthorshipForm(List.of(new AuthorSummary(identity, 7)), new AuthorshipConfig(), null);
+            select(form, form.snapshot().personFor(identity).id());
+            assertFalse(form.accountField.isEnabled());
+            JLabel account = (JLabel) form.accountField.getRenderer().getListCellRendererComponent(
+                    new javax.swing.JList<>(), null, -1, false, false);
+            assertEquals("No linked GitHub account", account.getText());
+            assertEquals("Long original name (1 identity)", form.detailTitle.getText());
+            assertEquals("· 7 Java commits", form.commitHint.getText());
+            assertFalse(form.multipleIdentitiesButton.isEnabled());
+            assertFalse(form.separateButton.isEnabled());
+            // Lay out the actual detail pane at a narrow width: no horizontal scrolling.
+            java.awt.Container single = form.identityField.getParent().getParent().getParent().getParent().getParent();
+            single.setSize(300, 260);
+            layoutTree(single);
+            var scroll = (javax.swing.JScrollPane) form.identityField.getParent().getParent().getParent().getParent();
+            assertEquals(javax.swing.JScrollPane.HORIZONTAL_SCROLLBAR_NEVER, scroll.getHorizontalScrollBarPolicy());
+            assertTrue(form.identityField.getWidth() > 60);
+            assertTrue(form.multipleIdentitiesButton.getWidth() <= 300);
+        });
+    }
+
+    private static void layoutTree(java.awt.Container container) {
+        container.doLayout();
+        for (java.awt.Component child : container.getComponents())
+            if (child instanceof java.awt.Container nested) layoutTree(nested);
     }
 
     @Test void pendingNameIsCommittedBeforeSelectionSavingRestorationAndHistory() throws Exception {
@@ -272,7 +331,7 @@ class AuthorshipFormTest {
             AuthorIdentity identity = new AuthorIdentity(attack, "student@example.org", "");
             AuthorshipForm form = new AuthorshipForm(List.of(new AuthorSummary(identity, 1)), new AuthorshipConfig(), null);
             select(form, form.snapshot().personFor(identity).id());
-            for (JTable table : List.of(form.people, form.identities)) {
+            for (JTable table : List.of(form.people)) {
                 JLabel label = (JLabel) table.prepareRenderer(table.getCellRenderer(0, 0), 0, 0);
                 assertEquals(attack, label.getText());
                 assertNull(label.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey));
@@ -281,6 +340,10 @@ class AuthorshipFormTest {
             var renderer = (javax.swing.ListCellRenderer<Object>) form.nameField.getRenderer();
             JLabel label = (JLabel) renderer.getListCellRendererComponent(new javax.swing.JList<>(), attack, 0, false, false);
             assertNull(label.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey));
+            JLabel identityLabel = (JLabel) form.identities.getCellRenderer().getListCellRendererComponent(
+                    form.identities, attack, 0, false, false);
+            assertNull(identityLabel.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey));
+            assertTrue(form.detailTitle.getText().startsWith(attack));
             assertTrue(form.changeSummary().contains("Contributors:"));
         });
     }

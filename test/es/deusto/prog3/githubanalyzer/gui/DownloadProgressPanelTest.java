@@ -55,4 +55,38 @@ class DownloadProgressPanelTest {
 			assertEquals("", panel.details.getText());
 		});
 	}
+    @Test void activityAnimatesWithoutDownloadEventsAndSurvivesUiReload() throws Exception {
+        var done = new java.util.concurrent.CountDownLatch(1);
+        var moved = new java.util.concurrent.atomic.AtomicBoolean();
+        SwingUtilities.invokeAndWait(() -> {
+            var panel = new DownloadProgressPanel();
+            panel.activity.updateUI();
+            assertEquals(javax.swing.plaf.basic.BasicProgressBarUI.class, panel.activity.getUI().getClass());
+            panel.begin(() -> { });
+            panel.addNotify();
+            panel.activity.setSize(240, 16);
+            int[] before = pixels(panel.activity);
+            var timer = new javax.swing.Timer(180, event -> {
+                try {
+                    moved.set(!java.util.Arrays.equals(before, pixels(panel.activity)));
+                } finally {
+                    panel.finish();
+                    panel.removeNotify();
+                    done.countDown();
+                }
+            });
+            timer.setRepeats(false);
+            timer.start();
+        });
+        assertTrue(done.await(3, java.util.concurrent.TimeUnit.SECONDS));
+        assertTrue(moved.get(), "The activity segment should move even when no progress events arrive");
+    }
+
+    private static int[] pixels(javax.swing.JProgressBar bar) {
+        var image = new java.awt.image.BufferedImage(240, 16, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var graphics = image.createGraphics();
+        try { bar.paint(graphics); } finally { graphics.dispose(); }
+        return image.getRGB(0, 0, 240, 16, null, 0, 240);
+    }
+
 }

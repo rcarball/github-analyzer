@@ -250,6 +250,11 @@ public final class DownloadDialogDesktopCheck {
 								progress.validate();
 								check(progress.getContentPane() == panel, "The progress dialog should not scroll as a whole");
 								checkInside(panel.cancel, panel);
+								checkInside(panel.activity, panel);
+								check(panel.activity.getHeight() == 6, "Activity bar must remain thin after resizing");
+								check(panel.activity.getForeground().equals(new java.awt.Color(0, 122, 255)),
+										"Activity bar must use the standard blue accent");
+								check(panel.activity.isIndeterminate(), "Activity must remain animated during download");
 								checkInside(panel.phase, panel);
 								checkInside(SwingUtilities.getAncestorOfClass(JScrollPane.class, panel.details), panel);
 							}

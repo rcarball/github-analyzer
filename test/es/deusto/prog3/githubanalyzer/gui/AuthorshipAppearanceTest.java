@@ -83,6 +83,9 @@ class AuthorshipAppearanceTest {
                 int nameColumn = form.people.convertColumnIndexToView(0);
                 JLabel label = (JLabel) form.people.prepareRenderer(form.people.getCellRenderer(row, nameColumn), row, nameColumn);
                 ContributionBadge badge = badges[modelRow];
+                assertNotNull(badge.icon(), "Missing contribution icon: " + badge.imageFile);
+                assertEquals(28, badge.icon().getIconWidth());
+                assertEquals(28, badge.icon().getIconHeight());
                 assertSame(badge.icon(), label.getIcon());
                 assertEquals(MainWindow.contributionBackground(form.people.getBackground(), badge.color,
                         form.people.isRowSelected(row)), label.getBackground());
@@ -123,6 +126,47 @@ class AuthorshipAppearanceTest {
             assertEquals("Java commits", commits.getToolTipText());
             assertNotNull(commits.getIcon());
         });
+    }
+
+    @Test void contributionPaletteKeepsReadableContrastAcrossThemesSelectionAndShareBars() {
+        for (var base : List.of(java.awt.Color.WHITE, new java.awt.Color(238, 238, 238),
+                new java.awt.Color(32, 33, 36), new java.awt.Color(80, 80, 80))) {
+            for (ContributionBadge badge : ContributionBadge.values()) {
+                for (boolean selected : new boolean[] {false, true}) {
+                    var background = MainWindow.contributionBackground(base, badge.color, selected);
+                    var foreground = MainWindow.contributionForeground(badge.color, background, selected);
+                    var fill = MainWindow.contributionBarColor(badge.color, background, foreground, selected);
+                    for (int alpha : new int[] {0, fill.getAlpha() / 2, fill.getAlpha()}) {
+                        double weight = alpha / 255.0;
+                        var bar = new java.awt.Color(
+                                (int) Math.round(background.getRed() * (1 - weight) + badge.color.getRed() * weight),
+                                (int) Math.round(background.getGreen() * (1 - weight) + badge.color.getGreen() * weight),
+                                (int) Math.round(background.getBlue() * (1 - weight) + badge.color.getBlue() * weight));
+                        double a = luminance(foreground), b = luminance(bar);
+                        double contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+                        assertTrue(contrast >= 4.5, badge + " contrast=" + contrast + " selected=" + selected
+                                + " base=" + base + " alpha=" + alpha);
+                    }
+                }
+            }
+        }
+        for (ContributionBadge badge : List.of(ContributionBadge.BALANCED, ContributionBadge.HIGH)) {
+            var background = MainWindow.contributionBackground(java.awt.Color.WHITE, badge.color, false);
+            var foreground = MainWindow.contributionForeground(badge.color, background, false);
+            assertTrue(background.getGreen() > background.getRed());
+            assertTrue(background.getGreen() > background.getBlue());
+            assertTrue(foreground.getGreen() > foreground.getRed());
+            assertTrue(foreground.getGreen() > foreground.getBlue());
+        }
+        var teacher = MainWindow.contributionBackground(java.awt.Color.WHITE, ContributionBadge.TEACHER.color, false);
+        assertTrue(teacher.getRed() >= 245 && teacher.getGreen() >= 245 && teacher.getBlue() >= 245);
+    }
+
+    private static double luminance(java.awt.Color color) {
+        double[] values = { color.getRed() / 255.0, color.getGreen() / 255.0, color.getBlue() / 255.0 };
+        for (int i = 0; i < values.length; i++)
+            values[i] = values[i] <= 0.04045 ? values[i] / 12.92 : Math.pow((values[i] + 0.055) / 1.055, 2.4);
+        return 0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2];
     }
 
 }
