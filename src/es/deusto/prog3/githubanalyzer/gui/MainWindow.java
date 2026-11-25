@@ -98,6 +98,7 @@ public class MainWindow extends JFrame {
 	private JLabel lblCodeLines;
 	private JLabel lblLinesChanged;
 	private JLabel lblExternalRefs;
+	private JLabel lblBranches;
 	private JLabel lblURL;
 	private JLabel lblTeamSize;
 	private JLabel lblContributors;
@@ -371,6 +372,7 @@ public class MainWindow extends JFrame {
 		lblCodeLines = new JLabel("• Java LOC:");
 		lblLinesChanged = new JLabel("• Java churn (added+deleted):");
 		lblExternalRefs = new JLabel("• External references:");
+		lblBranches = new JLabel("• Branches:");
 		lblURL = new JLabel("• Open repository:");
 		lblTeamSize = new JLabel("• Team size:");
 		lblContributors = new JLabel("• Contributors:");
@@ -393,6 +395,7 @@ public class MainWindow extends JFrame {
 				"<html><b>Java churn</b> = added + deleted lines in .java files.<br>Computed from non-merge commits only.</html>");
 		lblExternalRefs.setToolTipText(
 				"<html>Occurrences of the standalone markers <b>IAG</b> or <b>FUENTE-EXTERNA</b> in .java files on the default branch (whole-word, not inside identifiers).<br>Useful to flag external/AI-assisted code references.</html>");
+		lblBranches.setToolTipText("Number of branches in the saved original download.");
 		lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
 
 		// Right-click menu: open or copy the full repository URL.
@@ -457,6 +460,7 @@ public class MainWindow extends JFrame {
 		panelDetails.add(lblLastCommit);
 		panelDetails.add(lblAuthors);
 		panelDetails.add(lblExternalRefs);
+		panelDetails.add(lblBranches);
 		panelDetails.add(lblURL);
 		int overviewColumnWidth = lblExternalRefs.getPreferredSize().width
 				+ lblExternalRefs.getFontMetrics(lblExternalRefs.getFont()).stringWidth(" 00000");
@@ -1079,6 +1083,8 @@ public class MainWindow extends JFrame {
 			lblTeamSize.setText(repoStats.getTeamSize() == null ? "• Team size: pending"
 					: "• Team size: " + repoStats.getTeamSize() + " (declared)");
 			lblCommits.setText("• Analysis pending: download this repository");
+			lblBranches.setText("• Branches: pending");
+			updateRepositoryLink(repoStats);
 			setStatusText("No local data. Right-click this repository to download it, or use Refresh pending.");
 			return;
 		}
@@ -1138,11 +1144,8 @@ public class MainWindow extends JFrame {
 					String.format("Added: %d | Deleted: %d", repoStats.getLinesAdded(), repoStats.getLinesDeleted()));
 			lblExternalRefs.setText(
 					String.format("• External references: %d", repoStats.getExternalReferences()));
-			lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repoStats.getName()));
-			lblURL.setForeground(Color.BLUE);
-			lblURL.setToolTipText(
-					repoStats.getUrl() == null ? "Left-click to open in your browser; right-click to copy the URL."
-							: repoStats.getUrl() + "  (left-click to open · right-click to copy)");
+			lblBranches.setText("• Branches: " + repoStats.getBranches());
+			updateRepositoryLink(repoStats);
 
 			// Clear and populate the user stats table
 			tableModelUserStats.setRowCount(0);
@@ -1179,6 +1182,7 @@ public class MainWindow extends JFrame {
 			lblCodeLines.setText("• Java LOC:");
 			lblLinesChanged.setText("• Java churn (added+deleted):");
 			lblExternalRefs.setText("• External references:");
+			lblBranches.setText("• Branches:");
 			lblURL.setText("• URL:");
 			lblURL.setForeground(lblCommits.getForeground());
 			lblURL.setToolTipText("Left-click to open in your browser; right-click to copy the URL.");
@@ -1191,6 +1195,28 @@ public class MainWindow extends JFrame {
 			((DefaultTreeModel) jTreeFileType.getModel()).nodeStructureChanged(root);
 			jTreeFileType.updateUI();
 		}
+	}
+
+	private void updateRepositoryLink(RepoStats repo) {
+		lblURL.setText(String.format("<html>• <u><i>%s</i></u></html>", repositoryDisplayName(repo)));
+		lblURL.setForeground(Color.BLUE);
+		lblURL.setToolTipText(repo.getUrl() == null
+				? "Left-click to open in your browser; right-click to copy the URL."
+				: repo.getUrl() + "  (left-click to open · right-click to copy)");
+	}
+
+	private static String repositoryDisplayName(RepoStats repo) {
+		if (repo.getUrl() != null) {
+			try {
+				String path = URI.create(repo.getUrl()).getPath();
+				if (path != null && path.matches("/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?")) {
+					return path.substring(1).replaceAll("/+$", "").replaceAll("(?i)\\.git$", "");
+				}
+			} catch (IllegalArgumentException ex) {
+				// Older local records may not contain a valid repository URL.
+			}
+		}
+		return repo.getName() == null ? "" : repo.getName();
 	}
 
 	/**
